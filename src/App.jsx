@@ -28,7 +28,7 @@ export default function App() {
 
             {/* 4. Chuyến đi của tôi */}
             <Route path="/my-bookings" element={
-              <div className="container py-5 text-center">
+              <div className="container pb-5 text-center page-top-spacing">
                 <div className="p-5 bg-white rounded-4 shadow-sm border-0">
                   <h3 className="fw-bold mb-3">Chuyến Đi Của Tôi</h3>
                   <p className="text-secondary mb-4">
@@ -43,7 +43,7 @@ export default function App() {
 
             {/* 5. Trang Đăng nhập */}
             <Route path="/login" element={
-              <div className="container py-5">
+              <div className="container pb-5 page-top-spacing">
                 <div className="row justify-content-center">
                   <div className="col-lg-5 col-md-7">
                     <div className="card p-4 rounded-4 shadow-sm border-0 bg-white">
@@ -72,7 +72,7 @@ export default function App() {
 
             {/* 6. Trang Đăng ký */}
             <Route path="/register" element={
-              <div className="container py-5">
+              <div className="container pb-5 page-top-spacing">
                 <div className="row justify-content-center">
                   <div className="col-lg-6 col-md-8">
                     <div className="card p-4 rounded-4 shadow-sm border-0 bg-white">

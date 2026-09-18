@@ -38,7 +38,7 @@ export default function HotelDetailPage() {
   };
 
   return (
-    <div className="bg-light py-4 min-vh-100">
+    <div className="bg-light pb-4 min-vh-100 page-top-spacing">
       <div className="container">
         {/* Thanh điều hướng Breadcrumb */}
         <div className="d-flex align-items-center gap-2 mb-3 small text-secondary">
