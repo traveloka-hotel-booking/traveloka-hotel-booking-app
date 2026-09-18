@@ -104,7 +104,7 @@ export default function HotelsPage() {
   }, [selectedCity, selectedStars, maxPrice, selectedAmenities, sortBy]);
 
   return (
-    <div className="bg-light py-4 min-vh-100">
+    <div className="bg-light pb-4 min-vh-100 page-top-spacing">
       <div className="container">
         {/* Tiêu đề trang */}
         <div className="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
