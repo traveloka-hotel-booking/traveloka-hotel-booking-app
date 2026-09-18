@@ -1,0 +1,4 @@
+/* Tùy chỉnh bổ sung cho ứng dụng Traveloka */
+.hero-gradient {
+  background: linear-gradient(135deg, #0d6efd 0%, #004085 100%);
+}

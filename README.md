@@ -1,12 +1,16 @@
-<h1 class="text-center">Images Related to this Design</h1>
+# React + Vite
 
-<h3>Logo</h3>
-<img src="https://github.com/i-m-akshat/HotelBookingSystem--Design-Only/assets/100028672/91ac0d85-5e11-4ad6-a1c9-f3db574f9364"/>
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-<h3 class="text-center mt-2">HomePage</h3>
-<img src="https://github.com/i-m-akshat/HotelBookingSystem--Design-Only/assets/100028672/cf6f7404-f4fd-4394-9b92-0de7032b6174"/>
-<h3 class="text-center mt-2">All Hotel List</h3>
-<img src="https://github.com/i-m-akshat/HotelBookingSystem--Design-Only/assets/100028672/43969f16-2432-41c4-924e-ac03a4216ac0"/>
-<h3 class="text-center mt-2">Login Page</h3>
-<img src="https://github.com/i-m-akshat/HotelBookingSystem--Design-Only/assets/100028672/5551b426-3cbb-4ff4-bc5e-c3c0150aa2ea"/>
+Currently, two official plugins are available:
 
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+
+## React Compiler
+
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+
+## Expanding the ESLint configuration
+
+If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
