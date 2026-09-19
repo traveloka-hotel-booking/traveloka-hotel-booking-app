@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { 
   CheckCircle, Copy, Check, Printer, ArrowRight, Home, 
-  MapPin, Calendar, Users, BedDouble, Phone, Mail, ShieldCheck, QrCode
+  MapPin, Calendar, Users, BedDouble, Phone, Mail, ShieldCheck, QrCode, Sparkles, UserPlus
 } from 'lucide-react';
 import { MOCK_HOTELS } from '../data/mockData';
 
 export default function BookingSuccessPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
 
   // Đọc dữ liệu booking từ state chuyển trang, hoặc lấy đơn gần nhất từ localStorage, hoặc mockup fallback
   const getInitialBooking = () => {
@@ -120,6 +122,43 @@ export default function BookingSuccessPage() {
                 </Link>
               </div>
             </div>
+
+            {/* THÔNG BÁO CHO KHÁCH VÃNG LAI (GUEST) ĐỂ ĐỒNG BỘ VÀO TÀI KHOẢN */}
+            {(!isAuthenticated || booking.isGuest) && (
+              <div className="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white border-start border-4 border-warning">
+                <div className="d-flex align-items-start gap-3">
+                  <div className="p-2 bg-warning bg-opacity-25 text-warning-emphasis rounded-circle flex-shrink-0 mt-1">
+                    <Sparkles size={22} className="text-warning" />
+                  </div>
+                  <div className="flex-grow-1">
+                    <h6 className="fw-bold text-dark mb-1">
+                      💡 Bạn đã đặt phòng thành công 
+                    </h6>
+                    <p className="small text-secondary mb-3">
+                      Vé điện tử và mã xác nhận đã được gửi đến email <strong className="text-dark">{booking.contactEmail}</strong>. 
+                      Đơn này hiện được lưu trữ tạm thời trên trình duyệt của bạn. Bạn có thể tạo tài khoản hoặc đăng nhập với email này để lưu vé điện tử vĩnh viễn và tích lũy điểm thưởng!
+                    </p>
+                    <div className="d-flex flex-wrap align-items-center gap-2">
+                      <Link 
+                        to="/register" 
+                        state={{ email: booking.contactEmail, name: booking.contactName }}
+                        className="btn btn-warning btn-sm rounded-pill fw-bold text-dark px-3 shadow-sm d-inline-flex align-items-center gap-1"
+                        style={{ fontSize: '12.5px' }}
+                      >
+                        <UserPlus size={15} /> Tạo tài khoản với email này
+                      </Link>
+                      <Link 
+                        to="/login" 
+                        className="btn btn-outline-secondary btn-sm rounded-pill fw-semibold px-3"
+                        style={{ fontSize: '12.5px' }}
+                      >
+                        Đăng nhập đồng bộ
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* ================= THẺ VÉ ĐIỆN TỬ (E-VOUCHER) ================= */}
             <div className="card border-0 shadow-sm rounded-4 overflow-hidden bg-white mb-4">

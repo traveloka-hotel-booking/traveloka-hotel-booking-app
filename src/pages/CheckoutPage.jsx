@@ -1,26 +1,37 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { MOCK_HOTELS } from '../data/mockData';
 import { 
   ArrowLeft, ShieldCheck, CreditCard, QrCode, Wallet, Building2, 
-  CheckCircle2, Info, Calendar, Users, BedDouble, Tag, Sparkles, Clock, AlertCircle
+  CheckCircle2, Info, Calendar, Users, BedDouble, Tag, Sparkles, Clock, AlertCircle, User
 } from 'lucide-react';
 
 export default function CheckoutPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
 
   // Lấy dữ liệu hotel và room từ state chuyển trang, hoặc lấy dữ liệu mẫu mặc định nếu vào trực tiếp
   const passedData = location.state || {};
   const hotel = passedData.hotel || MOCK_HOTELS[0];
   const room = passedData.room || hotel.rooms[0];
 
-  // State thông tin khách hàng
-  const [fullName, setFullName] = useState('Nguyễn Văn A');
-  const [email, setEmail] = useState('nguyenvana@gmail.com');
-  const [phoneNumber, setPhoneNumber] = useState('0912345678');
+  // State thông tin khách hàng: Tự động điền nếu đã đăng nhập, hoặc để trống nếu là khách vãng lai
+  const [fullName, setFullName] = useState(user?.name || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [phoneNumber, setPhoneNumber] = useState(user?.phone || '0912345678');
   const [isBookingForSomeoneElse, setIsBookingForSomeoneElse] = useState(false);
   const [guestName, setGuestName] = useState('');
+
+  // Tự động đồng bộ thông tin tài khoản nếu người dùng vừa đăng nhập
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      if (!fullName) setFullName(user.name || '');
+      if (!email) setEmail(user.email || '');
+      if (!phoneNumber && user.phone) setPhoneNumber(user.phone);
+    }
+  }, [isAuthenticated, user]);
 
   // State ngày lưu trú (mặc định lấy 3 ngày tới)
   const today = new Date();
@@ -133,7 +144,11 @@ export default function CheckoutPage() {
         discountAmount,
         totalAmount: finalTotal,
         status: 'confirmed', // confirmed, cancelled, completed
-        freeCancellation: room.freeCancellation
+        freeCancellation: room.freeCancellation,
+        // Phân biệt rõ ràng đơn của thành viên hay khách vãng lai
+        isGuest: !isAuthenticated,
+        userId: user?.id || null,
+        userEmail: user?.email || email
       };
 
       // Lưu vào localStorage
@@ -190,9 +205,70 @@ export default function CheckoutPage() {
                   <h5 className="fw-bold text-dark mb-0">1. Thông Tin Người Liên Hệ</h5>
                   <span className="badge bg-primary-subtle text-primary small">Yêu cầu thông tin chính xác</span>
                 </div>
-                <p className="text-secondary small mb-4">
-                  Vé điện tử và thông tin xác nhận phòng sẽ được gửi trực tiếp đến email và số điện thoại bên dưới.
-                </p>
+                {/* BANNER PHÂN BIỆT: KHÁCH VÃNG LAI (GUEST) VÀ THÀNH VIÊN ĐÃ ĐĂNG NHẬP */}
+                {!isAuthenticated ? (
+                  <div className="card border-0 shadow-sm rounded-3 p-3 mb-4" style={{ background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderLeft: '4px solid #0264c8' }}>
+                    <div className="d-flex align-items-start gap-3">
+                      <div className="p-2 bg-primary text-white rounded-circle flex-shrink-0 mt-1">
+                        <Sparkles size={18} />
+                      </div>
+                      <div className="flex-grow-1">
+                        <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
+                          <strong className="text-primary small">
+                            Bạn chưa đăng nhập
+                          </strong>
+                          <div className="d-flex align-items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFullName('Nguyễn Văn A');
+                                setEmail('nguyenvana@gmail.com');
+                                setPhoneNumber('0912345678');
+                              }}
+                              className="btn btn-outline-primary btn-sm rounded-pill px-2 py-0 fw-semibold"
+                              style={{ fontSize: '11px' }}
+                            >
+                              ⚡ Điền nhanh demo
+                            </button>
+                            <Link 
+                              to="/login" 
+                              state={{ from: location }}
+                              className="btn btn-primary btn-sm rounded-pill px-3 py-1 fw-bold shadow-sm"
+                              style={{ fontSize: '12px' }}
+                            >
+                              Đăng nhập ngay
+                            </Link>
+                          </div>
+                        </div>
+                        <p className="small text-secondary mb-0" style={{ fontSize: '12.5px' }}>
+                          Bạn vẫn có thể đặt phòng và thanh toán ngay! Mã đặt chỗ & vé điện tử sẽ được gửi về email của bạn. 
+                          <span className="text-dark fw-medium"> Đăng nhập</span> để tích lũy <strong>Traveloka Points</strong> và tự động quản lý chuyến đi trên mọi thiết bị.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="card border-0 shadow-sm rounded-3 p-3 mb-4 bg-success-subtle border-start border-4 border-success">
+                    <div className="d-flex align-items-center gap-3">
+                      <div className="p-2 bg-success text-white rounded-circle flex-shrink-0">
+                        <CheckCircle2 size={18} />
+                      </div>
+                      <div className="flex-grow-1">
+                        <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                          <div>
+                            <strong className="text-success small d-block">
+                              ✓ Thành viên đã đăng nhập: {user?.name} ({user?.email})
+                            </strong>
+                            <span className="small text-secondary" style={{ fontSize: '12px' }}>
+                              Thông tin liên hệ đã được tự động điền. Đơn đặt phòng này sẽ được đồng bộ trực tiếp vào mục <strong>Chuyến đi của tôi</strong>.
+                            </span>
+                          </div>
+                          <span className="badge bg-success text-white px-2 py-1">Thành viên thân thiết</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="row g-3">
                   <div className="col-md-12">

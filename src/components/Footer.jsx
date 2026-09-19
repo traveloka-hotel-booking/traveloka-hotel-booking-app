@@ -1,7 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Hotel, Phone, Mail, MapPin } from 'lucide-react';
+import PolicyModal from './PolicyModal';
 
 export default function Footer() {
+  const [policyModalOpen, setPolicyModalOpen] = useState(false);
+  const [activePolicyTab, setActivePolicyTab] = useState('booking_guide');
+
+  const openPolicy = (tabKey) => {
+    setActivePolicyTab(tabKey);
+    setPolicyModalOpen(true);
+  };
   return (
     <footer className="bg-dark text-white pt-5 pb-3 mt-auto">
       <div className="container">
@@ -44,15 +52,55 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* Cột 3: Về chúng tôi */}
+          {/* Cột 3: Chính sách & Hỗ trợ */}
           <div className="col-lg-3 col-md-6 col-6">
-            <h6 className="text-white fw-bold mb-3">Thông tin dịch vụ</h6>
+            <h6 className="text-white fw-bold mb-3">Chính sách & Hỗ trợ</h6>
             <ul className="list-unstyled text-secondary small d-flex flex-column gap-2">
-              <li><a href="#" className="text-secondary text-decoration-none">Hướng dẫn đặt phòng</a></li>
-              <li><a href="#" className="text-secondary text-decoration-none">Chính sách hoàn hủy</a></li>
-              <li><a href="#" className="text-secondary text-decoration-none">Điều khoản sử dụng</a></li>
-              <li><a href="#" className="text-secondary text-decoration-none">Chính sách bảo mật</a></li>
-              <li><a href="#" className="text-secondary text-decoration-none">Liên hệ hợp tác</a></li>
+              <li>
+                <button 
+                  type="button" 
+                  onClick={() => openPolicy('booking_guide')} 
+                  className="btn btn-link p-0 text-secondary text-decoration-none hover-white small text-start"
+                >
+                  Hướng dẫn đặt phòng
+                </button>
+              </li>
+              <li>
+                <button 
+                  type="button" 
+                  onClick={() => openPolicy('cancellation')} 
+                  className="btn btn-link p-0 text-secondary text-decoration-none hover-white small text-start"
+                >
+                  Chính sách hoàn hủy
+                </button>
+              </li>
+              <li>
+                <button 
+                  type="button" 
+                  onClick={() => openPolicy('terms')} 
+                  className="btn btn-link p-0 text-secondary text-decoration-none hover-white small text-start"
+                >
+                  Điều khoản sử dụng
+                </button>
+              </li>
+              <li>
+                <button 
+                  type="button" 
+                  onClick={() => openPolicy('privacy')} 
+                  className="btn btn-link p-0 text-secondary text-decoration-none hover-white small text-start"
+                >
+                  Chính sách bảo mật
+                </button>
+              </li>
+              <li>
+                <button 
+                  type="button" 
+                  onClick={() => openPolicy('partner')} 
+                  className="btn btn-link p-0 text-secondary text-decoration-none hover-white small text-start"
+                >
+                  Liên hệ hợp tác
+                </button>
+              </li>
             </ul>
           </div>
 
@@ -76,6 +124,13 @@ export default function Footer() {
           </p>
         </div>
       </div>
+
+      {/* Modal Chi Tiết Chính Sách & Điều Khoản */}
+      <PolicyModal 
+        isOpen={policyModalOpen} 
+        onClose={() => setPolicyModalOpen(false)} 
+        initialTab={activePolicyTab} 
+      />
     </footer>
   );
 }
