@@ -1,11 +1,25 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { MOCK_HOTELS } from '../data/mockData';
 import { 
-  Search, MapPin, Calendar, Users, Star, ArrowRight, ChevronDown,
-  ShieldCheck, Tag, Clock, Sparkles, Check, Info, ArrowUp, ThumbsUp,
+  Search, MapPin, Calendar, Users, Star, ArrowRight, ChevronDown, ChevronUp,
+  Minus, Plus, ShieldCheck, Tag, Clock, Sparkles, Check, Info, ArrowUp, ThumbsUp,
   Award, Shield, HelpCircle
 } from 'lucide-react';
+
+// Danh sách gợi ý điểm đến phổ biến tại Việt Nam theo yêu cầu
+const VIETNAM_DESTINATIONS = [
+  "TP. Hồ Chí Minh",
+  "Đà Nẵng",
+  "Hà Nội",
+  "Nha Trang",
+  "Đà Lạt",
+  "Phan Thiết",
+  "Đảo Phú Quốc",
+  "Vũng Tàu",
+  "Quy Nhơn",
+  "Sa Pa"
+];
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -14,7 +28,37 @@ export default function HomePage() {
   const [destination, setDestination] = useState('Hồ Chí Minh');
   const [checkIn, setCheckIn] = useState('2026-09-25');
   const [checkOut, setCheckOut] = useState('2026-09-26');
-  const [guestConfig, setGuestConfig] = useState('1 phòng, 2 người lớn, 0 trẻ em');
+  
+  // State chọn phòng và khách (3 thành phần: Phòng, Người Lớn, Trẻ Em)
+  const [roomsCount, setRoomsCount] = useState(1);
+  const [adultsCount, setAdultsCount] = useState(2);
+  const [childrenCount, setChildrenCount] = useState(0);
+
+  // State bật/tắt các dropdown gợi ý
+  const [isDestinationPickerOpen, setIsDestinationPickerOpen] = useState(false);
+  const [isGuestPickerOpen, setIsGuestPickerOpen] = useState(false);
+
+  const destinationRef = useRef(null);
+  const guestRef = useRef(null);
+
+  // Tự động đóng dropdown khi bấm ra ngoài vùng chọn
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (destinationRef.current && !destinationRef.current.contains(event.target)) {
+        setIsDestinationPickerOpen(false);
+      }
+      if (guestRef.current && !guestRef.current.contains(event.target)) {
+        setIsGuestPickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Chuỗi tóm tắt phòng và khách
+  const guestConfigText = `${roomsCount} phòng, ${adultsCount} Người Lớn, ${childrenCount} Trẻ em`;
 
   // State bộ lọc ở phần danh sách bên dưới (như ảnh 2)
   const [selectedStar, setSelectedStar] = useState(null);
@@ -70,7 +114,7 @@ export default function HomePage() {
         className="position-relative d-flex flex-column justify-content-between text-white"
         style={{
           minHeight: '100vh',
-          backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.45), rgba(15, 23, 42, 0.75)), url('https://images.unsplash.com/photo-1548013146-72479768bada?w=1920&auto=format&fit=crop&q=85')`,
+          backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.45), rgba(15, 23, 42, 0.75)), url('https://pystravel.vn/_next/image?url=https%3A%2F%2Fbooking.pystravel.vn%2Fuploads%2Fposts%2Falbums%2F6224%2F27866de7412bab2c732246925db7e1bf.jpg&w=1920&q=75')`,
           backgroundSize: 'cover',
           backgroundPosition: 'center 40%',
           paddingTop: '110px',
@@ -95,26 +139,58 @@ export default function HomePage() {
               <div className="card shadow-lg border-0 rounded-3 p-2 bg-white text-dark">
                 <form onSubmit={handleSearch} className="row g-0 align-items-center">
                   
-                  {/* Ô 1: Vui lòng nhập điểm đến của bạn */}
-                  <div className="col-lg-3 col-md-6 p-2 px-3 border-end">
+                  {/* Ô 1: Vui lòng nhập điểm đến của bạn với gợi ý điểm đến Việt Nam */}
+                  <div className="col-lg-3 col-md-6 p-2 px-3 border-end position-relative" ref={destinationRef}>
                     <label className="text-secondary small d-block mb-1" style={{ fontSize: '11px', fontWeight: 600 }}>
-                      Vui lòng nhập điểm đến của bạn.
+                      Vui lòng nhập điểm đến
                     </label>
                     <input 
                       type="text" 
                       className="form-control border-0 p-0 fw-bold fs-6 text-dark shadow-none bg-transparent"
-                      placeholder="VD: Đền Ngọc Hoàng, Hồ Chí Minh"
+                      placeholder="Thành phố, sân bay, khu vực, đ..."
                       value={destination}
+                      onFocus={() => setIsDestinationPickerOpen(true)}
+                      onClick={() => setIsDestinationPickerOpen(true)}
                       onChange={(e) => setDestination(e.target.value)}
                     />
+
+                    {/* Popup gợi ý điểm đến phổ biến tại Việt Nam theo yêu cầu Chỗ 2 */}
+                    {isDestinationPickerOpen && (
+                      <div 
+                        className="position-absolute start-0 bg-white shadow-lg rounded-3 border overflow-hidden" 
+                        style={{ top: '100%', width: '480px', maxWidth: '90vw', zIndex: 1060, marginTop: '8px' }}
+                      >
+                        <div className="bg-light p-2 px-3 border-bottom">
+                          <span className="fw-bold text-dark small">Điểm đến phổ biến</span>
+                        </div>
+                        <div className="p-3">
+                          <div className="row g-2">
+                            {VIETNAM_DESTINATIONS.map((dest, idx) => (
+                              <div key={idx} className="col-sm-6 col-6">
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-light w-100 text-start text-truncate py-2 px-2 small text-dark border-0 hover-bg-primary-subtle d-flex align-items-center gap-1"
+                                  onClick={() => {
+                                    setDestination(dest);
+                                    setIsDestinationPickerOpen(false);
+                                  }}
+                                >
+                                  <MapPin size={14} className="text-danger flex-shrink-0" />
+                                  <span className="text-truncate">{dest}</span>
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Ô 2: Đăng ký vào / Thanh toán (Ngày nhận - trả + 1 đêm) */}
                   <div className="col-lg-4 col-md-6 p-2 px-3 border-end">
                     <div className="d-flex justify-content-between align-items-center mb-1">
-                      <span className="text-secondary small" style={{ fontSize: '11px', fontWeight: 600 }}>Check-in</span>
-                      <span className="badge bg-light text-secondary border px-2 py-0" style={{ fontSize: '11px' }}>Check-out</span>
-                     
+                      <span className="text-secondary small" style={{ fontSize: '11px', fontWeight: 600 }}>Nhận phòng</span>
+                      <span className="badge bg-light text-secondary border px-2 py-0" style={{ fontSize: '11px' }}>Trả phòng</span>
                     </div>
                     <div className="d-flex align-items-center gap-2">
                       <input 
@@ -133,27 +209,154 @@ export default function HomePage() {
                     </div>
                   </div>
 
-                  {/* Ô 3: Số lượng khách và số lượng phòng */}
-                  <div className="col-lg-3 col-md-8 p-2 px-3 border-end">
+                  {/* Ô 3: Số lượng phòng và số lượng khách (3 thành phần: Phòng, Người Lớn, Trẻ Em theo Chỗ 1) */}
+                  <div className="col-lg-3 col-md-8 p-2 px-3 border-end position-relative" ref={guestRef}>
                     <label className="text-secondary small d-block mb-1" style={{ fontSize: '11px', fontWeight: 600 }}>
-                      Số lượng khách và số lượng phòng
+                      Phòng và khách
                     </label>
-                    <div className="dropdown">
-                      <button 
-                        className="btn btn-white border-0 p-0 fw-bold fs-6 text-dark w-100 text-start d-flex justify-content-between align-items-center shadow-none"
-                        type="button"
-                        data-bs-toggle="dropdown"
-                      >
-                        <span className="text-truncate">{guestConfig}</span>
-                        <ChevronDown size={18} className="text-secondary" />
-                      </button>
-                      <ul className="dropdown-menu shadow border-0 rounded-3 p-2 mt-2 w-100">
-                        <li><button type="button" className="dropdown-item py-2 small" onClick={() => setGuestConfig('1 phòng, 1 người lớn')}>1 phòng, 1 người lớn</button></li>
-                        <li><button type="button" className="dropdown-item py-2 small fw-bold" onClick={() => setGuestConfig('1 phòng, 2 người lớn, 0 trẻ em')}>1 phòng, 2 người lớn, 0 trẻ em</button></li>
-                        <li><button type="button" className="dropdown-item py-2 small" onClick={() => setGuestConfig('1 phòng, 3 người lớn')}>1 phòng, 3 người lớn</button></li>
-                        <li><button type="button" className="dropdown-item py-2 small" onClick={() => setGuestConfig('2 phòng, 4 người lớn (Gia đình)')}>2 phòng, 4 người lớn</button></li>
-                      </ul>
+                    <div 
+                      className="d-flex justify-content-between align-items-center cursor-pointer py-1"
+                      onClick={() => setIsGuestPickerOpen(!isGuestPickerOpen)}
+                    >
+                      <span className="fw-bold fs-6 text-dark text-truncate pe-1">
+                        {guestConfigText}
+                      </span>
+                      {isGuestPickerOpen ? (
+                        <ChevronUp size={18} className="text-secondary flex-shrink-0" />
+                      ) : (
+                        <ChevronDown size={18} className="text-secondary flex-shrink-0" />
+                      )}
                     </div>
+
+                    {/* Popup chọn 3 thành phần: Phòng, Người Lớn, Trẻ Em */}
+                    {isGuestPickerOpen && (
+                      <div 
+                        className="position-absolute start-0 bg-white shadow-lg rounded-3 border p-3" 
+                        style={{ top: '100%', minWidth: '270px', width: '100%', zIndex: 1060, marginTop: '8px' }}
+                      >
+                        {/* Thành phần 1: Phòng */}
+                        <div className="d-flex justify-content-between align-items-center py-2 border-bottom">
+                          <div>
+                            <span className="fw-semibold text-dark small d-block">Phòng</span>
+                          </div>
+                          <div className="d-flex align-items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={roomsCount <= 1}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setRoomsCount(prev => Math.max(1, prev - 1));
+                              }}
+                              className="btn btn-sm btn-outline-secondary rounded-circle d-flex align-items-center justify-content-center p-0"
+                              style={{ width: '28px', height: '28px' }}
+                            >
+                              <Minus size={14} />
+                            </button>
+                            <span className="fw-bold px-1" style={{ minWidth: '20px', textAlign: 'center' }}>
+                              {roomsCount}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={roomsCount >= 10}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setRoomsCount(prev => Math.min(10, prev + 1));
+                              }}
+                              className="btn btn-sm btn-outline-secondary rounded-circle d-flex align-items-center justify-content-center p-0"
+                              style={{ width: '28px', height: '28px' }}
+                            >
+                              <Plus size={14} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Thành phần 2: Người lớn */}
+                        <div className="d-flex justify-content-between align-items-center py-2 border-bottom">
+                          <div>
+                            <span className="fw-semibold text-dark small">Người lớn</span>
+                            <span className="text-secondary ms-1" style={{ fontSize: '11px' }}>18+ tuổi</span>
+                          </div>
+                          <div className="d-flex align-items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={adultsCount <= 1}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAdultsCount(prev => Math.max(1, prev - 1));
+                              }}
+                              className="btn btn-sm btn-outline-secondary rounded-circle d-flex align-items-center justify-content-center p-0"
+                              style={{ width: '28px', height: '28px' }}
+                            >
+                              <Minus size={14} />
+                            </button>
+                            <span className="fw-bold px-1" style={{ minWidth: '20px', textAlign: 'center' }}>
+                              {adultsCount}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={adultsCount >= 20}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAdultsCount(prev => Math.min(20, prev + 1));
+                              }}
+                              className="btn btn-sm btn-outline-secondary rounded-circle d-flex align-items-center justify-content-center p-0"
+                              style={{ width: '28px', height: '28px' }}
+                            >
+                              <Plus size={14} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Thành phần 3: Trẻ em */}
+                        <div className="d-flex justify-content-between align-items-center py-2">
+                          <div>
+                            <span className="fw-semibold text-dark small">Trẻ em</span>
+                            <span className="text-secondary ms-1" style={{ fontSize: '11px' }}>0-17 tuổi</span>
+                          </div>
+                          <div className="d-flex align-items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={childrenCount <= 0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setChildrenCount(prev => Math.max(0, prev - 1));
+                              }}
+                              className="btn btn-sm btn-outline-secondary rounded-circle d-flex align-items-center justify-content-center p-0"
+                              style={{ width: '28px', height: '28px' }}
+                            >
+                              <Minus size={14} />
+                            </button>
+                            <span className="fw-bold px-1" style={{ minWidth: '20px', textAlign: 'center' }}>
+                              {childrenCount}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={childrenCount >= 10}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setChildrenCount(prev => Math.min(10, prev + 1));
+                              }}
+                              className="btn btn-sm btn-outline-secondary rounded-circle d-flex align-items-center justify-content-center p-0"
+                              style={{ width: '28px', height: '28px' }}
+                            >
+                              <Plus size={14} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Nút Xong */}
+                        <div className="pt-2 mt-1 border-top text-end">
+                          <button
+                            type="button"
+                            onClick={() => setIsGuestPickerOpen(false)}
+                            className="btn btn-primary btn-sm px-3 rounded-pill fw-semibold"
+                            style={{ fontSize: '12px' }}
+                          >
+                            Xong
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Ô 4: Nút tìm kiếm phòng trống màu xanh dương */}
@@ -164,7 +367,7 @@ export default function HomePage() {
                       style={{ backgroundColor: '#2563eb' }}
                     >
                       <Search size={20} />
-                      <span>Tìm kiếm phòng trống</span>
+                      <span>Kiểm Tra Phòng Trống</span>
                     </button>
                   </div>
 
@@ -385,16 +588,13 @@ export default function HomePage() {
                               style={{ height: '55px' }}
                             />
                           </div>
-                          <div className="col-4 position-relative">
+                          <div className="col-4">
                             <img 
                               src={hotel.images?.[3] || hotel.thumbnailUrl} 
                               alt="thumb 3"
                               className="w-100 rounded-1 object-fit-cover"
                               style={{ height: '55px' }}
                             />
-                            <span className="position-absolute top-0 start-0 w-100 h-100 bg-dark bg-opacity-60 text-white d-flex align-items-center justify-content-center rounded-1 small fw-bold">
-                              +99
-                            </span>
                           </div>
                         </div>
                       </div>

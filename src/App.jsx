@@ -6,6 +6,9 @@ import Footer from './components/Footer';
 import HomePage from './pages/HomePage';
 import HotelsPage from './pages/HotelsPage';
 import HotelDetailPage from './pages/HotelDetailPage';
+import CheckoutPage from './pages/CheckoutPage';
+import BookingSuccessPage from './pages/BookingSuccessPage';
+import MyBookingsPage from './pages/MyBookingsPage';
 
 export default function App() {
   return (
@@ -26,20 +29,14 @@ export default function App() {
             {/* 3. Chi tiết khách sạn, tiện nghi & Danh sách các loại phòng */}
             <Route path="/hotels/:id" element={<HotelDetailPage />} />
 
-            {/* 4. Chuyến đi của tôi */}
-            <Route path="/my-bookings" element={
-              <div className="container pb-5 text-center page-top-spacing">
-                <div className="p-5 bg-white rounded-4 shadow-sm border-0">
-                  <h3 className="fw-bold mb-3">Chuyến Đi Của Tôi</h3>
-                  <p className="text-secondary mb-4">
-                    Bạn chưa có đơn đặt phòng nào. Hãy khám phá và đặt phòng ngay cho chuyến du lịch sắp tới!
-                  </p>
-                  <Link to="/hotels" className="btn btn-primary px-4 py-2 fw-semibold">
-                    Tìm khách sạn ngay
-                  </Link>
-                </div>
-              </div>
-            } />
+            {/* 4. Trang Thanh toán & Điền thông tin đặt phòng */}
+            <Route path="/checkout" element={<CheckoutPage />} />
+
+            {/* 5. Trang Xác nhận thành công & Vé điện tử E-voucher */}
+            <Route path="/booking-success" element={<BookingSuccessPage />} />
+
+            {/* 6. Chuyến đi của tôi (Quản lý đơn đặt phòng) */}
+            <Route path="/my-bookings" element={<MyBookingsPage />} />
 
             {/* 5. Trang Đăng nhập */}
             <Route path="/login" element={

@@ -1,0 +1,630 @@
+import React, { useState, useMemo } from 'react';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { MOCK_HOTELS } from '../data/mockData';
+import { 
+  ArrowLeft, ShieldCheck, CreditCard, QrCode, Wallet, Building2, 
+  CheckCircle2, Info, Calendar, Users, BedDouble, Tag, Sparkles, Clock, AlertCircle
+} from 'lucide-react';
+
+export default function CheckoutPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Lấy dữ liệu hotel và room từ state chuyển trang, hoặc lấy dữ liệu mẫu mặc định nếu vào trực tiếp
+  const passedData = location.state || {};
+  const hotel = passedData.hotel || MOCK_HOTELS[0];
+  const room = passedData.room || hotel.rooms[0];
+
+  // State thông tin khách hàng
+  const [fullName, setFullName] = useState('Nguyễn Văn A');
+  const [email, setEmail] = useState('nguyenvana@gmail.com');
+  const [phoneNumber, setPhoneNumber] = useState('0912345678');
+  const [isBookingForSomeoneElse, setIsBookingForSomeoneElse] = useState(false);
+  const [guestName, setGuestName] = useState('');
+
+  // State ngày lưu trú (mặc định lấy 3 ngày tới)
+  const today = new Date();
+  const defaultCheckIn = new Date(today.setDate(today.getDate() + 3)).toISOString().split('T')[0];
+  const defaultCheckOut = new Date(today.setDate(today.getDate() + 1)).toISOString().split('T')[0];
+
+  const [checkInDate, setCheckInDate] = useState(defaultCheckIn);
+  const [checkOutDate, setCheckOutDate] = useState(defaultCheckOut);
+
+  // Tính số đêm lưu trú
+  const nights = useMemo(() => {
+    const d1 = new Date(checkInDate);
+    const d2 = new Date(checkOutDate);
+    const diffTime = d2.getTime() - d1.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 0 ? diffDays : 1;
+  }, [checkInDate, checkOutDate]);
+
+  // State yêu cầu đặc biệt
+  const [specialRequests, setSpecialRequests] = useState([]);
+  const requestOptions = [
+    "Phòng không hút thuốc",
+    "Phòng ở tầng cao",
+    "Nhận phòng sớm (tùy tình trạng phòng)",
+    "Trả phòng trễ",
+    "1 giường đôi lớn (King bed)"
+  ];
+
+  const toggleSpecialRequest = (req) => {
+    setSpecialRequests(prev => 
+      prev.includes(req) ? prev.filter(r => r !== req) : [...prev, req]
+    );
+  };
+
+  // State phương thức thanh toán
+  const [paymentMethod, setPaymentMethod] = useState('vnpay'); // vnpay, card, momo, pay_at_hotel
+
+  // State thông tin thẻ
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardHolder, setCardHolder] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
+
+  // State mã giảm giá
+  const [couponCode, setCouponCode] = useState('');
+  const [discountAmount, setDiscountAmount] = useState(0);
+  const [couponMessage, setCouponMessage] = useState(null);
+
+  // Xử lý áp dụng voucher
+  const handleApplyCoupon = (e) => {
+    e.preventDefault();
+    const code = couponCode.trim().toUpperCase();
+    if (code === 'TRAVELOKA' || code === 'TRAVELOKA2026' || code === 'GIAM150K') {
+      setDiscountAmount(150000);
+      setCouponMessage({ type: 'success', text: 'Áp dụng mã thành công! Giảm 150.000 đ' });
+    } else if (code === 'SUMMER100K') {
+      setDiscountAmount(100000);
+      setCouponMessage({ type: 'success', text: 'Áp dụng mã thành công! Giảm 100.000 đ' });
+    } else {
+      setDiscountAmount(0);
+      setCouponMessage({ type: 'danger', text: 'Mã giảm giá không hợp lệ hoặc đã hết hạn.' });
+    }
+  };
+
+  // Tính toán chi phí
+  const roomPriceTotal = room.pricePerNight * nights;
+  const taxAndFee = Math.round(roomPriceTotal * 0.1); // 10% thuế và phí dịch vụ
+  const finalTotal = Math.max(0, roomPriceTotal + taxAndFee - discountAmount);
+
+  // Xử lý xác nhận thanh toán & đặt phòng
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmitBooking = (e) => {
+    e.preventDefault();
+    if (!fullName || !email || !phoneNumber) {
+      alert('Vui lòng điền đầy đủ Họ tên, Email và Số điện thoại liên hệ!');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    setTimeout(() => {
+      // Cấp mã đặt phòng ngẫu nhiên
+      const bookingId = `TVLK-${Math.floor(100000 + Math.random() * 900000)}`;
+      
+      const newBooking = {
+        id: bookingId,
+        createdAt: new Date().toLocaleDateString('vi-VN') + ' ' + new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+        hotelId: hotel.id,
+        hotelName: hotel.name,
+        hotelCity: hotel.city,
+        hotelAddress: hotel.address,
+        hotelThumbnail: hotel.thumbnailUrl,
+        roomId: room.id,
+        roomName: room.name,
+        roomImage: room.imageUrl,
+        roomBed: room.bedType,
+        checkInDate,
+        checkOutDate,
+        nights,
+        guestCount: room.maxGuests || 2,
+        contactName: fullName,
+        guestName: isBookingForSomeoneElse ? guestName : fullName,
+        contactEmail: email,
+        contactPhone: phoneNumber,
+        specialRequests,
+        paymentMethod,
+        roomPrice: roomPriceTotal,
+        taxAndFee,
+        discountAmount,
+        totalAmount: finalTotal,
+        status: 'confirmed', // confirmed, cancelled, completed
+        freeCancellation: room.freeCancellation
+      };
+
+      // Lưu vào localStorage
+      try {
+        const savedBookings = JSON.parse(localStorage.getItem('traveloka_bookings') || '[]');
+        localStorage.setItem('traveloka_bookings', JSON.stringify([newBooking, ...savedBookings]));
+      } catch (err) {
+        console.error('Lỗi khi lưu đơn đặt phòng vào localStorage', err);
+      }
+
+      setIsSubmitting(false);
+      // Chuyển sang trang hoàn tất đặt phòng
+      navigate('/booking-success', { state: { booking: newBooking } });
+    }, 1200);
+  };
+
+  return (
+    <div className="bg-light pb-5 min-vh-100 page-top-spacing">
+      <div className="container">
+        
+        {/* Nút quay lại & Tiêu đề */}
+        <div className="d-flex align-items-center justify-content-between mb-4">
+          <button 
+            onClick={() => navigate(-1)} 
+            className="btn btn-outline-secondary btn-sm bg-white d-inline-flex align-items-center gap-1 shadow-sm"
+          >
+            <ArrowLeft size={16} /> Quay lại
+          </button>
+
+          {/* Stepper chỉ báo các bước */}
+          <div className="d-none d-md-flex align-items-center gap-3 small">
+            <span className="text-primary fw-bold d-flex align-items-center gap-1">
+              <span className="badge bg-primary rounded-circle">1</span> Điền thông tin
+            </span>
+            <span className="text-secondary">———</span>
+            <span className="text-primary fw-bold d-flex align-items-center gap-1">
+              <span className="badge bg-primary rounded-circle">2</span> Thanh toán
+            </span>
+            <span className="text-secondary">———</span>
+            <span className="text-secondary d-flex align-items-center gap-1">
+              <span className="badge bg-secondary-subtle text-secondary rounded-circle">3</span> Hoàn tất vé
+            </span>
+          </div>
+        </div>
+
+        <div className="row g-4">
+          {/* ================= CỘT TRÁI: FORM ĐIỀN THÔNG TIN & PHƯƠNG THỨC THANH TOÁN ================= */}
+          <div className="col-lg-8">
+            <form onSubmit={handleSubmitBooking}>
+              
+              {/* KHỐI 1: THÔNG TIN KHÁCH HÀNG */}
+              <div className="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white">
+                <div className="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
+                  <h5 className="fw-bold text-dark mb-0">1. Thông Tin Người Liên Hệ</h5>
+                  <span className="badge bg-primary-subtle text-primary small">Yêu cầu thông tin chính xác</span>
+                </div>
+                <p className="text-secondary small mb-4">
+                  Vé điện tử và thông tin xác nhận phòng sẽ được gửi trực tiếp đến email và số điện thoại bên dưới.
+                </p>
+
+                <div className="row g-3">
+                  <div className="col-md-12">
+                    <label className="form-label fw-semibold small text-dark">
+                      Họ và tên khách hàng (như trên CCCD/Hộ chiếu) <span className="text-danger">*</span>
+                    </label>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      placeholder="VD: NGUYEN VAN A"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div className="col-md-6">
+                    <label className="form-label fw-semibold small text-dark">
+                      Địa chỉ Email nhận vé <span className="text-danger">*</span>
+                    </label>
+                    <input 
+                      type="email" 
+                      className="form-control" 
+                      placeholder="email@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div className="col-md-6">
+                    <label className="form-label fw-semibold small text-dark">
+                      Số điện thoại di động <span className="text-danger">*</span>
+                    </label>
+                    <input 
+                      type="tel" 
+                      className="form-control" 
+                      placeholder="0912 345 678"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  {/* Checkbox đặt phòng cho người khác */}
+                  <div className="col-12 mt-3">
+                    <div className="form-check">
+                      <input 
+                        className="form-check-input" 
+                        type="checkbox" 
+                        id="bookingForOther"
+                        checked={isBookingForSomeoneElse}
+                        onChange={(e) => setIsBookingForSomeoneElse(e.target.checked)}
+                      />
+                      <label className="form-check-label small text-secondary" htmlFor="bookingForOther">
+                        Tôi đặt phòng giúp cho người khác (nhập họ tên người lưu trú thực tế)
+                      </label>
+                    </div>
+
+                    {isBookingForSomeoneElse && (
+                      <div className="mt-3 p-3 bg-light rounded-3 border">
+                        <label className="form-label fw-semibold small text-dark">
+                          Họ và tên người lưu trú chính <span className="text-danger">*</span>
+                        </label>
+                        <input 
+                          type="text" 
+                          className="form-control" 
+                          placeholder="Nhập tên người sẽ nhận phòng tại khách sạn"
+                          value={guestName}
+                          onChange={(e) => setGuestName(e.target.value)}
+                          required={isBookingForSomeoneElse}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* KHỐI 2: THỜI GIAN LƯU TRÚ & YÊU CẦU ĐẶC BIỆT */}
+              <div className="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white">
+                <div className="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
+                  <h5 className="fw-bold text-dark mb-0">2. Thời Gian & Yêu Cầu Lưu Trú</h5>
+                  <span className="badge bg-light text-secondary border">Mặc định: {nights} đêm</span>
+                </div>
+
+                <div className="row g-3 mb-4">
+                  <div className="col-md-6">
+                    <label className="form-label fw-semibold small text-dark">Ngày nhận phòng (Check-in)</label>
+                    <input 
+                      type="date" 
+                      className="form-control" 
+                      value={checkInDate}
+                      onChange={(e) => setCheckInDate(e.target.value)}
+                    />
+                    <small className="text-secondary d-block mt-1">Giờ nhận phòng từ: 14:00</small>
+                  </div>
+
+                  <div className="col-md-6">
+                    <label className="form-label fw-semibold small text-dark">Ngày trả phòng (Check-out)</label>
+                    <input 
+                      type="date" 
+                      className="form-control" 
+                      value={checkOutDate}
+                      onChange={(e) => setCheckOutDate(e.target.value)}
+                    />
+                    <small className="text-secondary d-block mt-1">Giờ trả phòng trước: 12:00</small>
+                  </div>
+                </div>
+
+                <label className="form-label fw-semibold small text-dark mb-2">
+                  Yêu cầu đặc biệt (Khách sạn sẽ cố gắng đáp ứng tùy theo tình trạng phòng thực tế)
+                </label>
+                <div className="row g-2">
+                  {requestOptions.map((opt, i) => (
+                    <div key={i} className="col-md-6 col-12">
+                      <div 
+                        className={`p-2 px-3 rounded-3 border cursor-pointer d-flex align-items-center gap-2 small transition-all ${
+                          specialRequests.includes(opt) ? 'bg-primary-subtle border-primary text-primary fw-semibold' : 'bg-light text-secondary'
+                        }`}
+                        onClick={() => toggleSpecialRequest(opt)}
+                      >
+                        <input 
+                          type="checkbox" 
+                          className="form-check-input mt-0"
+                          checked={specialRequests.includes(opt)}
+                          onChange={() => {}}
+                        />
+                        <span>{opt}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* KHỐI 3: PHƯƠNG THỨC THANH TOÁN */}
+              <div className="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white">
+                <div className="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
+                  <h5 className="fw-bold text-dark mb-0">3. Chọn Phương Thức Thanh Toán</h5>
+                  <span className="badge bg-success-subtle text-success small d-flex align-items-center gap-1">
+                    <ShieldCheck size={14} /> Bảo mật SSL 256-bit
+                  </span>
+                </div>
+
+                <div className="d-flex flex-column gap-3 mb-4">
+                  {/* Phương thức 1: VNPAY QR */}
+                  <label className={`p-3 rounded-3 border cursor-pointer d-flex align-items-start gap-3 transition-all ${
+                    paymentMethod === 'vnpay' ? 'border-primary bg-primary-subtle bg-opacity-25' : 'bg-white'
+                  }`}>
+                    <input 
+                      type="radio" 
+                      name="paymentMethod" 
+                      className="form-check-input mt-1" 
+                      checked={paymentMethod === 'vnpay'}
+                      onChange={() => setPaymentMethod('vnpay')}
+                    />
+                    <div className="flex-grow-1">
+                      <div className="d-flex align-items-center justify-content-between">
+                        <strong className="text-dark d-flex align-items-center gap-2">
+                          <QrCode size={18} className="text-primary" /> Cổng thanh toán VNPAY QR
+                        </strong>
+                        <span className="badge bg-danger text-white">Khuyên dùng</span>
+                      </div>
+                      <small className="text-secondary d-block mt-1">
+                        Quét mã QR tiện lợi qua hơn 40 ứng dụng ngân hàng và ví VNPAY. Xác nhận tức thì.
+                      </small>
+                    </div>
+                  </label>
+
+                  {/* Phương thức 2: Thẻ Quốc Tế (Visa / Mastercard) */}
+                  <label className={`p-3 rounded-3 border cursor-pointer d-flex align-items-start gap-3 transition-all ${
+                    paymentMethod === 'card' ? 'border-primary bg-primary-subtle bg-opacity-25' : 'bg-white'
+                  }`}>
+                    <input 
+                      type="radio" 
+                      name="paymentMethod" 
+                      className="form-check-input mt-1" 
+                      checked={paymentMethod === 'card'}
+                      onChange={() => setPaymentMethod('card')}
+                    />
+                    <div className="flex-grow-1">
+                      <strong className="text-dark d-flex align-items-center gap-2">
+                        <CreditCard size={18} className="text-primary" /> Thẻ Tín Dụng / Ghi Nợ Quốc Tế (Visa, Master, JCB)
+                      </strong>
+                      <small className="text-secondary d-block mt-1">
+                        Miễn phí giao dịch quốc tế, mã hóa an toàn theo tiêu chuẩn ngân hàng.
+                      </small>
+
+                      {paymentMethod === 'card' && (
+                        <div className="row g-2 mt-3 p-3 bg-white rounded-3 border">
+                          <div className="col-12">
+                            <label className="form-label small text-secondary mb-1">Số thẻ thanh toán</label>
+                            <input 
+                              type="text" 
+                              className="form-control form-control-sm" 
+                              placeholder="4111 •••• •••• 1234"
+                              value={cardNumber}
+                              onChange={(e) => setCardNumber(e.target.value)}
+                            />
+                          </div>
+                          <div className="col-6">
+                            <label className="form-label small text-secondary mb-1">Tên in trên thẻ</label>
+                            <input 
+                              type="text" 
+                              className="form-control form-control-sm" 
+                              placeholder="NGUYEN VAN A"
+                              value={cardHolder}
+                              onChange={(e) => setCardHolder(e.target.value)}
+                            />
+                          </div>
+                          <div className="col-3">
+                            <label className="form-label small text-secondary mb-1">Hạn thẻ (MM/YY)</label>
+                            <input 
+                              type="text" 
+                              className="form-control form-control-sm" 
+                              placeholder="12/28"
+                              value={cardExpiry}
+                              onChange={(e) => setCardExpiry(e.target.value)}
+                            />
+                          </div>
+                          <div className="col-3">
+                            <label className="form-label small text-secondary mb-1">Mã CVV</label>
+                            <input 
+                              type="password" 
+                              maxLength="4" 
+                              className="form-control form-control-sm" 
+                              placeholder="•••"
+                              value={cardCvv}
+                              onChange={(e) => setCardCvv(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </label>
+
+                  {/* Phương thức 3: Ví Điện Tử */}
+                  <label className={`p-3 rounded-3 border cursor-pointer d-flex align-items-start gap-3 transition-all ${
+                    paymentMethod === 'momo' ? 'border-primary bg-primary-subtle bg-opacity-25' : 'bg-white'
+                  }`}>
+                    <input 
+                      type="radio" 
+                      name="paymentMethod" 
+                      className="form-check-input mt-1" 
+                      checked={paymentMethod === 'momo'}
+                      onChange={() => setPaymentMethod('momo')}
+                    />
+                    <div className="flex-grow-1">
+                      <strong className="text-dark d-flex align-items-center gap-2">
+                        <Wallet size={18} className="text-primary" /> Ví điện tử MoMo / ZaloPay
+                      </strong>
+                      <small className="text-secondary d-block mt-1">
+                        Liên kết trực tiếp với ứng dụng ví di động để thanh toán nhanh chóng.
+                      </small>
+                    </div>
+                  </label>
+
+                  {/* Phương thức 4: Thanh toán tại khách sạn */}
+                  <label className={`p-3 rounded-3 border cursor-pointer d-flex align-items-start gap-3 transition-all ${
+                    paymentMethod === 'pay_at_hotel' ? 'border-primary bg-primary-subtle bg-opacity-25' : 'bg-white'
+                  }`}>
+                    <input 
+                      type="radio" 
+                      name="paymentMethod" 
+                      className="form-check-input mt-1" 
+                      checked={paymentMethod === 'pay_at_hotel'}
+                      onChange={() => setPaymentMethod('pay_at_hotel')}
+                    />
+                    <div className="flex-grow-1">
+                      <strong className="text-dark d-flex align-items-center gap-2">
+                        <Building2 size={18} className="text-primary" /> Thanh toán trực tiếp tại khách sạn khi nhận phòng
+                      </strong>
+                      <small className="text-secondary d-block mt-1">
+                        Bạn chỉ cần thanh toán bằng tiền mặt hoặc thẻ tại quầy lễ tân khi làm thủ tục check-in.
+                      </small>
+                    </div>
+                  </label>
+                </div>
+
+                {/* Cam kết hoàn hủy & điều khoản */}
+                <div className="p-3 bg-light rounded-3 small text-secondary border mb-4">
+                  <div className="d-flex align-items-center gap-2 text-dark fw-bold mb-1">
+                    <Info size={16} className="text-primary" /> Chính sách thanh toán & hoàn phòng
+                  </div>
+                  <div>
+                    {room.freeCancellation ? (
+                      <span className="text-success fw-semibold">✓ Khách sạn hỗ trợ miễn phí hủy phòng trước 24 giờ kể từ ngày nhận phòng.</span>
+                    ) : (
+                      <span className="text-warning fw-semibold">⚠ Đơn đặt phòng với mức giá ưu đãi đặc biệt này không hỗ trợ hoàn tiền khi hủy.</span>
+                    )}
+                    <div>Bằng việc nhấn xác nhận, bạn đồng ý với các Điều khoản & Điều kiện đặt phòng của Traveloka.</div>
+                  </div>
+                </div>
+
+                {/* Nút hành động thanh toán */}
+                <button 
+                  type="submit" 
+                  disabled={isSubmitting} 
+                  className="btn btn-primary btn-lg w-100 fw-bold py-3 shadow-sm d-flex align-items-center justify-content-center gap-2"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm" role="status"></span>
+                      Đang xử lý đặt phòng & cấp vé...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={20} /> Xác Nhận & Thanh Toán ({finalTotal.toLocaleString('vi-VN')} đ)
+                    </>
+                  )}
+                </button>
+              </div>
+
+            </form>
+          </div>
+
+          {/* ================= CỘT PHẢI: TÓM TẮT CHI TIẾT ĐẶT PHÒNG & GIÁ TIỀN ================= */}
+          <div className="col-lg-4">
+            <div className="card border-0 shadow-sm rounded-4 p-4 sticky-top bg-white" style={{ top: '90px' }}>
+              
+              {/* Tên khách sạn & ảnh */}
+              <div className="d-flex gap-3 mb-3 pb-3 border-bottom">
+                <img 
+                  src={hotel.thumbnailUrl} 
+                  alt={hotel.name} 
+                  className="rounded-3 object-fit-cover flex-shrink-0"
+                  style={{ width: '90px', height: '90px' }}
+                />
+                <div>
+                  <span className="badge bg-primary-subtle text-primary small mb-1">Khách sạn {hotel.starRating} sao</span>
+                  <h6 className="fw-bold text-dark mb-1 line-clamp-2">{hotel.name}</h6>
+                  <p className="text-secondary small mb-0 line-clamp-1">📍 {hotel.city}</p>
+                </div>
+              </div>
+
+              {/* Thông tin phòng */}
+              <div className="mb-3 pb-3 border-bottom">
+                <div className="d-flex align-items-center gap-2 mb-1">
+                  <BedDouble size={16} className="text-primary" />
+                  <strong className="text-dark small">{room.name}</strong>
+                </div>
+                <div className="small text-secondary ps-4">
+                  <div>• Sức chứa: {room.maxGuests || 2} khách lưu trú</div>
+                  <div>• Loại giường: {room.bedType}</div>
+                  <div>• Bữa ăn: Đã bao gồm bữa sáng buffet</div>
+                </div>
+              </div>
+
+              {/* Thời gian lưu trú */}
+              <div className="p-3 bg-light rounded-3 mb-3 small">
+                <div className="d-flex justify-content-between mb-2">
+                  <span className="text-secondary">Nhận phòng:</span>
+                  <strong className="text-dark">{checkInDate} (14:00)</strong>
+                </div>
+                <div className="d-flex justify-content-between mb-2">
+                  <span className="text-secondary">Trả phòng:</span>
+                  <strong className="text-dark">{checkOutDate} (12:00)</strong>
+                </div>
+                <div className="d-flex justify-content-between pt-2 border-top border-secondary-subtle">
+                  <span className="text-secondary">Thời gian lưu trú:</span>
+                  <strong className="text-primary">{nights} đêm</strong>
+                </div>
+              </div>
+
+              {/* Mã giảm giá Voucher */}
+              <div className="mb-4">
+                <label className="form-label small fw-bold text-dark d-flex align-items-center gap-1">
+                  <Tag size={15} className="text-primary" /> Mã Giảm Giá / Khuyến Mãi
+                </label>
+                <div className="input-group">
+                  <input 
+                    type="text" 
+                    className="form-control form-control-sm text-uppercase" 
+                    placeholder="VD: TRAVELOKA2026"
+                    value={couponCode}
+                    onChange={(e) => setCouponCode(e.target.value)}
+                  />
+                  <button 
+                    onClick={handleApplyCoupon} 
+                    className="btn btn-outline-primary btn-sm fw-semibold"
+                    type="button"
+                  >
+                    Áp dụng
+                  </button>
+                </div>
+
+                {couponMessage && (
+                  <div className={`small mt-2 text-${couponMessage.type}`}>
+                    {couponMessage.text}
+                  </div>
+                )}
+                <small className="text-secondary d-block mt-1" style={{ fontSize: '11px' }}>
+                  Gợi ý mã khuyến mãi: <strong>TRAVELOKA2026</strong> (-150k) hoặc <strong>SUMMER100K</strong> (-100k)
+                </small>
+              </div>
+
+              {/* Bảng tính chi phí chi tiết */}
+              <div className="border-top pt-3">
+                <h6 className="fw-bold text-dark mb-3">Chi Tiết Giá</h6>
+                
+                <div className="d-flex justify-content-between small mb-2 text-secondary">
+                  <span>Giá phòng ({nights} đêm):</span>
+                  <span className="text-dark fw-medium">{roomPriceTotal.toLocaleString('vi-VN')} đ</span>
+                </div>
+
+                <div className="d-flex justify-content-between small mb-2 text-secondary">
+                  <span>Thuế & Phí dịch vụ (10%):</span>
+                  <span className="text-dark fw-medium">{taxAndFee.toLocaleString('vi-VN')} đ</span>
+                </div>
+
+                {discountAmount > 0 && (
+                  <div className="d-flex justify-content-between small mb-2 text-success fw-semibold">
+                    <span>Mã ưu đãi giảm giá:</span>
+                    <span>-{discountAmount.toLocaleString('vi-VN')} đ</span>
+                  </div>
+                )}
+
+                <div className="d-flex justify-content-between align-items-center pt-3 border-top mt-2">
+                  <div>
+                    <span className="fw-bold text-dark fs-6 d-block">Tổng tiền thanh toán</span>
+                    <small className="text-secondary" style={{ fontSize: '11px' }}>Đã gồm mọi loại thuế & phí</small>
+                  </div>
+                  <span className="fs-4 fw-bold text-danger">
+                    {finalTotal.toLocaleString('vi-VN')} đ
+                  </span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}
