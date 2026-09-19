@@ -30,11 +30,8 @@ export default function HotelDetailPage() {
   };
 
   const handleBookRoom = (room) => {
-    // Thông báo đặt phòng thử nghiệm
-    setBookingSuccessNotice(`Bạn đã chọn "${room.name}" thành công! Giá: ${room.pricePerNight.toLocaleString('vi-VN')} đ/đêm.`);
-    setTimeout(() => {
-      setBookingSuccessNotice(null);
-    }, 4000);
+    // Điều hướng sang trang thanh toán & đặt phòng CheckoutPage
+    navigate('/checkout', { state: { hotel, room } });
   };
 
   return (
