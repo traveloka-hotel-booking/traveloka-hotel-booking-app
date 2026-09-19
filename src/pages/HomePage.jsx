@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { MOCK_HOTELS } from '../data/mockData';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { MOCK_HOTELS, getHotelsData } from '../data/mockData';
 import { 
   Search, MapPin, Calendar, Users, Star, ArrowRight, ChevronDown, ChevronUp,
   Minus, Plus, ShieldCheck, Tag, Clock, Sparkles, Check, Info, ArrowUp, ThumbsUp,
@@ -23,6 +23,7 @@ const VIETNAM_DESTINATIONS = [
 
 export default function HomePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   
   // State tìm kiếm trên Hero
   const [destination, setDestination] = useState('Hồ Chí Minh');
@@ -40,6 +41,19 @@ export default function HomePage() {
 
   const destinationRef = useRef(null);
   const guestRef = useRef(null);
+
+  // Tự động cuộn đến phần tìm kiếm đặt chỗ nếu url có hash #hotel-list-section
+  useEffect(() => {
+    if (location.hash === '#hotel-list-section') {
+      const timer = setTimeout(() => {
+        const section = document.getElementById('hotel-list-section');
+        if (section) {
+          section.scrollIntoView({ behavior: 'smooth' });
+        }
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [location]);
 
   // Tự động đóng dropdown khi bấm ra ngoài vùng chọn
   useEffect(() => {
@@ -86,7 +100,7 @@ export default function HomePage() {
 
   // Lọc danh sách khách sạn
   const displayedHotels = useMemo(() => {
-    return MOCK_HOTELS.filter(hotel => {
+    return getHotelsData().filter(hotel => {
       // Lọc theo sao
       if (selectedStar && hotel.starRating !== selectedStar) {
         return false;

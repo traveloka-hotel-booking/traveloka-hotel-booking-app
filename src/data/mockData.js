@@ -300,3 +300,14 @@ export const MOCK_HOTELS = [
     ]
   }
 ];
+
+// Hàm tiện ích lấy danh sách khách sạn (đồng bộ với dữ liệu CRUD của Admin trong localStorage)
+export const getHotelsData = () => {
+  try {
+    const saved = localStorage.getItem('traveloka_custom_hotels');
+    if (saved) return JSON.parse(saved);
+  } catch (e) {
+    console.error(e);
+  }
+  return MOCK_HOTELS;
+};

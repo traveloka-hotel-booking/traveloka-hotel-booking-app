@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { MOCK_HOTELS } from '../data/mockData';
+import { MOCK_HOTELS, getHotelsData } from '../data/mockData';
 import { 
   Search, MapPin, Star, Filter, RotateCcw, 
   Wifi, Waves, Coffee, Car, Dumbbell, Sparkles, CheckSquare, Square
@@ -23,7 +23,7 @@ export default function HotelsPage() {
   }, [cityParam]);
 
   // Danh sách các thành phố có trong dữ liệu
-  const cities = ["Tất cả", "Hà Nội", "Đà Nẵng", "Hồ Chí Minh", "Nha Trang", "Đà Lạt"];
+  const cities = ["Tất cả", "Hà Nội", "Đà Nẵng", "Hồ Chí Minh", "Nha Trang", "Đà Lạt", "Phú Quốc"];
 
   // Danh sách các tiện ích để lọc
   const amenityOptions = [
@@ -62,9 +62,9 @@ export default function HotelsPage() {
     setSearchParams({});
   };
 
-  // Lọc và sắp xếp dữ liệu
+  // Lọc và sắp xếp dữ liệu (đồng bộ với dữ liệu CRUD của Admin)
   const filteredHotels = useMemo(() => {
-    return MOCK_HOTELS.filter(hotel => {
+    return getHotelsData().filter(hotel => {
       // 1. Lọc theo thành phố
       if (selectedCity && selectedCity !== "Tất cả") {
         if (!hotel.city.toLowerCase().includes(selectedCity.toLowerCase())) {

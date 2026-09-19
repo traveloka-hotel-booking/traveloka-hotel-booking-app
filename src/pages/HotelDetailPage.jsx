@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { MOCK_HOTELS } from '../data/mockData';
+import { MOCK_HOTELS, getHotelsData } from '../data/mockData';
 import { 
   MapPin, Star, Wifi, Waves, Coffee, Car, Dumbbell, 
   Sparkles, CheckCircle2, ShieldAlert, Clock, ArrowLeft,
@@ -11,8 +11,9 @@ export default function HotelDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  // Tìm khách sạn theo ID từ URL
-  const hotel = MOCK_HOTELS.find(h => h.id === Number(id)) || MOCK_HOTELS[0];
+  // Tìm khách sạn theo ID từ danh sách tổng hợp (bao gồm cả khách sạn mới do Admin tạo)
+  const allHotels = getHotelsData();
+  const hotel = allHotels.find(h => h.id === Number(id)) || allHotels[0];
 
   // State ảnh chính đang được hiển thị trong Gallery
   const [activeImage, setActiveImage] = useState(hotel.images?.[0] || hotel.thumbnailUrl);

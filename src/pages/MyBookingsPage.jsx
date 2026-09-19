@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { 
   Luggage, Calendar, MapPin, BedDouble, ArrowRight, Eye, 
-  XCircle, CheckCircle, Clock, AlertTriangle, RotateCcw, Building
+  XCircle, CheckCircle, Clock, AlertTriangle, RotateCcw, Building, Info, Sparkles
 } from 'lucide-react';
 import { MOCK_HOTELS } from '../data/mockData';
 
 export default function MyBookingsPage() {
   const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
 
   // State danh sách đơn đặt phòng từ localStorage
   const [bookings, setBookings] = useState([]);
@@ -127,6 +129,35 @@ export default function MyBookingsPage() {
           </div>
         </div>
 
+        {/* Banner trạng thái đồng bộ: Khách vãng lai vs Thành viên */}
+        {!isAuthenticated ? (
+          <div className="alert alert-info border-0 shadow-sm rounded-4 p-3 mb-4 d-flex align-items-center justify-content-between flex-wrap gap-3 bg-info-subtle text-dark">
+            <div className="d-flex align-items-center gap-2 small">
+              <Info size={20} className="text-info flex-shrink-0" />
+              <span>
+                Bạn chưa đăng nhập
+              </span>
+            </div>
+            <Link 
+              to="/login" 
+              className="btn btn-primary btn-sm rounded-pill px-3 py-1 fw-bold shadow-sm" 
+              style={{ fontSize: '12.5px' }}
+            >
+              Đăng nhập để đồng bộ tài khoản
+            </Link>
+          </div>
+        ) : (
+          <div className="alert alert-success border-0 shadow-sm rounded-4 p-3 mb-4 d-flex align-items-center justify-content-between flex-wrap gap-3 bg-success-subtle text-dark">
+            <div className="d-flex align-items-center gap-2 small">
+              <CheckCircle size={20} className="text-success flex-shrink-0" />
+              <span>
+                Đang hiển thị các chuyến đi của tài khoản <strong>{user?.name}</strong> ({user?.email}).
+              </span>
+            </div>
+            <span className="badge bg-success text-white px-3 py-1 rounded-pill small">✓ Đã đồng bộ tài khoản</span>
+          </div>
+        )}
+
         {/* Tabs chuyển đổi trạng thái */}
         {bookings.length > 0 && (
           <div className="card border-0 shadow-sm rounded-4 p-2 bg-white mb-4">
@@ -196,7 +227,17 @@ export default function MyBookingsPage() {
                     <span className="small text-secondary">Đặt ngày: {b.createdAt}</span>
                   </div>
 
-                  <div>
+                  <div className="d-flex align-items-center gap-2">
+                    {b.isGuest ? (
+                      <span className="badge bg-secondary bg-opacity-10 text-secondary border px-2 py-1 rounded-pill small" style={{ fontSize: '11px' }}>
+                        Khách vãng lai
+                      </span>
+                    ) : (
+                      <span className="badge bg-primary bg-opacity-10 text-primary border border-primary-subtle px-2 py-1 rounded-pill small" style={{ fontSize: '11px' }}>
+                        Thành viên
+                      </span>
+                    )}
+
                     {b.status === 'confirmed' && (
                       <span className="badge bg-success-subtle text-success px-3 py-2 rounded-pill fw-semibold d-inline-flex align-items-center gap-1">
                         <CheckCircle size={14} /> Đã Xác Nhận

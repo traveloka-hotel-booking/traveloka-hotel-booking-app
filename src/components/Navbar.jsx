@@ -1,10 +1,53 @@
-import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Hotel, Headphones, Search, Globe, User } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Hotel, Headphones, Search, Globe, User, ShieldCheck, LogOut, ChevronDown } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import SupportModal from './SupportModal';
 
 export default function Navbar() {
   const location = useLocation();
+  const navigate = useNavigate();
   const isHome = location.pathname === '/';
+  const { user, isAuthenticated, isAdmin, logout } = useAuth();
+
+  // State điều khiển đóng/mở dropdown menu của người dùng
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef(null);
+
+  // State điều khiển Modal Trung tâm Hỗ trợ khách hàng 24/7
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
+
+  // Xử lý chuyển hướng đến phần tìm kiếm đặt chỗ từ bất kỳ trang nào
+  const handleSearchBookingsClick = (e) => {
+    e.preventDefault();
+    if (location.pathname === '/') {
+      const section = document.getElementById('hotel-list-section');
+      if (section) {
+        section.scrollIntoView({ behavior: 'smooth' });
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    } else {
+      navigate('/#hotel-list-section');
+      setTimeout(() => {
+        const section = document.getElementById('hotel-list-section');
+        if (section) {
+          section.scrollIntoView({ behavior: 'smooth' });
+        }
+      }, 200);
+    }
+  };
+
+  // Đóng dropdown khi click chuột ra ngoài
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
     <header className="fixed-top" style={{ zIndex: 1050 }}>
@@ -65,14 +108,22 @@ export default function Navbar() {
                 </Link>
               </li>
               <li className="nav-item">
-                <a href="#hotel-list-section" className="nav-link px-3 py-1 text-white opacity-85 hover-opacity small fw-medium d-flex align-items-center gap-1">
+                <a 
+                  href="#hotel-list-section" 
+                  onClick={handleSearchBookingsClick}
+                  className="nav-link px-3 py-1 text-white opacity-85 hover-opacity small fw-medium d-flex align-items-center gap-1 cursor-pointer"
+                >
                   <Search size={14} /> Tìm kiếm đặt chỗ
                 </a>
               </li>
               <li className="nav-item">
-                <a href="tel:19001234" className="nav-link px-3 py-1 text-white opacity-85 hover-opacity small fw-medium d-flex align-items-center gap-1">
+                <button 
+                  type="button" 
+                  onClick={() => setIsSupportModalOpen(true)}
+                  className="nav-link px-3 py-1 text-white opacity-85 hover-opacity small fw-medium d-flex align-items-center gap-1 bg-transparent border-0"
+                >
                   <Headphones size={14} /> Hỗ trợ khách hàng
-                </a>
+                </button>
               </li>
             </ul>
 
@@ -84,18 +135,128 @@ export default function Navbar() {
                 <span className="fw-semibold">🇻🇳 VND</span>
               </div>
 
-              {/* Nút Đăng nhập / Đăng ký bo góc trắng nổi bật */}
-              <Link 
-                to="/login" 
-                className="btn btn-light rounded-pill px-3 py-1 fs-6 fw-bold text-dark shadow-sm d-flex align-items-center gap-1 hover-shadow"
-                style={{ fontSize: '13px' }}
-              >
-                <User size={15} /> Đăng nhập / Đăng ký
-              </Link>
+              {/* Khu vực Đăng nhập / Đăng ký (Đã tách rời theo yêu cầu) */}
+              {!isAuthenticated ? (
+                <div className="d-flex align-items-center gap-2">
+                  {/* Nút Đăng nhập */}
+                  <Link 
+                    to="/login" 
+                    className="btn btn-outline-light rounded-pill px-3 py-1 fw-semibold small text-nowrap hover-shadow"
+                    style={{ fontSize: '13px' }}
+                  >
+                    Đăng nhập
+                  </Link>
+
+                  {/* Nút Đăng ký */}
+                  <Link 
+                    to="/register" 
+                    className="btn btn-primary rounded-pill px-3 py-1 fw-bold text-white shadow-sm small text-nowrap hover-shadow"
+                    style={{ fontSize: '13px', backgroundColor: '#0264c8', borderColor: '#0264c8' }}
+                  >
+                    Đăng ký
+                  </Link>
+                </div>
+              ) : (
+                /* Khi người dùng đã đăng nhập: Hiển thị Avatar & Dropdown dùng React State */
+                <div className="position-relative" ref={userMenuRef}>
+                  <button 
+                    onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                    className="btn btn-light rounded-pill px-2 py-1 d-flex align-items-center gap-2 shadow-sm border-0 hover-shadow"
+                    type="button"
+                  >
+                    <img 
+                      src={user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=60"} 
+                      alt={user.name} 
+                      className="rounded-circle object-fit-cover"
+                      style={{ width: '26px', height: '26px' }}
+                    />
+                    <span className="fw-bold text-dark small text-truncate" style={{ maxWidth: '120px', fontSize: '13px' }}>
+                      {user.name}
+                    </span>
+                    {isAdmin && (
+                      <span className="badge bg-warning text-dark fw-bold" style={{ fontSize: '10px' }}>
+                        Admin
+                      </span>
+                    )}
+                    <ChevronDown size={14} className="text-secondary" />
+                  </button>
+                  
+                  {/* Menu Dropdown hiển thị khi isUserMenuOpen = true */}
+                  {isUserMenuOpen && (
+                    <div 
+                      className="dropdown-menu dropdown-menu-end shadow-lg border-0 rounded-3 p-2 show position-absolute end-0" 
+                      style={{ minWidth: '240px', top: '100%', marginTop: '8px', zIndex: 1100 }}
+                    >
+                      {/* 1. Thông tin tài khoản & Email */}
+                      <div className="px-3 py-2 border-bottom mb-2 bg-light rounded-2">
+                        <div className="fw-bold text-dark text-truncate">{user.name}</div>
+                        <div className="small text-secondary text-truncate" style={{ fontSize: '12px' }}>{user.email}</div>
+                        {isAdmin ? (
+                          <span className="badge bg-warning text-dark fw-bold mt-1" style={{ fontSize: '10px' }}>
+                            👑 Quản trị viên hệ thống
+                          </span>
+                        ) : (
+                          <span className="badge bg-primary-subtle text-primary mt-1" style={{ fontSize: '10px' }}>
+                            👤 Khách hàng
+                          </span>
+                        )}
+                      </div>
+
+                      {/* 2. Quản lý tài khoản & Hồ sơ bảo mật */}
+                      <Link 
+                        className="dropdown-item py-2 small d-flex align-items-center gap-2 rounded-2 text-dark fw-semibold" 
+                        to="/profile"
+                        onClick={() => setIsUserMenuOpen(false)}
+                      >
+                        <User size={16} className="text-primary" /> Quản Lý Tài Khoản
+                      </Link>
+
+                      {/* 3. Trang Quản Trị (Admin) - Chỉ hiển thị khi có quyền Admin */}
+                      {isAdmin && (
+                        <Link 
+                          className="dropdown-item py-2 small fw-bold text-primary d-flex align-items-center gap-2 rounded-2" 
+                          to="/admin"
+                          onClick={() => setIsUserMenuOpen(false)}
+                        >
+                          <ShieldCheck size={16} /> Trang Quản Trị (Admin)
+                        </Link>
+                      )}
+
+                      {/* 4. Chuyến đi của tôi */}
+                      <Link 
+                        className="dropdown-item py-2 small d-flex align-items-center gap-2 rounded-2 text-dark" 
+                        to="/my-bookings"
+                        onClick={() => setIsUserMenuOpen(false)}
+                      >
+                        <Hotel size={16} className="text-secondary" /> Chuyến đi của tôi
+                      </Link>
+
+                      <hr className="dropdown-divider my-1" />
+
+                      {/* 4. Đăng xuất */}
+                      <button 
+                        onClick={() => {
+                          setIsUserMenuOpen(false);
+                          logout();
+                        }} 
+                        className="dropdown-item py-2 small text-danger d-flex align-items-center gap-2 rounded-2"
+                      >
+                        <LogOut size={16} /> Đăng xuất
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
       </nav>
+
+      {/* Modal Trung Tâm Chăm Sóc Khách Hàng 24/7 */}
+      <SupportModal 
+        isOpen={isSupportModalOpen} 
+        onClose={() => setIsSupportModalOpen(false)} 
+      />
     </header>
   );
 }
