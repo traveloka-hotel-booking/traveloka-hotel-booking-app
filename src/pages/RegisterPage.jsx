@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Hotel, Eye, EyeOff, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { apiFetch } from '../services/api';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
@@ -16,7 +17,7 @@ export default function RegisterPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!fullName || !email || !password) {
       setErrorMsg('Vui lòng điền đầy đủ các trường bắt buộc!');
@@ -33,12 +34,42 @@ export default function RegisterPage() {
       return;
     }
 
-    const res = register({ fullName, email, phone, password });
-    if (res.success) {
-      setSuccessMsg('Đăng ký tài khoản thành công! Đang chuyển hướng...');
-      setTimeout(() => {
-        navigate('/');
-      }, 1000);
+    try {
+        const response = await apiFetch(
+            `/auth/register`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    fullName,
+                    email,
+                    phone,
+                    password,
+		    confirmPassword
+                })
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            setErrorMsg(data.result?.errors || 'Đăng ký thất bại!');
+            return;
+        }
+
+        setSuccessMsg(
+            'Đăng ký tài khoản thành công! Đang chuyển hướng...'
+        );
+
+        setTimeout(() => {
+            navigate('/login');
+        }, 1000);
+
+    } catch (error) {
+        setErrorMsg('Không thể kết nối đến server!');
+        console.error(error);
     }
   };
 
