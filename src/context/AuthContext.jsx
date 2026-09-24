@@ -116,19 +116,43 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Hàm đăng xuất
-  const logout = () => {
-    setUser(null);
+  const logout = async () => {
+     try {
+        const refreshToken = localStorage.getItem('refreshToken');
+
+        if (refreshToken) {
+            await apiFetch(
+                `/auth/logout`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        refreshToken,
+                    }),
+                }
+            );
+        }
+    } catch (error) {
+        console.error('Logout API error:', error);
+    } finally {
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+        localStorage.removeItem('traveloka_auth_user');
+
+        setUser(null);
+    }
   };
 
   return (
     <AuthContext.Provider value={{
       user,
       isAuthenticated: !!user,
-      isAdmin: user?.role === 'admin',
+      isAdmin: user?.role === 'admin'  || user?.role === 'ROLE_ADMIN',
       login,
       loginWithGoogle,
       loginWithFacebook,
-      register,
       updateUserProfile,
       logout
     }}>
