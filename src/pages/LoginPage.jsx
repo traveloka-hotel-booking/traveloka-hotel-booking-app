@@ -17,20 +17,28 @@ export default function LoginPage() {
   const from = location.state?.from?.pathname || '/';
 
   // Xử lý đăng nhập thông thường
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email || !password) {
       setErrorMsg('Vui lòng nhập đầy đủ Email và Mật khẩu!');
       return;
     }
 
-    const res = login(email, password);
-    if (res.success) {
-      if (res.user.role === 'admin') {
-        navigate('/admin');
-      } else {
-        navigate(from, { replace: true });
-      }
+    try {
+        await login(email, password);
+
+        // Lấy user hiện tại từ localStorage
+        const savedUser = localStorage.getItem('traveloka_auth_user');
+        const user = savedUser ? JSON.parse(savedUser) : null;
+
+        if (user?.role === 'ROLE_ADMIN') {
+            navigate('/admin');
+        } else {
+            navigate(from, { replace: true });
+        }
+
+    } catch (error) {
+        setErrorMsg(error.message);
     }
   };
 

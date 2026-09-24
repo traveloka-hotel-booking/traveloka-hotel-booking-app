@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { apiFetch } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -24,32 +25,59 @@ export const AuthProvider = ({ children }) => {
   }, [user]);
 
   // Hàm đăng nhập thông thường
-  const login = (email, password) => {
-    // Nếu là tài khoản admin
-    if (email.toLowerCase().includes('admin')) {
-      const adminUser = {
-        id: 'usr_admin_01',
-        name: 'Trần Hữu (Quản trị viên)',
-        email: email,
-        role: 'admin',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=60',
-        loginType: 'password'
-      };
-      setUser(adminUser);
-      return { success: true, user: adminUser };
-    }
+  const login = async (email, password) => {
+    try {
+    const response = await apiFetch('/auth/login', {
+      method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    email,
+                    password,
+                }),
+    });
 
-    // Tài khoản người dùng bình thường
-    const standardUser = {
-      id: 'usr_' + Date.now(),
-      name: email.split('@')[0],
-      email: email,
-      role: 'user',
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=60',
-      loginType: 'password'
-    };
-    setUser(standardUser);
-    return { success: true, user: standardUser };
+    const data = await response.json();
+
+    // Login thất bại
+      if (!response.ok) {
+          throw new Error(
+              data?.result?.message ||
+              'Email hoặc mật khẩu không đúng'
+          );
+      }
+
+      // Lấy result từ LoginResponse
+      const result = data.result;
+
+      // Lưu Access Token
+      localStorage.setItem(
+          'accessToken',
+          result.accessToken
+      );
+
+      // Lưu Refresh Token
+      localStorage.setItem(
+          'refreshToken',
+          result.refreshToken
+      );
+
+      // Lưu thông tin user
+      localStorage.setItem(
+          'traveloka_auth_user',
+          JSON.stringify(result.user)
+      );
+
+      // Cập nhật user trong React
+        setUser(result.user);
+
+        return true;
+    } catch (error) {
+            console.error('Login error:', error);
+            throw error;
+        }
+    
   };
 
   // Hàm đăng nhập nhanh bằng tài khoản Google (mô phỏng OAuth2)
@@ -80,21 +108,6 @@ export const AuthProvider = ({ children }) => {
     return fbUser;
   };
 
-  // Hàm đăng ký tài khoản mới
-  const register = ({ fullName, email, phone, password }) => {
-    const newUser = {
-      id: 'usr_' + Date.now(),
-      name: fullName || email.split('@')[0],
-      email: email,
-      phone: phone || '',
-      role: 'user',
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=60',
-      loginType: 'registered'
-    };
-    setUser(newUser);
-    return { success: true, user: newUser };
-  };
-
   // Hàm cập nhật thông tin người dùng
   const updateUserProfile = (updatedData) => {
     const updated = { ...user, ...updatedData };
@@ -103,19 +116,43 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Hàm đăng xuất
-  const logout = () => {
-    setUser(null);
+  const logout = async () => {
+     try {
+        const refreshToken = localStorage.getItem('refreshToken');
+
+        if (refreshToken) {
+            await apiFetch(
+                `/auth/logout`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        refreshToken,
+                    }),
+                }
+            );
+        }
+    } catch (error) {
+        console.error('Logout API error:', error);
+    } finally {
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+        localStorage.removeItem('traveloka_auth_user');
+
+        setUser(null);
+    }
   };
 
   return (
     <AuthContext.Provider value={{
       user,
       isAuthenticated: !!user,
-      isAdmin: user?.role === 'admin',
+      isAdmin: user?.role === 'admin'  || user?.role === 'ROLE_ADMIN',
       login,
       loginWithGoogle,
       loginWithFacebook,
-      register,
       updateUserProfile,
       logout
     }}>
