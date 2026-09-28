@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { apiFetch } from '../services/api';
 import { MOCK_HOTELS } from '../data/mockData';
 import { 
   ArrowLeft, ShieldCheck, CreditCard, QrCode, Wallet, Building2, 
@@ -33,13 +34,24 @@ export default function CheckoutPage() {
     }
   }, [isAuthenticated, user]);
 
-  // State ngày lưu trú (mặc định lấy 3 ngày tới)
-  const today = new Date();
-  const defaultCheckIn = new Date(today.setDate(today.getDate() + 3)).toISOString().split('T')[0];
-  const defaultCheckOut = new Date(today.setDate(today.getDate() + 1)).toISOString().split('T')[0];
+  // Đọc thông tin tìm kiếm dự phòng từ localStorage nếu F5 hoặc mở tab mới
+  const savedSearch = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('traveloka_search_params')) || {};
+    } catch {
+      return {};
+    }
+  })();
 
-  const [checkInDate, setCheckInDate] = useState(defaultCheckIn);
-  const [checkOutDate, setCheckOutDate] = useState(defaultCheckOut);
+  // State ngày lưu trú (đồng bộ theo ngày tìm kiếm từ HomePage / localStorage)
+  const today = new Date().toISOString().split('T')[0];
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+
+  const initialCheckIn = passedData.checkInDate || passedData.checkIn || savedSearch.checkIn || today;
+  const initialCheckOut = passedData.checkOutDate || passedData.checkOut || savedSearch.checkOut || tomorrow;
+
+  const [checkInDate, setCheckInDate] = useState(initialCheckIn);
+  const [checkOutDate, setCheckOutDate] = useState(initialCheckOut);
 
   // Tính số đêm lưu trú
   const nights = useMemo(() => {
@@ -104,7 +116,7 @@ export default function CheckoutPage() {
   // Xử lý xác nhận thanh toán & đặt phòng
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmitBooking = (e) => {
+  const handleSubmitBooking = async (e) => {
     e.preventDefault();
     if (!fullName || !email || !phoneNumber) {
       alert('Vui lòng điền đầy đủ Họ tên, Email và Số điện thoại liên hệ!');
@@ -113,12 +125,41 @@ export default function CheckoutPage() {
 
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      // Cấp mã đặt phòng ngẫu nhiên
-      const bookingId = `TVLK-${Math.floor(100000 + Math.random() * 900000)}`;
-      
+    try {
+      let realBookingId = null;
+
+      // 1. Nếu người dùng đã đăng nhập, gọi API Backend thật để lưu vào bảng bookings trong MySQL
+      if (isAuthenticated) {
+        try {
+          const bookingPayload = {
+            roomId: room.id,
+            checkIn: checkInDate,
+            checkOut: checkOutDate,
+            numberOfGuests: passedData.guestCount || passedData.adultsCount || savedSearch.adultsCount || room.maxGuests || 2
+          };
+
+          const response = await apiFetch('/customer/bookings', {
+            method: 'POST',
+            body: JSON.stringify(bookingPayload)
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            realBookingId = data.bookingId;
+          }
+        } catch (apiErr) {
+          console.warn('Lỗi khi gọi API booking hoặc database chưa có phòng, chuyển sang lưu bộ nhớ:', apiErr);
+        }
+      }
+
+      // 2. Tạo mã đặt phòng hiển thị: Ưu tiên dùng ID thật từ MySQL (VD: BK-001)
+      const bookingCode = realBookingId 
+        ? `BK-${String(realBookingId).padStart(4, '0')}` 
+        : `TVLK-${Math.floor(100000 + Math.random() * 900000)}`;
+
       const newBooking = {
-        id: bookingId,
+        id: bookingCode,
+        backendBookingId: realBookingId,
         createdAt: new Date().toLocaleDateString('vi-VN') + ' ' + new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
         hotelId: hotel.id,
         hotelName: hotel.name,
@@ -132,7 +173,7 @@ export default function CheckoutPage() {
         checkInDate,
         checkOutDate,
         nights,
-        guestCount: room.maxGuests || 2,
+        guestCount: passedData.guestCount || passedData.adultsCount || savedSearch.adultsCount || room.maxGuests || 2,
         contactName: fullName,
         guestName: isBookingForSomeoneElse ? guestName : fullName,
         contactEmail: email,
@@ -151,18 +192,19 @@ export default function CheckoutPage() {
         userEmail: user?.email || email
       };
 
-      // Lưu vào localStorage
-      try {
-        const savedBookings = JSON.parse(localStorage.getItem('traveloka_bookings') || '[]');
-        localStorage.setItem('traveloka_bookings', JSON.stringify([newBooking, ...savedBookings]));
-      } catch (err) {
-        console.error('Lỗi khi lưu đơn đặt phòng vào localStorage', err);
-      }
+      // 3. Lưu vào localStorage để hiển thị trên "Chuyến đi của tôi" & E-Voucher
+      const savedBookings = JSON.parse(localStorage.getItem('traveloka_bookings') || '[]');
+      localStorage.setItem('traveloka_bookings', JSON.stringify([newBooking, ...savedBookings]));
 
       setIsSubmitting(false);
       // Chuyển sang trang hoàn tất đặt phòng
       navigate('/booking-success', { state: { booking: newBooking } });
-    }, 1200);
+
+    } catch (err) {
+      console.error('Lỗi quá trình đặt phòng:', err);
+      setIsSubmitting(false);
+      alert('Có lỗi xảy ra trong quá trình xử lý đặt phòng. Vui lòng thử lại!');
+    }
   };
 
   return (
@@ -351,7 +393,7 @@ export default function CheckoutPage() {
               <div className="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white">
                 <div className="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
                   <h5 className="fw-bold text-dark mb-0">2. Thời Gian & Yêu Cầu Lưu Trú</h5>
-                  <span className="badge bg-light text-secondary border">Mặc định: {nights} đêm</span>
+                  <span className="badge bg-light text-secondary border">Lưu trú: {nights} đêm</span>
                 </div>
 
                 <div className="row g-3 mb-4">
@@ -361,7 +403,15 @@ export default function CheckoutPage() {
                       type="date" 
                       className="form-control" 
                       value={checkInDate}
-                      onChange={(e) => setCheckInDate(e.target.value)}
+                      min={today}
+                      onChange={(e) => {
+                        const newCheckIn = e.target.value;
+                        setCheckInDate(newCheckIn);
+                        if (checkOutDate <= newCheckIn) {
+                          const nextDay = new Date(new Date(newCheckIn).getTime() + 86400000).toISOString().split('T')[0];
+                          setCheckOutDate(nextDay);
+                        }
+                      }}
                     />
                     <small className="text-secondary d-block mt-1">Giờ nhận phòng từ: 14:00</small>
                   </div>
@@ -372,6 +422,7 @@ export default function CheckoutPage() {
                       type="date" 
                       className="form-control" 
                       value={checkOutDate}
+                      min={checkInDate}
                       onChange={(e) => setCheckOutDate(e.target.value)}
                     />
                     <small className="text-secondary d-block mt-1">Giờ trả phòng trước: 12:00</small>

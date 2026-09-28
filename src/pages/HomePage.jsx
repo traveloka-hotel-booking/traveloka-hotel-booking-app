@@ -25,15 +25,41 @@ export default function HomePage() {
   const navigate = useNavigate();
   const location = useLocation();
   
-  // State tìm kiếm trên Hero
-  const [destination, setDestination] = useState('Hồ Chí Minh');
-  const [checkIn, setCheckIn] = useState('2026-09-25');
-  const [checkOut, setCheckOut] = useState('2026-09-26');
+  // Đọc thông tin tìm kiếm đã lưu từ localStorage nếu có
+  const savedSearch = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('traveloka_search_params')) || null;
+    } catch {
+      return null;
+    }
+  })();
+
+  // Tự động tính ngày checkIn hôm nay và checkOut ngày mai theo thời gian thực
+  const today = new Date().toISOString().split('T')[0];
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+
+  // State tìm kiếm trên Hero (ưu tiên lấy dữ liệu đã tìm kiếm gần nhất)
+  const [destination, setDestination] = useState(savedSearch?.destination || 'Hà Nội');
+  const [checkIn, setCheckIn] = useState(savedSearch?.checkIn || today);
+  const [checkOut, setCheckOut] = useState(savedSearch?.checkOut || tomorrow);
   
   // State chọn phòng và khách (3 thành phần: Phòng, Người Lớn, Trẻ Em)
-  const [roomsCount, setRoomsCount] = useState(1);
-  const [adultsCount, setAdultsCount] = useState(2);
-  const [childrenCount, setChildrenCount] = useState(0);
+  const [roomsCount, setRoomsCount] = useState(savedSearch?.roomsCount || 1);
+  const [adultsCount, setAdultsCount] = useState(savedSearch?.adultsCount || 2);
+  const [childrenCount, setChildrenCount] = useState(savedSearch?.childrenCount || 0);
+
+  // Tự động lưu thông tin tìm kiếm vào localStorage khi có thay đổi
+  useEffect(() => {
+    const searchData = {
+      destination,
+      checkIn,
+      checkOut,
+      roomsCount,
+      adultsCount,
+      childrenCount
+    };
+    localStorage.setItem('traveloka_search_params', JSON.stringify(searchData));
+  }, [destination, checkIn, checkOut, roomsCount, adultsCount, childrenCount]);
 
   // State bật/tắt các dropdown gợi ý
   const [isDestinationPickerOpen, setIsDestinationPickerOpen] = useState(false);
@@ -98,17 +124,30 @@ export default function HomePage() {
     scrollToHotelList();
   };
 
-  // Lọc danh sách khách sạn
+  // Lọc danh sách khách sạn theo Điểm Đến, Số Sao, Đánh Giá và Sắp Xếp
   const displayedHotels = useMemo(() => {
     return getHotelsData().filter(hotel => {
-      // Lọc theo sao
+      // 1. Lọc theo Điểm đến (khớp theo Thành phố, Tên khách sạn hoặc Địa chỉ)
+      if (destination && destination.trim() !== '') {
+        const term = destination.toLowerCase().trim();
+        const matchCity = hotel.city?.toLowerCase().includes(term);
+        const matchAddress = hotel.address?.toLowerCase().includes(term);
+        const matchName = hotel.name?.toLowerCase().includes(term);
+        if (!matchCity && !matchAddress && !matchName) {
+          return false;
+        }
+      }
+
+      // 2. Lọc theo sao
       if (selectedStar && hotel.starRating !== selectedStar) {
         return false;
       }
-      // Lọc theo đánh giá
+
+      // 3. Lọc theo đánh giá
       if (selectedRating && hotel.ratingScore < selectedRating) {
         return false;
       }
+
       return true;
     }).sort((a, b) => {
       const priceA = a.rooms[0]?.pricePerNight || 0;
@@ -117,7 +156,7 @@ export default function HomePage() {
       if (sortOption === 'ratingDesc') return b.ratingScore - a.ratingScore;
       return 0;
     });
-  }, [selectedStar, selectedRating, sortOption]);
+  }, [destination, selectedStar, selectedRating, sortOption]);
 
   return (
     <div>
@@ -211,13 +250,22 @@ export default function HomePage() {
                         type="date" 
                         className="form-control border-0 p-0 fw-bold fs-6 text-dark shadow-none bg-transparent"
                         value={checkIn}
-                        onChange={(e) => setCheckIn(e.target.value)}
+                        min={today}
+                        onChange={(e) => {
+                          const newCheckIn = e.target.value;
+                          setCheckIn(newCheckIn);
+                          if (checkOut <= newCheckIn) {
+                            const nextDay = new Date(new Date(newCheckIn).getTime() + 86400000).toISOString().split('T')[0];
+                            setCheckOut(nextDay);
+                          }
+                        }}
                       />
                       <span className="text-secondary">-</span>
                       <input 
                         type="date" 
                         className="form-control border-0 p-0 fw-bold fs-6 text-dark shadow-none bg-transparent"
                         value={checkOut}
+                        min={checkIn}
                         onChange={(e) => setCheckOut(e.target.value)}
                       />
                     </div>
@@ -534,10 +582,10 @@ export default function HomePage() {
               {/* Tiêu đề danh sách */}
               <div className="mb-3">
                 <h3 className="fw-bold text-dark mb-1">
-                  Khách sạn gần {destination || "điểm đến đề xuất"}
+                  Khách sạn tại {destination || "Việt Nam"} {displayedHotels.length > 0 && `(${displayedHotels.length} kết quả)`}
                 </h3>
                 <p className="text-secondary small mb-3">
-                  Kiểm tra giá thấp nhất bằng cách chỉ định ngày lưu trú mong muốn của bạn.
+                  Lưu trú từ {checkIn} đến {checkOut} ({adultsCount} người lớn, {roomsCount} phòng) • Kiểm tra giá tốt nhất.
                 </p>
 
                 {/* Tabs phân loại theo ảnh 2 */}
@@ -563,8 +611,26 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* Danh sách thẻ Khách Sạn (Bố cục ngang theo đúng ảnh 2) */}
-              <div className="d-flex flex-column gap-3">
+              {/* Thông báo nếu không tìm thấy khách sạn */}
+              {displayedHotels.length === 0 ? (
+                <div className="card border-0 shadow-sm rounded-3 p-5 bg-white text-center my-3">
+                  <h5 className="fw-bold text-dark mb-2">Không tìm thấy khách sạn phù hợp tại "{destination}"</h5>
+                  <p className="text-secondary small mb-3">
+                    Hãy thử tìm kiếm với các thành phố như "Hà Nội", "Hồ Chí Minh", "Đà Nẵng", hoặc bỏ bớt tiêu chí lọc sao.
+                  </p>
+                  <div>
+                    <button 
+                      type="button" 
+                      onClick={() => { setDestination(''); setSelectedStar(null); setSelectedRating(null); }}
+                      className="btn btn-outline-primary btn-sm px-4 rounded-pill fw-semibold"
+                    >
+                      Xem tất cả khách sạn
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Danh sách thẻ Khách Sạn (Bố cục ngang theo đúng ảnh 2) */
+                <div className="d-flex flex-column gap-3">
                 {displayedHotels.map((hotel) => (
                   <div key={hotel.id} className="card border-0 shadow-sm rounded-3 overflow-hidden bg-white hover-shadow">
                     <div className="row g-0">
@@ -672,6 +738,14 @@ export default function HomePage() {
 
                           <Link 
                             to={`/hotels/${hotel.id}`}
+                            state={{ 
+                              checkIn, 
+                              checkOut, 
+                              adultsCount, 
+                              childrenCount, 
+                              roomsCount, 
+                              destination 
+                            }}
                             className="btn btn-primary w-100 py-2 fw-bold text-white d-flex align-items-center justify-content-center gap-1 shadow-sm"
                             style={{ backgroundColor: '#2563eb', fontSize: '14px' }}
                           >
@@ -686,6 +760,7 @@ export default function HomePage() {
                   </div>
                 ))}
               </div>
+            )}
 
             </div>
 

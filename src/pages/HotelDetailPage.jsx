@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { MOCK_HOTELS, getHotelsData } from '../data/mockData';
 import { 
   MapPin, Star, Wifi, Waves, Coffee, Car, Dumbbell, 
@@ -10,6 +10,17 @@ import {
 export default function HotelDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  
+  // Đọc dữ liệu tìm kiếm dự phòng từ localStorage nếu F5 hoặc mở tab mới
+  const savedSearch = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('traveloka_search_params')) || {};
+    } catch {
+      return {};
+    }
+  })();
+  const searchState = { ...savedSearch, ...(location.state || {}) };
 
   // Tìm khách sạn theo ID từ danh sách tổng hợp (bao gồm cả khách sạn mới do Admin tạo)
   const allHotels = getHotelsData();
@@ -31,8 +42,19 @@ export default function HotelDetailPage() {
   };
 
   const handleBookRoom = (room) => {
-    // Điều hướng sang trang thanh toán & đặt phòng CheckoutPage
-    navigate('/checkout', { state: { hotel, room } });
+    // Điều hướng sang trang thanh toán & đặt phòng CheckoutPage kèm dữ liệu tìm kiếm
+    navigate('/checkout', { 
+      state: { 
+        hotel, 
+        room, 
+        checkInDate: searchState.checkIn,
+        checkOutDate: searchState.checkOut,
+        guestCount: searchState.adultsCount || 2,
+        roomsCount: searchState.roomsCount || 1,
+        destination: searchState.destination,
+        ...searchState 
+      } 
+    });
   };
 
   return (

@@ -21,7 +21,7 @@ export const apiFetch = async (endpoint, options = {}) => {
             headers,
         }
     );
-
+// Xử lý khi logout hoặc Access Token hết hạn phải trả đúng mã lỗi 401
     if (response.status === 401) {
 
         const refreshToken = localStorage.getItem('refreshToken');
