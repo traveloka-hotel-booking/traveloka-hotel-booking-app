@@ -337,6 +337,13 @@ export default function HotelsPage() {
 
                           <Link 
                             to={`/hotels/${hotel.id}`} 
+                            state={(() => {
+                              try {
+                                return JSON.parse(localStorage.getItem('traveloka_search_params')) || {};
+                              } catch {
+                                return {};
+                              }
+                            })()}
                             className="btn btn-primary px-4 py-2 fw-bold"
                           >
                             Xem phòng & Giá
