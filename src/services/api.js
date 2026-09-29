@@ -3,8 +3,9 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL  || 'http://localhost:808
 export const apiFetch = async (endpoint, options = {}) => {
     const accessToken = localStorage.getItem('accessToken');
 
-    // Tạo headers
+    // Tạo headers mặc định là application/json
     const headers = {
+        'Content-Type': 'application/json',
         ...options.headers,
     };
 
