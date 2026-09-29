@@ -80,13 +80,12 @@ export const AuthProvider = ({ children }) => {
     
   };
 
-  // Hàm đăng nhập nhanh bằng tài khoản Google (mô phỏng OAuth2)
   const loginWithGoogle = () => {
     const googleUser = {
       id: 'usr_google_99',
       name: 'Trần Hữu',
       email: 'huutran0991@gmail.com',
-      role: 'admin', // Mặc định cấp quyền admin cho email dự án để kiểm thử mọi tính năng thuận tiện
+      role: 'ROLE_ADMIN', // Đồng bộ với chuẩn role của Backend JWT
       avatar: 'https://lh3.googleusercontent.com/a/default-user=s96-c',
       loginType: 'google'
     };
