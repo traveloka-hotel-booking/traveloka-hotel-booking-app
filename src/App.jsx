@@ -14,6 +14,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import ProfilePage from './pages/ProfilePage';
+import PaymentCallbackPage from './pages/PaymentCallbackPage';
 
 export default function App() {
   return (
@@ -55,6 +56,9 @@ export default function App() {
 
               {/* 10. Trang Quản lý tài khoản, Bảo mật & Hồ sơ cá nhân */}
               <Route path="/profile" element={<ProfilePage />} />
+
+              {/* 11. Trang Tiếp nhận phản hồi từ Cổng thanh toán VNPay Sandbox */}
+              <Route path="/payment-callback" element={<PaymentCallbackPage />} />
             </Routes>
           </main>
 

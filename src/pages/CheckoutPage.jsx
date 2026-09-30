@@ -123,32 +123,43 @@ export default function CheckoutPage() {
       return;
     }
 
+    const isOnlinePayment = (paymentMethod === 'vnpay' || paymentMethod === 'card');
+
+    // Nếu chọn thanh toán trực tuyến qua VNPAY nhưng chưa đăng nhập tài khoản
+    if (isOnlinePayment && !isAuthenticated) {
+      alert('Bạn cần đăng nhập tài khoản thành viên để thực hiện thanh toán trực tuyến qua VNPAY!');
+      navigate('/login', { state: { from: location } });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
       let realBookingId = null;
 
-      // 1. Nếu người dùng đã đăng nhập, gọi API Backend thật để lưu vào bảng bookings trong MySQL
+      // 1. Gọi API Backend để lưu vào bảng bookings trong MySQL nếu đã đăng nhập
       if (isAuthenticated) {
-        try {
-          const bookingPayload = {
-            roomId: room.id,
-            checkIn: checkInDate,
-            checkOut: checkOutDate,
-            numberOfGuests: passedData.guestCount || passedData.adultsCount || savedSearch.adultsCount || room.maxGuests || 2
-          };
+        const bookingPayload = {
+          roomId: room.id,
+          checkIn: checkInDate,
+          checkOut: checkOutDate,
+          numberOfGuests: passedData.guestCount || passedData.adultsCount || savedSearch.adultsCount || room.maxGuests || 2
+        };
 
-          const response = await apiFetch('/customer/bookings', {
-            method: 'POST',
-            body: JSON.stringify(bookingPayload)
-          });
+        const response = await apiFetch('/customer/bookings', {
+          method: 'POST',
+          body: JSON.stringify(bookingPayload)
+        });
 
-          if (response.ok) {
-            const data = await response.json();
-            realBookingId = data.bookingId;
-          }
-        } catch (apiErr) {
-          console.warn('Lỗi khi gọi API booking hoặc database chưa có phòng, chuyển sang lưu bộ nhớ:', apiErr);
+        if (response.ok) {
+          const data = await response.json();
+          realBookingId = data.bookingId;
+        } else {
+          const errData = await response.json().catch(() => ({}));
+          const errMsg = errData.message || (typeof errData.errors === 'string' ? errData.errors : 'Không thể tạo đơn đặt phòng.');
+          alert(`Đặt phòng thất bại: ${errMsg}\n(Vui lòng thử chọn ngày khác hoặc phòng khác nếu phòng đã bị trùng lịch)`);
+          setIsSubmitting(false);
+          return;
         }
       }
 
@@ -186,24 +197,61 @@ export default function CheckoutPage() {
         totalAmount: finalTotal,
         status: 'confirmed', // confirmed, cancelled, completed
         freeCancellation: room.freeCancellation,
-        // Phân biệt rõ ràng đơn của thành viên hay khách vãng lai
         isGuest: !isAuthenticated,
         userId: user?.id || null,
         userEmail: user?.email || email
       };
 
-      // 3. Lưu vào localStorage để hiển thị trên "Chuyến đi của tôi" & E-Voucher
+      // 3. Xử lý thanh toán tích hợp (VNPay Sandbox hoặc Tiền mặt tại khách sạn)
+      if (isAuthenticated && realBookingId) {
+        const paymentMethodEnum = isOnlinePayment ? 'VNPAY' : 'CASH';
+
+        const payResponse = await apiFetch('/customer/payments/create-url', {
+          method: 'POST',
+          body: JSON.stringify({
+            bookingId: realBookingId,
+            paymentMethod: paymentMethodEnum
+          })
+        });
+
+        if (payResponse.ok) {
+          const payData = await payResponse.json();
+          const payResult = payData?.result;
+
+          // Nếu là thanh toán online VNPay -> Lưu đơn dạng PENDING và chuyển hướng sang cổng VNPay
+          if (isOnlinePayment && payResult?.paymentUrl) {
+            const pendingBooking = {
+              ...newBooking,
+              status: 'pending',
+              paymentStatus: 'PENDING'
+            };
+            const savedBookings = JSON.parse(localStorage.getItem('traveloka_bookings') || '[]');
+            localStorage.setItem('traveloka_bookings', JSON.stringify([pendingBooking, ...savedBookings]));
+
+            setIsSubmitting(false);
+            // Chuyển hướng trực tiếp sang cổng thanh toán VNPay Sandbox
+            window.location.href = payResult.paymentUrl;
+            return;
+          }
+        } else {
+          const payErr = await payResponse.json().catch(() => ({}));
+          const payMsg = payErr.message || (typeof payErr.errors === 'string' ? payErr.errors : 'Lỗi khởi tạo thanh toán.');
+          alert(`Không thể kết nối cổng VNPay: ${payMsg}`);
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      // 4. Lưu vào localStorage và sang trang hoàn tất (đối với tiền mặt hoặc khách vãng lai)
       const savedBookings = JSON.parse(localStorage.getItem('traveloka_bookings') || '[]');
       localStorage.setItem('traveloka_bookings', JSON.stringify([newBooking, ...savedBookings]));
 
       setIsSubmitting(false);
-      // Chuyển sang trang hoàn tất đặt phòng
       navigate('/booking-success', { state: { booking: newBooking } });
 
     } catch (err) {
       console.error('Lỗi quá trình đặt phòng:', err);
       setIsSubmitting(false);
-      alert('Có lỗi xảy ra trong quá trình xử lý đặt phòng. Vui lòng thử lại!');
     }
   };
 
