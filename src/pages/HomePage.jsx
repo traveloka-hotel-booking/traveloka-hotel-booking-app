@@ -700,7 +700,10 @@ export default function HomePage() {
 
                           {/* Tiện ích ngắn gọn dạng pill badge */}
                           <div className="d-flex flex-wrap gap-1 mb-3">
-                            {hotel.amenities.slice(0, 3).map((a, idx) => (
+                            {(Array.isArray(hotel.amenities)
+                              ? hotel.amenities
+                              : (typeof hotel.amenities === 'string' ? hotel.amenities.split(',').map(s => s.trim()).filter(Boolean) : [])
+                            ).slice(0, 3).map((a, idx) => (
                               <span key={idx} className="badge bg-light text-secondary border fw-normal" style={{ fontSize: '11px' }}>
                                 {a}
                               </span>

@@ -173,7 +173,10 @@ export default function HotelDetailPage() {
               </p>
 
               <div className="row g-3">
-                {hotel.amenities.map((item, idx) => (
+                {(Array.isArray(hotel.amenities)
+                  ? hotel.amenities
+                  : (typeof hotel.amenities === 'string' ? hotel.amenities.split(',').map(s => s.trim()).filter(Boolean) : [])
+                ).map((item, idx) => (
                   <div key={idx} className="col-md-6 col-12">
                     <div className="d-flex align-items-center gap-3 p-3 bg-light rounded-3">
                       {getAmenityIcon(item)}
@@ -287,7 +290,10 @@ export default function HotelDetailPage() {
                     <div className="pt-2 border-top">
                       <span className="fw-bold small text-dark d-block mb-2">Tiện nghi trong phòng:</span>
                       <div className="d-flex flex-wrap gap-1">
-                        {room.amenities.map((item, i) => (
+                        {(Array.isArray(room.amenities)
+                          ? room.amenities
+                          : (typeof room.amenities === 'string' ? room.amenities.split(',').map(s => s.trim()).filter(Boolean) : [])
+                        ).map((item, i) => (
                           <span key={i} className="badge bg-light text-secondary border small">
                             ✓ {item}
                           </span>
