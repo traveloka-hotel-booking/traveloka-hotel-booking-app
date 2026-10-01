@@ -1,14 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { apiFetch } from '../services/api';
 import { 
   User, Shield, Lock, Smartphone, Mail, Key, Monitor, 
-  History, Edit3, CheckCircle, AlertCircle, Hotel, LogOut, ChevronRight, X
+  History, Edit3, CheckCircle, AlertCircle, Hotel, LogOut, ChevronRight, X,
+  Camera, Loader2
 } from 'lucide-react';
 
 export default function ProfilePage() {
   const navigate = useNavigate();
   const { user, isAuthenticated, isAdmin, updateUserProfile, logout } = useAuth();
+
+  const avatarInputRef = useRef(null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [modalAvatarFile, setModalAvatarFile] = useState(null);
+  const [modalAvatarPreview, setModalAvatarPreview] = useState(null);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   // State các Modal popup
   const [modalType, setModalType] = useState(null); // 'edit_profile', 'change_password', 'edit_email', 'edit_phone', 'devices', 'history'
@@ -22,6 +30,45 @@ export default function ProfilePage() {
     gender: user?.gender || 'Nam',
     idCard: user?.idCard || '001295008921'
   });
+
+  // Tự động tải thông tin hồ sơ và avatar mới nhất từ Backend khi vào trang nếu đã đăng nhập có token
+  useEffect(() => {
+    const fetchLatestProfile = async () => {
+      const token = localStorage.getItem('accessToken');
+      if (!token) return;
+
+      try {
+        const res = await apiFetch('/users/profile');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.result) {
+            const u = json.result;
+            updateUserProfile({
+              name: u.fullName || user?.name,
+              phone: u.phone || user?.phone,
+              avatarUrl: u.avatarUrl || user?.avatarUrl,
+              gender: u.gender || user?.gender,
+              birthDate: u.dateOfBirth || user?.birthDate,
+            });
+            setProfileForm(prev => ({
+              ...prev,
+              legalName: u.fullName || prev.legalName,
+              displayName: u.fullName || prev.displayName,
+              gender: u.gender || prev.gender,
+              birthDate: u.dateOfBirth || prev.birthDate,
+            }));
+            if (u.phone) setNewPhone(u.phone);
+          }
+        }
+      } catch (err) {
+        console.warn('API fetch profile fallback:', err);
+      }
+    };
+
+    if (isAuthenticated) {
+      fetchLatestProfile();
+    }
+  }, [isAuthenticated]);
 
   // Form State đổi mật khẩu
   const [passwordForm, setPasswordForm] = useState({
@@ -73,18 +120,107 @@ export default function ProfilePage() {
     return `${cleaned.slice(0, 4)} ••• ${cleaned.slice(-3)}`;
   };
 
-  // Xử lý lưu hồ sơ cá nhân
-  const handleSaveProfile = (e) => {
+  // Tải ảnh đại diện lên Cloudinary thông qua MultipartFile API
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Vui lòng chọn tập tin hình ảnh hợp lệ (JPG, PNG, WEBP)');
+      return;
+    }
+
+    try {
+      setIsUploadingAvatar(true);
+      const formData = new FormData();
+      formData.append('avatar', file);
+
+      const res = await apiFetch('/users/profile', {
+        method: 'PUT',
+        body: formData,
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        const updated = json.result;
+        updateUserProfile({
+          avatarUrl: updated.avatarUrl,
+          name: updated.fullName || user?.name,
+          phone: updated.phone || user?.phone,
+        });
+        showToast('Tải ảnh đại diện lên Cloudinary thành công!');
+      } else {
+        showToast('Không thể tải ảnh lên máy chủ (Vui lòng kiểm tra Backend)');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Lỗi kết nối khi tải ảnh lên');
+    } finally {
+      setIsUploadingAvatar(false);
+      if (avatarInputRef.current) {
+        avatarInputRef.current.value = '';
+      }
+    }
+  };
+
+  // Xử lý lưu hồ sơ cá nhân (kèm ảnh đại diện nếu có chọn trong modal)
+  const handleSaveProfile = async (e) => {
     e.preventDefault();
-    updateUserProfile({
-      name: profileForm.displayName,
-      legalName: profileForm.legalName,
-      birthDate: profileForm.birthDate,
-      gender: profileForm.gender,
-      idCard: profileForm.idCard
-    });
-    setModalType(null);
-    showToast('Cập nhật thông tin hồ sơ thành công!');
+    setIsSavingProfile(true);
+    try {
+      const formData = new FormData();
+      formData.append('fullName', profileForm.displayName || profileForm.legalName);
+      formData.append('phone', newPhone || user?.phone || '');
+      formData.append('gender', profileForm.gender || 'Nam');
+      formData.append('dateOfBirth', profileForm.birthDate || '');
+      if (modalAvatarFile) {
+        formData.append('avatar', modalAvatarFile);
+      }
+
+      const res = await apiFetch('/users/profile', {
+        method: 'PUT',
+        body: formData,
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        const updated = json.result;
+        updateUserProfile({
+          name: updated.fullName,
+          legalName: profileForm.legalName,
+          birthDate: updated.dateOfBirth,
+          gender: updated.gender,
+          phone: updated.phone,
+          avatarUrl: updated.avatarUrl || user?.avatarUrl,
+          idCard: profileForm.idCard
+        });
+        showToast('Cập nhật hồ sơ và ảnh đại diện thành công!');
+      } else {
+        updateUserProfile({
+          name: profileForm.displayName,
+          legalName: profileForm.legalName,
+          birthDate: profileForm.birthDate,
+          gender: profileForm.gender,
+          idCard: profileForm.idCard
+        });
+        showToast('Đã lưu thông tin hồ sơ');
+      }
+    } catch (err) {
+      console.warn('Backend profile update failed, using local update:', err);
+      updateUserProfile({
+        name: profileForm.displayName,
+        legalName: profileForm.legalName,
+        birthDate: profileForm.birthDate,
+        gender: profileForm.gender,
+        idCard: profileForm.idCard
+      });
+      showToast('Đã lưu thông tin hồ sơ');
+    } finally {
+      setIsSavingProfile(false);
+      setModalAvatarFile(null);
+      setModalAvatarPreview(null);
+      setModalType(null);
+    }
   };
 
   // Xử lý đổi mật khẩu
@@ -168,20 +304,45 @@ export default function ProfilePage() {
           {/* ================= CỘT TRÁI: SIDEBAR MENU ================= */}
           <div className="col-lg-3 col-md-4">
             
-            {/* Thẻ Avatar Thành Viên */}
+            {/* Thẻ Avatar Thành Viên (Chỗ 2: Đổi avatar nhanh khi nhấp trực tiếp vào ảnh) */}
             <div className="card border-0 shadow-sm rounded-4 p-4 bg-white mb-3 text-center">
-              <div className="position-relative d-inline-block mx-auto mb-3">
+              <div 
+                className="position-relative d-inline-block mx-auto mb-2 cursor-pointer"
+                style={{ cursor: 'pointer' }}
+                onClick={() => avatarInputRef.current?.click()}
+                title="Nhấp vào ảnh để đổi nhanh ảnh đại diện"
+              >
                 <img 
-                  src={user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=60"} 
+                  src={user.avatarUrl || user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=60"} 
                   alt={user.name} 
                   className="rounded-circle object-fit-cover shadow-sm border border-3 border-primary-subtle"
-                  style={{ width: '84px', height: '84px' }}
+                  style={{ width: '88px', height: '88px', opacity: isUploadingAvatar ? 0.6 : 1, transition: 'opacity 0.2s' }}
+                />
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); avatarInputRef.current?.click(); }}
+                  disabled={isUploadingAvatar}
+                  className="btn btn-sm btn-primary rounded-circle position-absolute bottom-0 end-0 p-1 shadow border border-white"
+                  title="Nhấp để tải ảnh nhanh lên Cloudinary"
+                  style={{ width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  {isUploadingAvatar ? <Loader2 size={14} className="spinner-border spinner-border-sm" style={{ width: 14, height: 14 }} /> : <Camera size={14} />}
+                </button>
+                <input
+                  type="file"
+                  ref={avatarInputRef}
+                  style={{ display: 'none' }}
+                  accept="image/png, image/jpeg, image/jpg, image/webp"
+                  onChange={handleAvatarUpload}
                 />
                 {isAdmin && (
-                  <span className="position-absolute bottom-0 end-0 badge bg-warning text-dark border border-white rounded-pill px-2 py-1 small fw-bold">
+                  <span className="position-absolute top-0 start-0 badge bg-warning text-dark border border-white rounded-pill px-2 py-1 small fw-bold">
                     Admin
                   </span>
                 )}
+              </div>
+              <div className="text-primary small mb-2 fw-medium" style={{ fontSize: '11px', cursor: 'pointer' }} onClick={() => avatarInputRef.current?.click()}>
+                📷 Nhấp vào ảnh để đổi nhanh
               </div>
 
               <h5 className="fw-bold text-dark mb-1">{user.name}</h5>
@@ -442,6 +603,42 @@ export default function ProfilePage() {
               </div>
               <form onSubmit={handleSaveProfile}>
                 <div className="modal-body p-4">
+                  {/* Chỗ 1: Trường cập nhật ảnh đại diện vào mục chỉnh sửa Thông tin cá nhân & Hồ Sơ */}
+                  <div className="mb-4 p-3 bg-light rounded-4 border">
+                    <label className="form-label small fw-bold text-dark d-flex align-items-center gap-2 mb-2">
+                      <Camera size={16} className="text-primary" /> Ảnh Đại Diện (Avatar)
+                    </label>
+                    <div className="d-flex align-items-center gap-3">
+                      <img 
+                        src={modalAvatarPreview || user.avatarUrl || user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=60"}
+                        alt="Preview Avatar"
+                        className="rounded-circle object-fit-cover shadow-sm border border-2 border-primary"
+                        style={{ width: '64px', height: '64px', flexShrink: 0 }}
+                      />
+                      <div className="flex-grow-1">
+                        <input 
+                          type="file" 
+                          className="form-control form-control-sm"
+                          accept="image/png, image/jpeg, image/jpg, image/webp"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              if (!file.type.startsWith('image/')) {
+                                alert('Vui lòng chọn tập tin ảnh hợp lệ (JPG, PNG, WEBP)');
+                                return;
+                              }
+                              setModalAvatarFile(file);
+                              setModalAvatarPreview(URL.createObjectURL(file));
+                            }
+                          }}
+                        />
+                        <div className="text-secondary mt-1" style={{ fontSize: '11px' }}>
+                          Ảnh sẽ được tải lên Cloudinary cùng lúc khi bạn lưu hồ sơ.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="mb-3">
                     <label className="form-label small fw-semibold text-dark">Họ và tên đầy đủ (như trên CCCD) *</label>
                     <input 
@@ -501,11 +698,11 @@ export default function ProfilePage() {
                 </div>
 
                 <div className="modal-footer border-top">
-                  <button type="button" className="btn btn-secondary rounded-pill px-3" onClick={() => setModalType(null)}>
+                  <button type="button" className="btn btn-secondary rounded-pill px-3" onClick={() => { setModalAvatarFile(null); setModalAvatarPreview(null); setModalType(null); }}>
                     Hủy bỏ
                   </button>
-                  <button type="submit" className="btn btn-primary rounded-pill px-4 fw-bold">
-                    Lưu Thay Đổi
+                  <button type="submit" disabled={isSavingProfile} className="btn btn-primary rounded-pill px-4 fw-bold d-flex align-items-center gap-2">
+                    {isSavingProfile ? <><Loader2 size={16} className="spinner-border spinner-border-sm" /> Đang lưu...</> : 'Lưu Thay Đổi'}
                   </button>
                 </div>
               </form>
