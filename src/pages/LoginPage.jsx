@@ -55,15 +55,23 @@ export default function LoginPage() {
   };
 
   // Đăng nhập nhanh tài khoản Admin mẫu
-  const handleQuickAdmin = () => {
-    const res = login('admin@traveloka.vn', 'admin123');
-    navigate('/admin');
+  const handleQuickAdmin = async () => {
+    try {
+      await login('admin@traveloka.vn', 'admin123');
+      navigate('/admin');
+    } catch (err) {
+      setErrorMsg('Không thể đăng nhập Admin: ' + err.message);
+    }
   };
 
   // Đăng nhập nhanh tài khoản User mẫu
-  const handleQuickUser = () => {
-    login('user@traveloka.vn', '123456');
-    navigate(from, { replace: true });
+  const handleQuickUser = async () => {
+    try {
+      await login('customer@traveloka.vn', '123456');
+      navigate(from, { replace: true });
+    } catch (err) {
+      setErrorMsg('Không thể đăng nhập Khách Hàng: ' + err.message);
+    }
   };
 
   return (

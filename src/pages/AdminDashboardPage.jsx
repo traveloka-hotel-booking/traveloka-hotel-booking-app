@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { apiFetch } from '../services/api';
 import { MOCK_HOTELS } from '../data/mockData';
 import {
   LayoutDashboard, Building, BookOpen, LogOut, Plus, Edit2,
@@ -9,7 +10,8 @@ import {
   CheckCircle2, BedDouble, BedSingle, Menu, X,
   BarChart2, CreditCard, Tag, MessageSquare, FileBarChart,
   Wifi, Coffee, Car, Dumbbell, Waves, UtensilsCrossed, Shield,
-  TrendingUp, TrendingDown, Award, Clock, LogIn, LogOut as LogOutIcon
+  TrendingUp, TrendingDown, Award, Clock, LogIn, LogOut as LogOutIcon,
+  AlertCircle
 } from 'lucide-react';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -89,36 +91,267 @@ export default function AdminDashboardPage() {
   const { user, isAdmin, login, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [toastMsg, setToastMsg] = useState(null);
+
+  const showToast = (msg) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 3500);
+  };
 
   // ── Hotels state ──
   const [hotels, setHotels] = useState(() => {
     try { const s = localStorage.getItem('traveloka_custom_hotels'); return s ? JSON.parse(s) : MOCK_HOTELS; }
     catch { return MOCK_HOTELS; }
   });
+
+  // ── Rooms state (FR-14) ──
+  const [roomsList, setRoomsList] = useState(() => {
+    const flat = hotels.flatMap(h => (h.rooms || []).map(r => ({ ...r, hotelId: h.id, hotelName: h.name })));
+    return flat;
+  });
+
+  // ── Bookings state ──
   const [bookings, setBookings] = useState(() => {
     try { return JSON.parse(localStorage.getItem('traveloka_bookings') || '[]'); }
     catch { return []; }
   });
 
+  // Tải dữ liệu thật từ Backend nếu Backend online và đã đăng nhập
+  useEffect(() => {
+    const fetchBackendData = async () => {
+      const token = localStorage.getItem('accessToken');
+      if (!token) return;
+
+      try {
+        const hotelRes = await apiFetch('/admin/hotels?size=50');
+        if (hotelRes.ok) {
+          const hotelData = await hotelRes.json();
+          if (hotelData.result && hotelData.result.content && hotelData.result.content.length > 0) {
+            setHotels(hotelData.result.content);
+            localStorage.setItem('traveloka_custom_hotels', JSON.stringify(hotelData.result.content));
+          }
+        }
+      } catch (e) {
+        console.warn('API hotels fetch fallback:', e);
+      }
+
+      try {
+        const roomRes = await apiFetch('/admin/rooms');
+        if (roomRes.ok) {
+          const roomData = await roomRes.json();
+          if (roomData.result && roomData.result.length > 0) {
+            setRoomsList(roomData.result);
+          }
+        }
+      } catch (e) {
+        console.warn('API rooms fetch fallback:', e);
+      }
+    };
+
+    if (isAdmin) {
+      fetchBackendData();
+    }
+  }, [isAdmin]);
+
   const updateHotels = (next) => { setHotels(next); localStorage.setItem('traveloka_custom_hotels', JSON.stringify(next)); };
   const updateBookings = (next) => { setBookings(next); localStorage.setItem('traveloka_bookings', JSON.stringify(next)); };
 
-  // ── Hotel modal ──
+  // ── Hotel modal (FR-13) ──
   const [showHotelModal, setShowHotelModal] = useState(false);
   const [editingHotel, setEditingHotel] = useState(null);
   const [hotelForm, setHotelForm] = useState({ name: '', city: 'Hồ Chí Minh', address: '', starRating: 5, pricePerNight: 1200000, description: '', thumbnailUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&auto=format&fit=crop&q=60' });
   const openAddHotel = () => { setEditingHotel(null); setHotelForm({ name: '', city: 'Hồ Chí Minh', address: '', starRating: 5, pricePerNight: 1200000, description: '', thumbnailUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&auto=format&fit=crop&q=60' }); setShowHotelModal(true); };
-  const openEditHotel = (h) => { setEditingHotel(h); setHotelForm({ name: h.name, city: h.city, address: h.address, starRating: h.starRating, pricePerNight: h.rooms[0]?.pricePerNight || 1000000, description: h.description, thumbnailUrl: h.thumbnailUrl }); setShowHotelModal(true); };
-  const saveHotel = (e) => {
+  const openEditHotel = (h) => { setEditingHotel(h); setHotelForm({ name: h.name, city: h.city, address: h.address, starRating: h.starRating, pricePerNight: h.minPrice || h.rooms?.[0]?.pricePerNight || h.pricePerNight || 1000000, description: h.description, thumbnailUrl: h.thumbnailUrl }); setShowHotelModal(true); };
+
+  const saveHotel = async (e) => {
     e.preventDefault();
-    if (editingHotel) {
-      updateHotels(hotels.map(h => h.id === editingHotel.id ? { ...h, ...hotelForm, starRating: +hotelForm.starRating, rooms: [{ ...h.rooms[0], pricePerNight: +hotelForm.pricePerNight }, ...h.rooms.slice(1)] } : h));
-    } else {
-      updateHotels([{ id: `h-${Date.now()}`, ...hotelForm, starRating: +hotelForm.starRating, ratingScore: 9.0, reviewCount: 0, reviews: [], rooms: [{ id: `r-${Date.now()}`, name: `Phòng Tiêu Chuẩn - ${hotelForm.name}`, pricePerNight: +hotelForm.pricePerNight, maxGuests: 2, bedType: 'Giường đôi', roomSize: '30 m²', amenities: ['WiFi miễn phí', 'Điều hòa', 'TV'], freeCancellation: true }] }, ...hotels]);
+    try {
+      if (editingHotel) {
+        const res = await apiFetch(`/admin/hotels/${editingHotel.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            name: hotelForm.name,
+            city: hotelForm.city,
+            address: hotelForm.address,
+            starRating: Number(hotelForm.starRating),
+            pricePerNight: Number(hotelForm.pricePerNight),
+            description: hotelForm.description,
+            thumbnailUrl: hotelForm.thumbnailUrl,
+            amenities: editingHotel.amenities || 'WiFi, Bữa sáng, Hồ bơi'
+          })
+        });
+        if (res.ok) {
+          const json = await res.json();
+          updateHotels(hotels.map(h => h.id === editingHotel.id ? json.result : h));
+          showToast('Cập nhật khách sạn lên máy chủ thành công!');
+        } else {
+          const errJson = await res.json().catch(() => ({}));
+          showToast('Lỗi cập nhật: ' + (errJson.message || errJson.errors || 'Cập nhật thất bại'));
+        }
+      } else {
+        const res = await apiFetch('/admin/hotels', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: hotelForm.name,
+            city: hotelForm.city,
+            address: hotelForm.address,
+            starRating: Number(hotelForm.starRating),
+            pricePerNight: Number(hotelForm.pricePerNight),
+            description: hotelForm.description,
+            thumbnailUrl: hotelForm.thumbnailUrl,
+            amenities: 'WiFi miễn phí, Bữa sáng buffet, Hồ bơi ngoài trời'
+          })
+        });
+        if (res.ok) {
+          const json = await res.json();
+          updateHotels([json.result, ...hotels]);
+          showToast('Thêm khách sạn mới lên cơ sở dữ liệu thành công!');
+        } else {
+          const errJson = await res.json().catch(() => ({}));
+          showToast('Lỗi thêm khách sạn: ' + (errJson.message || errJson.errors || 'Thêm thất bại'));
+        }
+      }
+    } catch (err) {
+      console.warn('Lỗi kết nối API khách sạn:', err);
+      showToast('Lỗi kết nối máy chủ: ' + err.message);
     }
     setShowHotelModal(false);
   };
-  const deleteHotel = (id) => { if (window.confirm('Xóa khách sạn này?')) updateHotels(hotels.filter(h => h.id !== id)); };
+
+  const deleteHotel = async (id) => {
+    if (!window.confirm('Bạn có chắc muốn xóa khách sạn này khỏi hệ thống không?')) return;
+    try {
+      const res = await apiFetch(`/admin/hotels/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        showToast('Đã xóa khách sạn khỏi máy chủ');
+      }
+    } catch (e) {
+      console.warn('Delete hotel API error, updating state:', e);
+    }
+    updateHotels(hotels.filter(h => h.id !== id));
+    setRoomsList(roomsList.filter(r => r.hotelId !== id));
+  };
+
+  // ── Room modal (FR-14) ──
+  const [showRoomModal, setShowRoomModal] = useState(false);
+  const [editingRoom, setEditingRoom] = useState(null);
+  const [roomForm, setRoomForm] = useState({
+    hotelId: '',
+    name: '',
+    pricePerNight: 1200000,
+    maxGuests: 2,
+    bedType: '1 Giường đôi lớn (King Size)',
+    roomSize: '35 m²',
+    status: 'AVAILABLE',
+    imageUrl: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60',
+    description: 'Phòng đầy đủ tiện nghi tiêu chuẩn cao cấp, nội thất hiện đại và view thoáng đãng.'
+  });
+
+  const openAddRoom = () => {
+    setEditingRoom(null);
+    setRoomForm({
+      hotelId: hotels[0]?.id || '',
+      name: '',
+      pricePerNight: 1200000,
+      maxGuests: 2,
+      bedType: '1 Giường đôi lớn (King Size)',
+      roomSize: '35 m²',
+      status: 'AVAILABLE',
+      imageUrl: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60',
+      description: 'Phòng đầy đủ tiện nghi cao cấp, nội thất gỗ sang trọng.'
+    });
+    setShowRoomModal(true);
+  };
+
+  const openEditRoom = (r) => {
+    setEditingRoom(r);
+    setRoomForm({
+      hotelId: r.hotelId || hotels[0]?.id,
+      name: r.name,
+      pricePerNight: r.pricePerNight,
+      maxGuests: r.maxGuests || 2,
+      bedType: r.bedType || '1 Giường đôi lớn (King Size)',
+      roomSize: r.roomSize || '35 m²',
+      status: r.status || 'AVAILABLE',
+      imageUrl: r.imageUrl || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60',
+      description: r.description || ''
+    });
+    setShowRoomModal(true);
+  };
+
+  const saveRoom = async (e) => {
+    e.preventDefault();
+    const targetHotel = hotels.find(h => String(h.id) === String(roomForm.hotelId)) || hotels[0];
+    try {
+      if (editingRoom) {
+        const res = await apiFetch(`/admin/rooms/${editingRoom.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            hotelId: Number(roomForm.hotelId),
+            name: roomForm.name,
+            pricePerNight: Number(roomForm.pricePerNight),
+            maxGuests: Number(roomForm.maxGuests),
+            bedType: roomForm.bedType,
+            roomSize: roomForm.roomSize,
+            status: roomForm.status,
+            imageUrl: roomForm.imageUrl,
+            description: roomForm.description
+          })
+        });
+        if (res.ok) {
+          const json = await res.json();
+          setRoomsList(roomsList.map(r => r.id === editingRoom.id ? json.result : r));
+          showToast('Cập nhật loại phòng trên máy chủ thành công!');
+        } else {
+          setRoomsList(roomsList.map(r => r.id === editingRoom.id ? { ...r, ...roomForm, hotelName: targetHotel?.name } : r));
+          showToast('Đã lưu thay đổi loại phòng');
+        }
+      } else {
+        const res = await apiFetch('/admin/rooms', {
+          method: 'POST',
+          body: JSON.stringify({
+            hotelId: Number(roomForm.hotelId),
+            name: roomForm.name,
+            pricePerNight: Number(roomForm.pricePerNight),
+            maxGuests: Number(roomForm.maxGuests),
+            bedType: roomForm.bedType,
+            roomSize: roomForm.roomSize,
+            status: roomForm.status,
+            imageUrl: roomForm.imageUrl,
+            description: roomForm.description
+          })
+        });
+        if (res.ok) {
+          const json = await res.json();
+          setRoomsList([json.result, ...roomsList]);
+          showToast('Tạo mới loại phòng trên máy chủ thành công!');
+        } else {
+          const newRoom = { id: `r-${Date.now()}`, ...roomForm, hotelName: targetHotel?.name };
+          setRoomsList([newRoom, ...roomsList]);
+          showToast('Đã tạo loại phòng mới');
+        }
+      }
+    } catch (err) {
+      console.warn('API room save fallback:', err);
+      const newRoom = { id: `r-${Date.now()}`, ...roomForm, hotelName: targetHotel?.name };
+      setRoomsList([newRoom, ...roomsList]);
+      showToast('Đã lưu loại phòng');
+    }
+    setShowRoomModal(false);
+  };
+
+  const deleteRoom = async (id) => {
+    if (!window.confirm('Bạn có chắc muốn xóa loại phòng này không?')) return;
+    try {
+      const res = await apiFetch(`/admin/rooms/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        showToast('Đã xóa loại phòng khỏi máy chủ');
+      }
+    } catch (e) {
+      console.warn('Delete room error:', e);
+    }
+    setRoomsList(roomsList.filter(r => r.id !== id));
+  };
 
   // ── Bookings logic ──
   const [bookingSearch, setBookingSearch] = useState('');
@@ -132,11 +365,11 @@ export default function AdminDashboardPage() {
   }, [bookings, bookingSearch]);
 
   // ── Coupons state ──
-  const [coupons, setCoupons] = useState(COUPONS_DATA);
+  const [coupons] = useState(COUPONS_DATA);
 
   // ── KPI stats ──
   const stats = useMemo(() => {
-    const totalRooms = hotels.reduce((s, h) => s + (h.rooms?.length || 1), 0);
+    const totalRooms = roomsList.length > 0 ? roomsList.length : hotels.reduce((s, h) => s + (h.rooms?.length || 1), 0);
     const occupiedRooms = bookings.filter(b => b.status === 'confirmed').length;
     const confirmed = bookings.filter(b => b.status === 'confirmed').length;
     const pending = bookings.filter(b => !b.status || b.status === 'pending').length;
@@ -145,16 +378,13 @@ export default function AdminDashboardPage() {
     const checkins = bookings.filter(b => b.checkInDate === today).length;
     const checkouts = bookings.filter(b => b.checkOutDate === today).length;
     const customers = new Set(bookings.map(b => b.contactPhone).filter(Boolean)).size;
-    const allRooms = hotels.flatMap(h => h.rooms || []);
     const avgRating = hotels.reduce((s, h) => s + (h.ratingScore || 9), 0) / (hotels.length || 1);
     const reviewsAll = hotels.flatMap(h => h.reviews || []);
-    return { totalRooms, occupiedRooms, confirmed, pending, revenue, checkins, checkouts, customers, totalBookings: bookings.length, allRooms, avgRating: avgRating.toFixed(1), reviewsAll };
-  }, [hotels, bookings]);
+    return { totalRooms, occupiedRooms, confirmed, pending, revenue, checkins, checkouts, customers, totalBookings: bookings.length, allRooms: roomsList, avgRating: avgRating.toFixed(1), reviewsAll };
+  }, [hotels, bookings, roomsList]);
 
-  // ── Reviews: thu thập từ hotels mockData ──
   const allReviews = useMemo(() => hotels.flatMap(h => (h.reviews || []).map(r => ({ ...r, hotelName: h.name, hotelId: h.id }))), [hotels]);
 
-  // ── Payment summary ──
   const paymentStats = useMemo(() => {
     const vnpay = bookings.filter(b => b.paymentMethod === 'vnpay').length;
     const cash = bookings.filter(b => b.paymentMethod === 'pay_at_hotel').length;
@@ -164,7 +394,6 @@ export default function AdminDashboardPage() {
     return { vnpay, cash, other, paidRevenue, pendingRevenue };
   }, [bookings]);
 
-  // ── Customer list ──
   const customerList = useMemo(() => {
     const map = {};
     bookings.forEach(b => {
@@ -177,7 +406,7 @@ export default function AdminDashboardPage() {
     return Object.values(map).sort((a, b) => b.totalSpent - a.totalSpent);
   }, [bookings]);
 
-  // ─── Màn hình bảo vệ ──────────────────────────────────────────────────────
+  // Màn hình bảo vệ
   if (!isAdmin) {
     return (
       <div className="bg-light min-vh-100 py-5 page-top-spacing d-flex align-items-center">
@@ -187,7 +416,18 @@ export default function AdminDashboardPage() {
             <h3 className="fw-bold text-dark mb-2">Khu Vực Quản Trị Viên</h3>
             <p className="text-secondary mb-4">Bạn cần đăng nhập bằng tài khoản có quyền Quản trị viên để truy cập vào hệ thống này.</p>
             <div className="d-flex flex-column gap-2">
-              <button onClick={() => login('admin@traveloka.vn', 'admin123')} className="btn btn-primary btn-lg fw-bold rounded-pill shadow-sm">⚡ Đăng nhập nhanh với quyền Admin mẫu</button>
+              <button 
+                onClick={async () => {
+                  try {
+                    await login('admin@traveloka.vn', 'admin123');
+                  } catch (e) {
+                    alert('Lỗi đăng nhập: ' + e.message);
+                  }
+                }} 
+                className="btn btn-primary btn-lg fw-bold rounded-pill shadow-sm"
+              >
+                ⚡ Đăng nhập nhanh với quyền Admin mẫu
+              </button>
               <Link to="/" className="btn btn-light rounded-pill py-2 text-secondary">Quay lại trang chủ</Link>
             </div>
           </div>
@@ -196,9 +436,15 @@ export default function AdminDashboardPage() {
     );
   }
 
-  // ─── Layout chính ─────────────────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
+
+      {/* TOAST THÔNG BÁO NỔI */}
+      {toastMsg && (
+        <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 1000, background: '#10b981', color: '#fff', padding: '12px 20px', borderRadius: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <CheckCircle2 size={18} /> {toastMsg}
+        </div>
+      )}
 
       {/* SIDEBAR */}
       <aside style={{ width: sidebarOpen ? 240 : 0, minWidth: sidebarOpen ? 240 : 0, background: '#1e293b', display: 'flex', flexDirection: 'column', transition: 'all 0.25s ease', overflow: 'hidden', flexShrink: 0, zIndex: 100 }}>
@@ -208,10 +454,22 @@ export default function AdminDashboardPage() {
             <div><div style={{ color: '#fff', fontWeight: 700, fontSize: 15 }}>Traveloka</div><div style={{ color: '#94a3b8', fontSize: 11 }}>Quản Trị Khách Sạn</div></div>
           </div>
         </div>
+
+        {/* Thông tin Admin + Avatar từ Cloudinary */}
         <div style={{ padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: '#fff', flexShrink: 0 }}>{(user?.name || 'A').charAt(0).toUpperCase()}</div>
-          <div style={{ overflow: 'hidden' }}><div style={{ color: '#f1f5f9', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.name || 'Quản trị viên'}</div><div style={{ color: '#64748b', fontSize: 11 }}>Quản Trị Viên</div></div>
+          {user?.avatarUrl || user?.avatar ? (
+            <img src={user.avatarUrl || user.avatar} alt={user.name} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', border: '2px solid #3b82f6', flexShrink: 0 }} />
+          ) : (
+            <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+              {(user?.name || 'A').charAt(0).toUpperCase()}
+            </div>
+          )}
+          <div style={{ overflow: 'hidden' }}>
+            <div style={{ color: '#f1f5f9', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.name || 'Quản trị viên'}</div>
+            <div style={{ color: '#f59e0b', fontSize: 11, fontWeight: 700 }}>👑 Quản Trị Viên</div>
+          </div>
         </div>
+
         <nav style={{ flex: 1, overflowY: 'auto', padding: '10px 0' }}>
           {SIDEBAR_MENU.map(group => (
             <div key={group.group} style={{ marginBottom: 6 }}>
@@ -237,12 +495,27 @@ export default function AdminDashboardPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <button onClick={() => setSidebarOpen(!sidebarOpen)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex' }}><Menu size={22} /></button>
             <span style={{ color: '#1e293b', fontWeight: 700, fontSize: 16 }}>
-              {{ dashboard: 'Tổng Quan', hotels: 'Quản Lý Khách Sạn', rooms: 'Quản Lý Loại Phòng', amenities: 'Tiện Nghi Khách Sạn', bookings: 'Quản Lý Đặt Phòng & Lễ Tân', customers: 'Quản Lý Khách Hàng', payments: 'Quản Lý Thanh Toán', coupons: 'Quản Lý Khuyến Mãi', reviews: 'Đánh Giá Từ Khách Lưu Trú', reports: 'Báo Cáo & Thống Kê' }[activeTab]}
+              {{ dashboard: 'Tổng Quan', hotels: 'Quản Lý Khách Sạn (FR-13)', rooms: 'Quản Lý Loại Phòng (FR-14)', amenities: 'Tiện Nghi Khách Sạn', bookings: 'Quản Lý Đặt Phòng & Lễ Tân', customers: 'Quản Lý Khách Hàng', payments: 'Quản Lý Thanh Toán', coupons: 'Quản Lý Khuyến Mãi', reviews: 'Đánh Giá Từ Khách Lưu Trú', reports: 'Báo Cáo & Thống Kê' }[activeTab]}
             </span>
           </div>
-          <button onClick={() => { logout(); navigate('/'); }} style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#fee2e2', border: 'none', borderRadius: 20, padding: '7px 16px', color: '#dc2626', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
-            <LogOut size={15} /> Đăng Xuất
-          </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            {/* Link sang Profile cá nhân */}
+            <Link to="/profile" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none', background: '#f1f5f9', padding: '6px 14px', borderRadius: 20 }}>
+              {user?.avatarUrl || user?.avatar ? (
+                <img src={user.avatarUrl || user.avatar} alt="avatar" style={{ width: 26, height: 26, borderRadius: '50%', objectFit: 'cover' }} />
+              ) : (
+                <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#3b82f6', color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {(user?.name || 'A').charAt(0).toUpperCase()}
+                </div>
+              )}
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>Hồ Sơ Của Tôi</span>
+            </Link>
+
+            <button onClick={() => { logout(); navigate('/'); }} style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#fee2e2', border: 'none', borderRadius: 20, padding: '7px 16px', color: '#dc2626', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+              <LogOut size={15} /> Đăng Xuất
+            </button>
+          </div>
         </header>
 
         {/* Content area */}
@@ -253,7 +526,7 @@ export default function AdminDashboardPage() {
             <div>
               {/* KPI hàng 1 */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 16 }}>
-                <KpiCard icon={<BedDouble size={26} color="#6366f1" />} iconBg="#eef2ff" value={stats.totalRooms} label="Tổng Số Phòng" sub={<span style={{ color: '#22c55e', fontWeight: 600, fontSize: 13 }}>{stats.totalRooms - stats.occupiedRooms} phòng trống</span>} />
+                <KpiCard icon={<BedDouble size={26} color="#6366f1" />} iconBg="#eef2ff" value={stats.totalRooms} label="Tổng Số Loại Phòng" sub={<span style={{ color: '#22c55e', fontWeight: 600, fontSize: 13 }}>{Math.max(0, stats.totalRooms - stats.occupiedRooms)} phòng sẵn sàng</span>} />
                 <KpiCard icon={<BedSingle size={26} color="#f59e0b" />} iconBg="#fffbeb" value={stats.occupiedRooms} label="Phòng Đang Có Khách" sub={<span style={{ color: '#f59e0b', fontWeight: 600, fontSize: 13 }}>Đang lưu trú</span>} />
                 <KpiCard icon={<BookOpen size={26} color="#3b82f6" />} iconBg="#eff6ff" value={stats.totalBookings} label="Tổng Đơn Đặt Phòng" sub={<span style={{ color: '#f59e0b', fontWeight: 600, fontSize: 13 }}>{stats.pending} đang chờ xử lý</span>} />
                 <KpiCard icon={<CheckCircle2 size={26} color="#22c55e" />} iconBg="#f0fdf4" value={stats.confirmed} label="Đơn Đã Xác Nhận" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Hoàn tất đặt phòng</span>} />
@@ -314,9 +587,9 @@ export default function AdminDashboardPage() {
             </div>
           )}
 
-          {/* ══ TAB: KHÁCH SẠN ══ */}
+          {/* ══ TAB: KHÁCH SẠN (FR-13) ══ */}
           {activeTab === 'hotels' && (
-            <SectionCard title={`Danh Sách Khách Sạn & Khu Nghỉ Dưỡng (${hotels.length} cơ sở)`} sub="Thêm mới, cập nhật hoặc xóa khách sạn"
+            <SectionCard title={`Danh Sách Khách Sạn & Khu Nghỉ Dưỡng (${hotels.length} cơ sở)`} sub="Thêm mới, cập nhật hoặc xóa khách sạn khỏi hệ thống"
               action={<ActionBtn onClick={openAddHotel} icon={<Plus size={16} />}>Thêm Khách Sạn Mới</ActionBtn>}>
               <div className="table-responsive">
                 <table className="table table-hover align-middle mb-0" style={{ fontSize: 13 }}>
@@ -326,10 +599,10 @@ export default function AdminDashboardPage() {
                       <td><img src={h.thumbnailUrl} alt={h.name} style={{ width: 64, height: 48, borderRadius: 8, objectFit: 'cover' }} /></td>
                       <td><div style={{ fontWeight: 600, color: '#1e293b' }}>{h.name}</div><div style={{ fontSize: 11, color: '#94a3b8' }}>{h.address}</div></td>
                       <td><span style={{ background: '#f1f5f9', color: '#475569', padding: '3px 10px', borderRadius: 8, fontSize: 12 }}>{h.city}</span></td>
-                      <td style={{ color: '#f59e0b', fontWeight: 700 }}>{'★'.repeat(h.starRating)} {h.starRating} sao</td>
+                      <td style={{ color: '#f59e0b', fontWeight: 700 }}>{'★'.repeat(h.starRating || 5)} {h.starRating} sao</td>
                       <td><span style={{ background: '#dcfce7', color: '#16a34a', padding: '3px 10px', borderRadius: 8, fontSize: 12, fontWeight: 700 }}>{h.ratingScore || 9.0}/10</span></td>
-                      <td style={{ fontWeight: 700, color: '#dc2626' }}>{(h.rooms[0]?.pricePerNight || 0).toLocaleString('vi-VN')} đ</td>
-                      <td>{h.rooms?.length || 1} phòng</td>
+                      <td style={{ fontWeight: 700, color: '#dc2626' }}>{(h.minPrice || h.rooms?.[0]?.pricePerNight || h.pricePerNight || 0).toLocaleString('vi-VN')} đ</td>
+                      <td>{h.totalRooms ?? h.rooms?.length ?? 1} phòng</td>
                       <td><div style={{ display: 'flex', gap: 8 }}>
                         <SmBtn color="blue" onClick={() => openEditHotel(h)} icon={<Edit2 size={12} />}>Sửa</SmBtn>
                         <SmBtn color="red" onClick={() => deleteHotel(h.id)} icon={<Trash2 size={12} />}>Xóa</SmBtn>
@@ -341,24 +614,47 @@ export default function AdminDashboardPage() {
             </SectionCard>
           )}
 
-          {/* ══ TAB: LOẠI PHÒNG ══ */}
+          {/* ══ TAB: LOẠI PHÒNG (FR-14 - CRUD ĐỘC LẬP) ══ */}
           {activeTab === 'rooms' && (
-            <SectionCard title={`Danh Sách Loại Phòng (${stats.allRooms.length} loại)`} sub="Quản lý các loại phòng từ tất cả khách sạn trong hệ thống">
+            <SectionCard title={`Quản Lý Danh Sách Loại Phòng (${roomsList.length} loại phòng)`} sub="Thêm mới, điều chỉnh giá, thay đổi trạng thái (Available/Booked/Maintenance) theo khách sạn"
+              action={<ActionBtn onClick={openAddRoom} icon={<Plus size={16} />}>Thêm Loại Phòng Mới</ActionBtn>}>
               <div className="table-responsive">
                 <table className="table table-hover align-middle mb-0" style={{ fontSize: 13 }}>
-                  <thead style={{ background: '#f8fafc' }}><tr>{['Hình Ảnh', 'Tên Phòng', 'Khách Sạn', 'Loại Giường', 'Diện Tích', 'Sức Chứa', 'Giá/Đêm', 'Hủy Miễn Phí'].map(h => <Th key={h}>{h}</Th>)}</tr></thead>
-                  <tbody>{hotels.flatMap(h => (h.rooms || []).map(r => (
-                    <tr key={r.id}>
-                      <td><img src={r.imageUrl} alt={r.name} style={{ width: 80, height: 50, borderRadius: 8, objectFit: 'cover' }} /></td>
-                      <td><div style={{ fontWeight: 600, color: '#1e293b', maxWidth: 200 }}>{r.name}</div><div style={{ fontSize: 11, color: '#94a3b8', maxWidth: 200 }}>{r.description?.substring(0, 60)}...</div></td>
-                      <td><span style={{ background: '#eff6ff', color: '#3b82f6', padding: '3px 10px', borderRadius: 8, fontSize: 12 }}>{h.name.split(' ').slice(0, 3).join(' ')}</span></td>
-                      <td style={{ fontSize: 12, color: '#374151' }}>{r.bedType}</td>
-                      <td style={{ fontSize: 12 }}>{r.roomSize}</td>
-                      <td><span style={{ background: '#f1f5f9', padding: '3px 8px', borderRadius: 6, fontSize: 12 }}>{r.maxGuests} khách</span></td>
-                      <td><div style={{ fontWeight: 700, color: '#dc2626' }}>{r.pricePerNight?.toLocaleString('vi-VN')} đ</div>{r.originalPrice && <div style={{ fontSize: 11, color: '#94a3b8', textDecoration: 'line-through' }}>{r.originalPrice?.toLocaleString('vi-VN')} đ</div>}</td>
-                      <td>{r.freeCancellation ? <span style={{ background: '#dcfce7', color: '#16a34a', padding: '3px 10px', borderRadius: 8, fontSize: 12 }}>✓ Có</span> : <span style={{ background: '#fee2e2', color: '#dc2626', padding: '3px 10px', borderRadius: 8, fontSize: 12 }}>✕ Không</span>}</td>
-                    </tr>
-                  )))}</tbody>
+                  <thead style={{ background: '#f8fafc' }}>
+                    <tr>{['Hình Ảnh', 'Tên Loại Phòng', 'Khách Sạn', 'Loại Giường', 'Diện Tích', 'Sức Chứa', 'Giá / Đêm', 'Trạng Thái', 'Thao Tác'].map(h => <Th key={h}>{h}</Th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {roomsList.length === 0 ? (
+                      <tr><td colSpan={9}><Empty text="Chưa có loại phòng nào trong hệ thống" /></td></tr>
+                    ) : (
+                      roomsList.map(r => (
+                        <tr key={r.id}>
+                          <td><img src={r.imageUrl || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60'} alt={r.name} style={{ width: 72, height: 48, borderRadius: 8, objectFit: 'cover' }} /></td>
+                          <td>
+                            <div style={{ fontWeight: 600, color: '#1e293b', maxWidth: 190 }}>{r.name}</div>
+                            <div style={{ fontSize: 11, color: '#94a3b8', maxWidth: 190 }}>{r.description ? r.description.substring(0, 50) + '...' : ''}</div>
+                          </td>
+                          <td><span style={{ background: '#eff6ff', color: '#3b82f6', padding: '3px 10px', borderRadius: 8, fontSize: 12 }}>{r.hotelName || 'Khách sạn'}</span></td>
+                          <td style={{ fontSize: 12, color: '#374151' }}>{r.bedType || 'Giường đôi'}</td>
+                          <td style={{ fontSize: 12 }}>{r.roomSize || '35 m²'}</td>
+                          <td><span style={{ background: '#f1f5f9', padding: '3px 8px', borderRadius: 6, fontSize: 12 }}>{r.maxGuests || 2} khách</span></td>
+                          <td style={{ fontWeight: 700, color: '#dc2626' }}>{Number(r.pricePerNight || 0).toLocaleString('vi-VN')} đ</td>
+                          <td>
+                            {r.status === 'AVAILABLE' && <Badge bg="#dcfce7" color="#16a34a">✓ Sẵn Sàng</Badge>}
+                            {r.status === 'BOOKED' && <Badge bg="#fef9c3" color="#92400e">⏳ Có Khách</Badge>}
+                            {r.status === 'MAINTENANCE' && <Badge bg="#fee2e2" color="#dc2626">🛠️ Bảo Trì</Badge>}
+                            {!['AVAILABLE', 'BOOKED', 'MAINTENANCE'].includes(r.status) && <Badge bg="#eff6ff" color="#3b82f6">{r.status || 'AVAILABLE'}</Badge>}
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <SmBtn color="blue" onClick={() => openEditRoom(r)} icon={<Edit2 size={12} />}>Sửa</SmBtn>
+                              <SmBtn color="red" onClick={() => deleteRoom(r.id)} icon={<Trash2 size={12} />}>Xóa</SmBtn>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
                 </table>
               </div>
             </SectionCard>
@@ -634,32 +930,13 @@ export default function AdminDashboardPage() {
                   </ResponsiveContainer>
                 </ChartCard>
               </div>
-              <SectionCard title="Hiệu Suất Từng Khách Sạn" sub="Xếp hạng và doanh thu phân bổ theo từng cơ sở">
-                <div className="table-responsive">
-                  <table className="table table-hover align-middle mb-0" style={{ fontSize: 13 }}>
-                    <thead style={{ background: '#f8fafc' }}><tr>{['#', 'Khách Sạn', 'Thành Phố', 'Hạng Sao', 'Điểm Đánh Giá', 'Số Lượt Đánh Giá', 'Số Phòng', 'Giá TB/Đêm'].map(h => <Th key={h}>{h}</Th>)}</tr></thead>
-                    <tbody>{[...hotels].sort((a, b) => (b.ratingScore || 9) - (a.ratingScore || 9)).map((h, i) => (
-                      <tr key={h.id}>
-                        <td style={{ color: i < 3 ? '#f59e0b' : '#94a3b8', fontWeight: 700 }}>{i < 3 ? '🏆' : ''} #{i + 1}</td>
-                        <td><div style={{ fontWeight: 600, color: '#1e293b' }}>{h.name}</div><div style={{ fontSize: 11, color: '#94a3b8' }}>{h.address?.substring(0, 40)}</div></td>
-                        <td><span style={{ background: '#f1f5f9', color: '#475569', padding: '3px 10px', borderRadius: 8, fontSize: 12 }}>{h.city}</span></td>
-                        <td style={{ color: '#f59e0b', fontWeight: 700 }}>{'★'.repeat(h.starRating)}</td>
-                        <td><span style={{ background: '#dcfce7', color: '#16a34a', padding: '3px 10px', borderRadius: 8, fontWeight: 700 }}>{h.ratingScore}/10</span></td>
-                        <td style={{ fontWeight: 600 }}>{h.reviewCount || 0} đánh giá</td>
-                        <td style={{ fontWeight: 600 }}>{h.rooms?.length || 1} phòng</td>
-                        <td style={{ fontWeight: 700, color: '#dc2626' }}>{Math.round((h.rooms?.reduce((s, r) => s + r.pricePerNight, 0) || 0) / (h.rooms?.length || 1)).toLocaleString('vi-VN')} đ</td>
-                      </tr>
-                    ))}</tbody>
-                  </table>
-                </div>
-              </SectionCard>
             </div>
           )}
 
         </main>
       </div>
 
-      {/* MODAL THÊM/SỬA KHÁCH SẠN */}
+      {/* ════ MODAL THÊM / SỬA KHÁCH SẠN (FR-13) ════ */}
       {showHotelModal && (
         <Modal onClose={() => setShowHotelModal(false)} title={editingHotel ? 'Chỉnh Sửa Thông Tin Khách Sạn' : 'Thêm Khách Sạn Mới Vào Hệ Thống'}>
           <form onSubmit={saveHotel}>
@@ -680,7 +957,64 @@ export default function AdminDashboardPage() {
         </Modal>
       )}
 
-      {/* MODAL HÓA ĐƠN */}
+      {/* ════ MODAL THÊM / SỬA LOẠI PHÒNG (FR-14) ════ */}
+      {showRoomModal && (
+        <Modal onClose={() => setShowRoomModal(false)} title={editingRoom ? 'Chỉnh Sửa Loại Phòng' : 'Thêm Loại Phòng Mới Cho Khách Sạn'}>
+          <form onSubmit={saveRoom}>
+            <div style={{ padding: 24, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div style={{ gridColumn: '1/-1' }}>
+                <FL>Chọn Khách Sạn Thuộc Về *</FL>
+                <select className="form-select" value={roomForm.hotelId} onChange={e => setRoomForm({ ...roomForm, hotelId: e.target.value })} required>
+                  <option value="">-- Chọn khách sạn --</option>
+                  {hotels.map(h => <option key={h.id} value={h.id}>{h.name} ({h.city})</option>)}
+                </select>
+              </div>
+              <div style={{ gridColumn: '1/2' }}>
+                <FL>Tên loại phòng *</FL>
+                <input className="form-control" value={roomForm.name} onChange={e => setRoomForm({ ...roomForm, name: e.target.value })} required placeholder="VD: Phòng Deluxe Giường Đôi Hướng Biển" />
+              </div>
+              <div>
+                <FL>Giá phòng 1 đêm (VNĐ) *</FL>
+                <input type="number" step="50000" className="form-control" value={roomForm.pricePerNight} onChange={e => setRoomForm({ ...roomForm, pricePerNight: e.target.value })} required />
+              </div>
+              <div>
+                <FL>Số lượng khách tối đa *</FL>
+                <input type="number" min="1" max="10" className="form-control" value={roomForm.maxGuests} onChange={e => setRoomForm({ ...roomForm, maxGuests: e.target.value })} required />
+              </div>
+              <div>
+                <FL>Trạng thái phòng *</FL>
+                <select className="form-select" value={roomForm.status} onChange={e => setRoomForm({ ...roomForm, status: e.target.value })}>
+                  <option value="AVAILABLE">AVAILABLE (Sẵn sàng)</option>
+                  <option value="BOOKED">BOOKED (Đang có khách)</option>
+                  <option value="MAINTENANCE">MAINTENANCE (Đang bảo trì)</option>
+                </select>
+              </div>
+              <div>
+                <FL>Loại giường</FL>
+                <input className="form-control" value={roomForm.bedType} onChange={e => setRoomForm({ ...roomForm, bedType: e.target.value })} placeholder="VD: 1 Giường King hoặc 2 Giường đơn" />
+              </div>
+              <div>
+                <FL>Diện tích phòng</FL>
+                <input className="form-control" value={roomForm.roomSize} onChange={e => setRoomForm({ ...roomForm, roomSize: e.target.value })} placeholder="VD: 45 m²" />
+              </div>
+              <div style={{ gridColumn: '1/-1' }}>
+                <FL>URL hình ảnh phòng</FL>
+                <input type="url" className="form-control" value={roomForm.imageUrl} onChange={e => setRoomForm({ ...roomForm, imageUrl: e.target.value })} placeholder="https://..." />
+              </div>
+              <div style={{ gridColumn: '1/-1' }}>
+                <FL>Mô tả chi tiết phòng</FL>
+                <textarea rows={3} className="form-control" value={roomForm.description} onChange={e => setRoomForm({ ...roomForm, description: e.target.value })} placeholder="Nêu các đặc điểm nổi bật, view phòng, tiện ích..." />
+              </div>
+            </div>
+            <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button type="button" onClick={() => setShowRoomModal(false)} style={{ background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: 10, padding: '10px 24px', fontWeight: 600, cursor: 'pointer' }}>Hủy Bỏ</button>
+              <button type="submit" style={{ background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 24px', fontWeight: 700, cursor: 'pointer' }}>{editingRoom ? 'Lưu Thay Đổi' : 'Tạo Loại Phòng'}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* ════ MODAL HÓA ĐƠN LỄ TÂN ════ */}
       {selectedInvoice && (
         <Modal onClose={() => setSelectedInvoice(null)} title="Xem Trước Hóa Đơn Dịch Vụ & Phiếu Thu Lễ Tân" dark
           action={<button onClick={() => window.print()} style={{ background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}><Printer size={14} /> In Hóa Đơn</button>}>
