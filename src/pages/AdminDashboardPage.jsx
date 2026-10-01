@@ -1,245 +1,185 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { MOCK_HOTELS } from '../data/mockData';
-import { 
-  LayoutDashboard, Building, BookOpen, LogOut, Plus, Edit2, 
-  Trash2, CheckCircle, XCircle, Search, DollarSign, Calendar, 
-  Users, Star, ShieldAlert, ArrowLeft, Home, Eye, ExternalLink,
-  Printer, FileText, Receipt, Banknote, MapPin, Phone, Mail, CheckCircle2
+import {
+  LayoutDashboard, Building, BookOpen, LogOut, Plus, Edit2,
+  Trash2, Search, DollarSign, Calendar, Users, Star,
+  ShieldAlert, ExternalLink, Printer, Receipt, Banknote,
+  CheckCircle2, BedDouble, BedSingle, ChevronRight, Menu, X,
+  TrendingUp, ClipboardList, LogIn, LogOut as LogOutIcon,
+  BarChart2, CreditCard, Tag, MessageSquare, FileBarChart
 } from 'lucide-react';
+import {
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, Area, AreaChart
+} from 'recharts';
+
+// ─── Dữ liệu biểu đồ 7 ngày gần nhất (mô phỏng) ───────────────────────────
+const last7Days = (() => {
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    days.push({
+      ngay: d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }),
+      doanhThu: Math.floor(Math.random() * 8000000) + 2000000,
+      daDat: Math.floor(Math.random() * 6) + 1,
+    });
+  }
+  return days;
+})();
+
+// ─── Tooltip tuỳ chỉnh cho biểu đồ Doanh thu ──────────────────────────────
+const CustomRevenueTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '8px 14px', fontSize: 13 }}>
+        <p style={{ margin: 0, color: '#6b7280' }}>{label}</p>
+        <p style={{ margin: 0, fontWeight: 700, color: '#2563eb' }}>
+          {payload[0].value.toLocaleString('vi-VN')} đ
+        </p>
+      </div>
+    );
+  }
+  return null;
+};
+
+// ─── Các mục menu Sidebar ──────────────────────────────────────────────────
+const SIDEBAR_MENU = [
+  { group: 'TỔNG QUAN', items: [{ key: 'dashboard', label: 'Tổng Quan', icon: <LayoutDashboard size={17} /> }] },
+  {
+    group: 'QUẢN LÝ KHO PHÒNG',
+    items: [
+      { key: 'hotels', label: 'Khách Sạn', icon: <Building size={17} /> },
+      { key: 'rooms', label: 'Loại Phòng', icon: <BedDouble size={17} /> },
+      { key: 'amenities', label: 'Tiện Nghi', icon: <Star size={17} /> },
+    ]
+  },
+  {
+    group: 'VẬN HÀNH',
+    items: [
+      { key: 'bookings', label: 'Đặt Phòng', icon: <BookOpen size={17} /> },
+      { key: 'customers', label: 'Khách Hàng', icon: <Users size={17} /> },
+      { key: 'payments', label: 'Thanh Toán', icon: <CreditCard size={17} /> },
+      { key: 'coupons', label: 'Khuyến Mãi', icon: <Tag size={17} /> },
+      { key: 'reviews', label: 'Đánh Giá', icon: <MessageSquare size={17} /> },
+    ]
+  },
+  { group: 'PHÂN TÍCH', items: [{ key: 'reports', label: 'Báo Cáo', icon: <FileBarChart size={17} /> }] },
+];
 
 export default function AdminDashboardPage() {
   const navigate = useNavigate();
   const { user, isAdmin, login, logout } = useAuth();
 
-  // Tab đang hoạt động trong Admin: 'dashboard', 'hotels', 'bookings'
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  // State danh sách khách sạn quản trị (lưu vào localStorage để có hiệu lực toàn app)
+  // ── Dữ liệu khách sạn ──
   const [hotels, setHotels] = useState(() => {
     try {
       const saved = localStorage.getItem('traveloka_custom_hotels');
       return saved ? JSON.parse(saved) : MOCK_HOTELS;
-    } catch (e) {
-      return MOCK_HOTELS;
-    }
+    } catch { return MOCK_HOTELS; }
   });
 
-  // State danh sách đơn đặt phòng
+  // ── Dữ liệu đơn đặt phòng ──
   const [bookings, setBookings] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('traveloka_bookings') || '[]');
-    } catch (e) {
-      return [];
-    }
+    try { return JSON.parse(localStorage.getItem('traveloka_bookings') || '[]'); }
+    catch { return []; }
   });
 
-  // Đồng bộ khách sạn vào localStorage khi có thay đổi
-  const updateHotelsState = (newHotels) => {
-    setHotels(newHotels);
-    localStorage.setItem('traveloka_custom_hotels', JSON.stringify(newHotels));
+  const updateHotelsState = (next) => {
+    setHotels(next);
+    localStorage.setItem('traveloka_custom_hotels', JSON.stringify(next));
+  };
+  const updateBookingsState = (next) => {
+    setBookings(next);
+    localStorage.setItem('traveloka_bookings', JSON.stringify(next));
   };
 
-  // Đồng bộ đơn đặt phòng
-  const updateBookingsState = (newBookings) => {
-    setBookings(newBookings);
-    localStorage.setItem('traveloka_bookings', JSON.stringify(newBookings));
-  };
-
-  // State Modal Thêm / Sửa Khách Sạn
+  // ── Modal khách sạn ──
   const [showHotelModal, setShowHotelModal] = useState(false);
   const [editingHotel, setEditingHotel] = useState(null);
-  const [hotelFormData, setHotelFormData] = useState({
-    name: '',
-    city: 'Hồ Chí Minh',
-    address: '',
-    starRating: 5,
-    pricePerNight: 1200000,
+  const [hotelForm, setHotelForm] = useState({
+    name: '', city: 'Hồ Chí Minh', address: '',
+    starRating: 5, pricePerNight: 1200000,
     description: '',
     thumbnailUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&auto=format&fit=crop&q=60'
   });
 
-  // Mở modal thêm khách sạn
   const handleOpenAddHotel = () => {
     setEditingHotel(null);
-    setHotelFormData({
-      name: '',
-      city: 'Hồ Chí Minh',
-      address: '',
-      starRating: 5,
-      pricePerNight: 1200000,
-      description: '',
-      thumbnailUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&auto=format&fit=crop&q=60'
-    });
+    setHotelForm({ name: '', city: 'Hồ Chí Minh', address: '', starRating: 5, pricePerNight: 1200000, description: '', thumbnailUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&auto=format&fit=crop&q=60' });
     setShowHotelModal(true);
   };
-
-  // Mở modal sửa khách sạn
   const handleOpenEditHotel = (h) => {
     setEditingHotel(h);
-    setHotelFormData({
-      name: h.name,
-      city: h.city,
-      address: h.address,
-      starRating: h.starRating,
-      pricePerNight: h.rooms[0]?.pricePerNight || 1000000,
-      description: h.description,
-      thumbnailUrl: h.thumbnailUrl
-    });
+    setHotelForm({ name: h.name, city: h.city, address: h.address, starRating: h.starRating, pricePerNight: h.rooms[0]?.pricePerNight || 1000000, description: h.description, thumbnailUrl: h.thumbnailUrl });
     setShowHotelModal(true);
   };
-
-  // Lưu Khách Sạn (Thêm hoặc Sửa)
   const handleSaveHotel = (e) => {
     e.preventDefault();
     if (editingHotel) {
-      // Sửa
-      const updated = hotels.map(h => {
-        if (h.id === editingHotel.id) {
-          return {
-            ...h,
-            name: hotelFormData.name,
-            city: hotelFormData.city,
-            address: hotelFormData.address,
-            starRating: Number(hotelFormData.starRating),
-            description: hotelFormData.description,
-            thumbnailUrl: hotelFormData.thumbnailUrl,
-            rooms: [
-              {
-                ...h.rooms[0],
-                pricePerNight: Number(hotelFormData.pricePerNight),
-                name: `Phòng Tiêu Chuẩn - ${hotelFormData.name}`
-              },
-              ...(h.rooms.slice(1))
-            ]
-          };
-        }
-        return h;
-      });
-      updateHotelsState(updated);
+      updateHotelsState(hotels.map(h => h.id === editingHotel.id ? {
+        ...h, name: hotelForm.name, city: hotelForm.city, address: hotelForm.address,
+        starRating: Number(hotelForm.starRating), description: hotelForm.description,
+        thumbnailUrl: hotelForm.thumbnailUrl,
+        rooms: [{ ...h.rooms[0], pricePerNight: Number(hotelForm.pricePerNight), name: `Phòng Tiêu Chuẩn - ${hotelForm.name}` }, ...h.rooms.slice(1)]
+      } : h));
     } else {
-      // Thêm mới
       const newHotel = {
-        id: Date.now(),
-        name: hotelFormData.name,
-        city: hotelFormData.city,
-        address: hotelFormData.address,
-        starRating: Number(hotelFormData.starRating),
-        ratingScore: 9.0,
-        ratingText: "Tuyệt vời",
-        reviewCount: 1,
-        thumbnailUrl: hotelFormData.thumbnailUrl,
-        images: [hotelFormData.thumbnailUrl],
-        description: hotelFormData.description,
-        amenities: ["Wifi miễn phí", "Hồ bơi", "Bữa sáng miễn phí", "Lễ tân 24/7"],
-        rooms: [
-          {
-            id: Date.now() + 1,
-            name: `Phòng Deluxe Giường Đôi`,
-            pricePerNight: Number(hotelFormData.pricePerNight),
-            originalPrice: Number(hotelFormData.pricePerNight) * 1.2,
-            maxGuests: 2,
-            bedType: "1 Giường lớn (King)",
-            roomSize: "35 m²",
-            imageUrl: hotelFormData.thumbnailUrl,
-            description: "Phòng nghỉ hiện đại với đầy đủ tiện nghi cao cấp.",
-            amenities: ["Bao gồm bữa sáng", "Wifi miễn phí", "Điều hòa"],
-            freeCancellation: true
-          }
-        ]
+        id: `hotel-${Date.now()}`, name: hotelForm.name, city: hotelForm.city, address: hotelForm.address,
+        starRating: Number(hotelForm.starRating), description: hotelForm.description, thumbnailUrl: hotelForm.thumbnailUrl,
+        rooms: [{ id: `room-${Date.now()}`, name: `Phòng Tiêu Chuẩn - ${hotelForm.name}`, pricePerNight: Number(hotelForm.pricePerNight), maxOccupancy: 2, bedType: 'Giường đôi', size: 28, amenities: ['WiFi miễn phí', 'Điều hòa', 'TV màn hình phẳng'] }]
       };
       updateHotelsState([newHotel, ...hotels]);
     }
     setShowHotelModal(false);
   };
-
-  // Xóa Khách Sạn
   const handleDeleteHotel = (id) => {
-    if (window.confirm('Bạn có chắc chắn muốn xóa khách sạn này khỏi hệ thống không?')) {
-      const updated = hotels.filter(h => h.id !== id);
-      updateHotelsState(updated);
-    }
+    if (window.confirm('Bạn có chắc chắn muốn xóa khách sạn này không?')) updateHotelsState(hotels.filter(h => h.id !== id));
   };
 
-  // Thay đổi trạng thái đơn đặt phòng từ Admin (Xác nhận / Hủy)
-  const handleToggleBookingStatus = (id, newStatus) => {
-    const updated = bookings.map(b => {
-      if (b.id === id) {
-        return { ...b, status: newStatus };
-      }
-      return b;
-    });
-    updateBookingsState(updated);
-  };
+  // ── Quản lý đơn đặt phòng ──
+  const [bookingSearch, setBookingSearch] = useState('');
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
 
-  // State tìm kiếm đơn đặt phòng
-  const [bookingSearchQuery, setBookingSearchQuery] = useState('');
-
-  // State Modal Hóa Đơn / Phiếu Thu Lễ Tân
-  const [selectedInvoiceBooking, setSelectedInvoiceBooking] = useState(null);
-
-  // Nghiệp vụ Lễ tân: Xác nhận đã thu tiền mặt tại quầy & Mở hóa đơn
+  const handleToggleBookingStatus = (id, status) => updateBookingsState(bookings.map(b => b.id === id ? { ...b, status } : b));
   const handleMarkAsPaid = (id) => {
-    const updated = bookings.map(b => {
-      if (b.id === id) {
-        return { 
-          ...b, 
-          paymentStatus: 'paid', 
-          status: 'confirmed',
-          paidAt: new Date().toLocaleDateString('vi-VN') + ' ' + new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-        };
-      }
-      return b;
-    });
-    updateBookingsState(updated);
-    
-    // Tự động mở ngay Hóa đơn / Phiếu thu cho lễ tân in
-    const target = updated.find(b => b.id === id);
-    if (target) {
-      setSelectedInvoiceBooking(target);
-    }
+    const next = bookings.map(b => b.id === id ? { ...b, paymentStatus: 'paid', status: 'confirmed', paidAt: new Date().toLocaleString('vi-VN') } : b);
+    updateBookingsState(next);
+    setSelectedInvoice(next.find(b => b.id === id));
   };
 
-  // Mở modal hóa đơn để xem lại hoặc in lại
-  const handleOpenInvoice = (b) => {
-    setSelectedInvoiceBooking(b);
-  };
-
-  // Danh sách đơn được lọc theo từ khóa tìm kiếm của lễ tân
-  const searchedBookings = useMemo(() => {
-    if (!bookingSearchQuery.trim()) return bookings;
-    const q = bookingSearchQuery.toLowerCase();
-    return bookings.filter(b => 
-      b.id?.toLowerCase().includes(q) ||
-      b.contactName?.toLowerCase().includes(q) ||
-      b.guestName?.toLowerCase().includes(q) ||
-      b.contactPhone?.toLowerCase().includes(q) ||
+  const filteredBookings = useMemo(() => {
+    if (!bookingSearch.trim()) return bookings;
+    const q = bookingSearch.toLowerCase();
+    return bookings.filter(b =>
+      b.id?.toLowerCase().includes(q) || b.contactName?.toLowerCase().includes(q) ||
+      b.guestName?.toLowerCase().includes(q) || b.contactPhone?.toLowerCase().includes(q) ||
       b.hotelName?.toLowerCase().includes(q)
     );
-  }, [bookings, bookingSearchQuery]);
+  }, [bookings, bookingSearch]);
 
-  // Tính toán thống kê KPI
+  // ── Thống kê KPI ──
   const stats = useMemo(() => {
-    const totalRevenue = bookings
-      .filter(b => b.status === 'confirmed')
-      .reduce((sum, b) => sum + (b.totalAmount || 0), 0);
-
-    const totalRooms = hotels.reduce((sum, h) => sum + (h.rooms?.length || 1), 0);
+    const today = new Date().toLocaleDateString('vi-VN');
+    const totalRooms = hotels.reduce((s, h) => s + (h.rooms?.length || 1), 0);
+    const occupiedRooms = bookings.filter(b => b.status === 'confirmed').length;
     const confirmedCount = bookings.filter(b => b.status === 'confirmed').length;
-    const cancelledCount = bookings.filter(b => b.status === 'cancelled').length;
-
-    return {
-      totalRevenue,
-      totalHotels: hotels.length,
-      totalRooms,
-      totalBookings: bookings.length,
-      confirmedCount,
-      cancelledCount
-    };
+    const pendingCount = bookings.filter(b => !b.status || b.status === 'pending').length;
+    const totalRevenue = bookings.filter(b => b.status === 'confirmed').reduce((s, b) => s + (b.totalAmount || 0), 0);
+    const todayCheckins = bookings.filter(b => b.checkInDate === today).length;
+    const todayCheckouts = bookings.filter(b => b.checkOutDate === today).length;
+    const uniqueCustomers = new Set(bookings.map(b => b.contactPhone).filter(Boolean)).size;
+    return { totalRooms, occupiedRooms, confirmedCount, pendingCount, totalRevenue, todayCheckins, todayCheckouts, uniqueCustomers, totalBookings: bookings.length };
   }, [hotels, bookings]);
 
-  // NẾU CHƯA ĐĂNG NHẬP HOẶC KHÔNG PHẢI ADMIN: HIỂN THỊ CẢNH BÁO & NÚT LOGIN 1-CLICK
+  // ─────────────────────────────────────────────────────────────────────────
+  // MÀN HÌNH BẢO VỆ (Chưa đăng nhập / Không có quyền Admin)
+  // ─────────────────────────────────────────────────────────────────────────
   if (!isAdmin) {
     return (
       <div className="bg-light min-vh-100 py-5 page-top-spacing d-flex align-items-center">
@@ -250,23 +190,13 @@ export default function AdminDashboardPage() {
                 <div className="d-inline-flex p-3 bg-danger-subtle text-danger rounded-circle mb-3 mx-auto">
                   <ShieldAlert size={48} />
                 </div>
-                <h3 className="fw-bold text-dark mb-2">Khu Vực Quản Trị Viên (Admin)</h3>
-                <p className="text-secondary mb-4">
-                  Bạn cần đăng nhập bằng tài khoản có quyền Quản trị viên (`role: 'admin'`) để truy cập vào hệ thống này.
-                </p>
-
+                <h3 className="fw-bold text-dark mb-2">Khu Vực Quản Trị Viên</h3>
+                <p className="text-secondary mb-4">Bạn cần đăng nhập bằng tài khoản có quyền Quản trị viên để truy cập vào hệ thống này.</p>
                 <div className="d-flex flex-column gap-2">
-                  <button 
-                    onClick={() => {
-                      login('admin@traveloka.vn', 'admin123');
-                    }}
-                    className="btn btn-primary btn-lg fw-bold rounded-pill shadow-sm"
-                  >
+                  <button onClick={() => login('admin@traveloka.vn', 'admin123')} className="btn btn-primary btn-lg fw-bold rounded-pill shadow-sm">
                     ⚡ Đăng nhập nhanh với quyền Admin mẫu
                   </button>
-                  <Link to="/" className="btn btn-light rounded-pill py-2 text-secondary">
-                    Quay lại trang chủ
-                  </Link>
+                  <Link to="/" className="btn btn-light rounded-pill py-2 text-secondary">Quay lại trang chủ</Link>
                 </div>
               </div>
             </div>
@@ -276,178 +206,421 @@ export default function AdminDashboardPage() {
     );
   }
 
-  // GIAO DIỆN ADMIN CHÍNH THỨC
+  // ─────────────────────────────────────────────────────────────────────────
+  // GIAO DIỆN ADMIN DASHBOARD CHÍNH
+  // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-vh-100 bg-light d-flex flex-column page-top-spacing">
-      
-      {/* Top Bar Admin */}
-      <div className="bg-dark text-white py-2 px-4 d-flex justify-content-between align-items-center shadow-sm">
-        <div className="d-flex align-items-center gap-3">
-          <span className="badge bg-warning text-dark fw-bold px-3 py-1 rounded-pill">
-            ADMIN PORTAL
-          </span>
-          <span className="small text-white-50 d-none d-md-inline">
-            Hệ thống Quản trị Traveloka Hotel Booking
-          </span>
-        </div>
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
 
-        <div className="d-flex align-items-center gap-3">
-          <Link to="/" className="btn btn-outline-light btn-sm d-flex align-items-center gap-1 rounded-pill px-3">
-            <ExternalLink size={14} /> Xem trang người dùng
-          </Link>
-          <button 
-            onClick={() => {
-              logout();
-              navigate('/');
-            }}
-            className="btn btn-danger btn-sm d-flex align-items-center gap-1 rounded-pill px-3"
-          >
-            <LogOut size={14} /> Đăng xuất
-          </button>
-        </div>
-      </div>
-
-      <div className="container-fluid py-4 px-lg-5 flex-grow-1">
-        
-        {/* Navigation Tabs */}
-        <div className="card border-0 shadow-sm rounded-4 p-2 bg-white mb-4">
-          <div className="d-flex gap-2 flex-wrap">
-            <button 
-              className={`btn rounded-pill px-4 fw-semibold d-flex align-items-center gap-2 ${activeTab === 'dashboard' ? 'btn-primary' : 'btn-light text-secondary'}`}
-              onClick={() => setActiveTab('dashboard')}
-            >
-              <LayoutDashboard size={18} /> Tổng Quan (Dashboard)
-            </button>
-            <button 
-              className={`btn rounded-pill px-4 fw-semibold d-flex align-items-center gap-2 ${activeTab === 'hotels' ? 'btn-primary' : 'btn-light text-secondary'}`}
-              onClick={() => setActiveTab('hotels')}
-            >
-              <Building size={18} /> Quản Lý Khách Sạn ({hotels.length})
-            </button>
-            <button 
-              className={`btn rounded-pill px-4 fw-semibold d-flex align-items-center gap-2 ${activeTab === 'bookings' ? 'btn-primary' : 'btn-light text-secondary'}`}
-              onClick={() => setActiveTab('bookings')}
-            >
-              <BookOpen size={18} /> Quản Lý Đơn Đặt Phòng ({bookings.length})
-            </button>
+      {/* ══════════════════ SIDEBAR ══════════════════ */}
+      <aside style={{
+        width: sidebarOpen ? 240 : 0,
+        minWidth: sidebarOpen ? 240 : 0,
+        background: '#1e293b',
+        display: 'flex',
+        flexDirection: 'column',
+        transition: 'all 0.25s ease',
+        overflow: 'hidden',
+        flexShrink: 0,
+        zIndex: 100,
+      }}>
+        {/* Logo */}
+        <div style={{ padding: '20px 20px 12px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 36, height: 36, background: '#f59e0b', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Building size={20} color="#fff" />
+            </div>
+            <div>
+              <div style={{ color: '#fff', fontWeight: 700, fontSize: 15, lineHeight: 1.2 }}>Traveloka</div>
+              <div style={{ color: '#94a3b8', fontSize: 11 }}>Quản Trị Khách Sạn</div>
+            </div>
           </div>
         </div>
 
-        {/* ================= TAB 1: DASHBOARD TỔNG QUAN ================= */}
-        {activeTab === 'dashboard' && (
-          <div>
-            {/* 4 Thẻ KPI */}
-            <div className="row g-4 mb-4">
-              
-              {/* Doanh thu */}
-              <div className="col-xl-3 col-md-6">
-                <div className="card border-0 shadow-sm rounded-4 p-4 bg-white h-100">
-                  <div className="d-flex justify-content-between align-items-start mb-2">
-                    <span className="text-secondary small fw-semibold text-uppercase">Tổng Doanh Thu</span>
-                    <div className="p-2 bg-success-subtle text-success rounded-3">
-                      <DollarSign size={22} />
-                    </div>
-                  </div>
-                  <h3 className="fw-bold text-dark mb-1">
-                    {stats.totalRevenue.toLocaleString('vi-VN')} đ
-                  </h3>
-                  <small className="text-success fw-semibold">
-                    ✓ Từ {stats.confirmedCount} đơn phòng đã xác nhận
-                  </small>
-                </div>
-              </div>
+        {/* Thông tin Admin */}
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+            {(user?.name || 'A').charAt(0).toUpperCase()}
+          </div>
+          <div style={{ overflow: 'hidden' }}>
+            <div style={{ color: '#f1f5f9', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.name || 'Quản trị viên'}</div>
+            <div style={{ color: '#64748b', fontSize: 11 }}>Quản Trị Viên</div>
+          </div>
+        </div>
 
-              {/* Tổng số đơn đặt phòng */}
-              <div className="col-xl-3 col-md-6">
-                <div className="card border-0 shadow-sm rounded-4 p-4 bg-white h-100">
-                  <div className="d-flex justify-content-between align-items-start mb-2">
-                    <span className="text-secondary small fw-semibold text-uppercase">Đơn Đặt Phòng</span>
-                    <div className="p-2 bg-primary-subtle text-primary rounded-3">
-                      <BookOpen size={22} />
-                    </div>
-                  </div>
-                  <h3 className="fw-bold text-dark mb-1">{stats.totalBookings} đơn</h3>
-                  <small className="text-secondary">
-                    {stats.confirmedCount} thành công, {stats.cancelledCount} đã hủy
-                  </small>
-                </div>
+        {/* Menu điều hướng */}
+        <nav style={{ flex: 1, overflowY: 'auto', padding: '10px 0' }}>
+          {SIDEBAR_MENU.map(group => (
+            <div key={group.group} style={{ marginBottom: 6 }}>
+              <div style={{ padding: '8px 20px 4px', color: '#475569', fontSize: 10, fontWeight: 700, letterSpacing: '0.8px', textTransform: 'uppercase' }}>
+                {group.group}
               </div>
-
-              {/* Khách sạn quản lý */}
-              <div className="col-xl-3 col-md-6">
-                <div className="card border-0 shadow-sm rounded-4 p-4 bg-white h-100">
-                  <div className="d-flex justify-content-between align-items-start mb-2">
-                    <span className="text-secondary small fw-semibold text-uppercase">Khách Sạn & Resort</span>
-                    <div className="p-2 bg-info-subtle text-info rounded-3">
-                      <Building size={22} />
-                    </div>
-                  </div>
-                  <h3 className="fw-bold text-dark mb-1">{stats.totalHotels} cơ sở</h3>
-                  <small className="text-secondary">
-                    Tổng cộng {stats.totalRooms} loại phòng lưu trú
-                  </small>
-                </div>
-              </div>
-
-              {/* Đánh giá dịch vụ */}
-              <div className="col-xl-3 col-md-6">
-                <div className="card border-0 shadow-sm rounded-4 p-4 bg-white h-100">
-                  <div className="d-flex justify-content-between align-items-start mb-2">
-                    <span className="text-secondary small fw-semibold text-uppercase">Đánh Giá Uy Tín</span>
-                    <div className="p-2 bg-warning-subtle text-warning rounded-3">
-                      <Star size={22} />
-                    </div>
-                  </div>
-                  <h3 className="fw-bold text-dark mb-1">9.4 / 10</h3>
-                  <small className="text-secondary">
-                    Dựa trên 1.500+ phản hồi khách lưu trú
-                  </small>
-                </div>
-              </div>
-
+              {group.items.map(item => (
+                <button
+                  key={item.key}
+                  onClick={() => setActiveTab(item.key)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    width: '100%', padding: '9px 20px',
+                    background: activeTab === item.key ? 'rgba(245,158,11,0.18)' : 'transparent',
+                    border: 'none', cursor: 'pointer',
+                    color: activeTab === item.key ? '#f59e0b' : '#94a3b8',
+                    fontWeight: activeTab === item.key ? 700 : 400,
+                    fontSize: 13.5, textAlign: 'left',
+                    borderLeft: activeTab === item.key ? '3px solid #f59e0b' : '3px solid transparent',
+                    transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={e => { if (activeTab !== item.key) { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = '#e2e8f0'; } }}
+                  onMouseLeave={e => { if (activeTab !== item.key) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8'; } }}
+                >
+                  <span style={{ opacity: activeTab === item.key ? 1 : 0.7 }}>{item.icon}</span>
+                  {item.label}
+                </button>
+              ))}
             </div>
+          ))}
+        </nav>
 
-            {/* Bảng đơn mới nhất trong dashboard */}
-            <div className="card border-0 shadow-sm rounded-4 p-4 bg-white">
-              <div className="d-flex justify-content-between align-items-center mb-3">
-                <h5 className="fw-bold text-dark mb-0">Các Đơn Đặt Phòng Mới Nhất</h5>
-                <button onClick={() => setActiveTab('bookings')} className="btn btn-sm btn-link text-primary text-decoration-none">
-                  Xem tất cả đơn đặt phòng &gt;
+        {/* Quay lại trang web */}
+        <div style={{ padding: '12px 0', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+          <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 20px', color: '#94a3b8', textDecoration: 'none', fontSize: 13.5 }}>
+            <ExternalLink size={17} style={{ opacity: 0.7 }} /> Quay Lại Trang Web
+          </Link>
+        </div>
+      </aside>
+
+      {/* ══════════════════ PHẦN NỘI DUNG CHÍNH ══════════════════ */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#f8fafc' }}>
+
+        {/* Thanh Header trên */}
+        <header style={{
+          background: '#fff', borderBottom: '1px solid #e2e8f0',
+          padding: '0 24px', height: 60, display: 'flex',
+          alignItems: 'center', justifyContent: 'space-between', flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center' }}>
+              <Menu size={22} />
+            </button>
+            <div>
+              <span style={{ color: '#1e293b', fontWeight: 700, fontSize: 16 }}>
+                {activeTab === 'dashboard' && 'Tổng Quan'}
+                {activeTab === 'hotels' && 'Quản Lý Khách Sạn'}
+                {activeTab === 'bookings' && 'Quản Lý Đặt Phòng'}
+                {activeTab === 'customers' && 'Quản Lý Khách Hàng'}
+                {activeTab === 'payments' && 'Quản Lý Thanh Toán'}
+                {activeTab === 'rooms' && 'Quản Lý Loại Phòng'}
+                {activeTab === 'amenities' && 'Tiện Nghi Khách Sạn'}
+                {activeTab === 'coupons' && 'Quản Lý Khuyến Mãi'}
+                {activeTab === 'reviews' && 'Đánh Giá Từ Khách'}
+                {activeTab === 'reports' && 'Báo Cáo & Phân Tích'}
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={() => { logout(); navigate('/'); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#fee2e2', border: 'none', borderRadius: 20, padding: '7px 16px', color: '#dc2626', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+          >
+            <LogOut size={15} /> Đăng Xuất
+          </button>
+        </header>
+
+        {/* Vùng nội dung cuộn */}
+        <main style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+
+          {/* ════════ TAB: TỔNG QUAN ════════ */}
+          {activeTab === 'dashboard' && (
+            <div>
+              {/* Hàng 1 – 4 thẻ KPI trên */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 16 }}>
+                <KpiCard
+                  icon={<BedDouble size={26} color="#6366f1" />}
+                  iconBg="#eef2ff"
+                  value={stats.totalRooms}
+                  label="Tổng Số Phòng"
+                  sub={<span style={{ color: '#22c55e', fontWeight: 600, fontSize: 13 }}>{stats.totalRooms - stats.occupiedRooms} phòng trống</span>}
+                />
+                <KpiCard
+                  icon={<BedSingle size={26} color="#f59e0b" />}
+                  iconBg="#fffbeb"
+                  value={stats.occupiedRooms}
+                  label="Phòng Đã Lấp Đầy"
+                  sub={<span style={{ color: '#f59e0b', fontWeight: 600, fontSize: 13 }}>Đang có khách</span>}
+                />
+                <KpiCard
+                  icon={<BookOpen size={26} color="#3b82f6" />}
+                  iconBg="#eff6ff"
+                  value={stats.totalBookings}
+                  label="Tổng Đơn Đặt Phòng"
+                  sub={<span style={{ color: '#f59e0b', fontWeight: 600, fontSize: 13 }}>{stats.pendingCount} đang chờ xử lý</span>}
+                />
+                <KpiCard
+                  icon={<CheckCircle2 size={26} color="#22c55e" />}
+                  iconBg="#f0fdf4"
+                  value={stats.confirmedCount}
+                  label="Đơn Đã Xác Nhận"
+                  sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Đã hoàn tất đặt phòng</span>}
+                />
+              </div>
+
+              {/* Hàng 2 – 4 thẻ KPI dưới */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+                <KpiCard
+                  icon={<LogIn size={26} color="#8b5cf6" />}
+                  iconBg="#f5f3ff"
+                  value={stats.todayCheckins}
+                  label="Nhận Phòng Hôm Nay"
+                  sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Khách Check-in</span>}
+                />
+                <KpiCard
+                  icon={<LogOutIcon size={26} color="#ec4899" />}
+                  iconBg="#fdf2f8"
+                  value={stats.todayCheckouts}
+                  label="Trả Phòng Hôm Nay"
+                  sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Khách Check-out</span>}
+                />
+                <KpiCard
+                  icon={<Users size={26} color="#06b6d4" />}
+                  iconBg="#ecfeff"
+                  value={stats.uniqueCustomers}
+                  label="Tổng Khách Hàng"
+                  sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Khách hàng đã đặt phòng</span>}
+                />
+                <KpiCard
+                  icon={<DollarSign size={26} color="#fff" />}
+                  iconBg="#f59e0b"
+                  iconBgFull
+                  value={stats.totalRevenue.toLocaleString('vi-VN') + ' đ'}
+                  label="Tổng Doanh Thu"
+                  sub={<span style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13 }}>Từ đơn đã xác nhận</span>}
+                  dark
+                />
+              </div>
+
+              {/* Hàng biểu đồ */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                {/* Biểu đồ Doanh thu 7 ngày */}
+                <div style={{ background: '#fff', borderRadius: 14, padding: '20px 20px 12px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontWeight: 700, color: '#1e293b', fontSize: 15 }}>Doanh Thu – 7 Ngày Gần Nhất</div>
+                    <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 2 }}>Tính theo đơn đặt phòng đã xác nhận</div>
+                  </div>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <AreaChart data={last7Days} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorDT" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
+                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis dataKey="ngay" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={v => (v / 1000000).toFixed(1) + 'tr'} />
+                      <Tooltip content={<CustomRevenueTooltip />} />
+                      <Area type="monotone" dataKey="doanhThu" stroke="#3b82f6" strokeWidth={2.5} fill="url(#colorDT)" dot={{ r: 3, fill: '#3b82f6', strokeWidth: 0 }} activeDot={{ r: 5 }} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Biểu đồ Đặt phòng 7 ngày */}
+                <div style={{ background: '#fff', borderRadius: 14, padding: '20px 20px 12px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontWeight: 700, color: '#1e293b', fontSize: 15 }}>Đặt Phòng – 7 Ngày Gần Nhất</div>
+                    <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 2 }}>Tổng số đơn đặt phòng từng ngày</div>
+                  </div>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={last7Days} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis dataKey="ngay" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                      <Tooltip formatter={(v) => [v + ' đơn', 'Đặt phòng']} labelStyle={{ color: '#64748b', fontSize: 12 }} contentStyle={{ borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 13 }} />
+                      <Bar dataKey="daDat" fill="#f59e0b" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Bảng đơn mới nhất */}
+              <div style={{ background: '#fff', borderRadius: 14, padding: 20, boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginTop: 20 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                  <div style={{ fontWeight: 700, color: '#1e293b', fontSize: 15 }}>Đơn Đặt Phòng Mới Nhất</div>
+                  <button onClick={() => setActiveTab('bookings')} style={{ background: 'none', border: 'none', color: '#3b82f6', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    Xem tất cả →
+                  </button>
+                </div>
+                {bookings.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '30px 0', color: '#94a3b8', fontSize: 14 }}>Chưa có đơn đặt phòng nào</div>
+                ) : (
+                  <div className="table-responsive">
+                    <table className="table table-hover align-middle mb-0" style={{ fontSize: 13 }}>
+                      <thead style={{ background: '#f8fafc' }}>
+                        <tr>
+                          <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none', paddingBottom: 10 }}>Mã Đơn</th>
+                          <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none' }}>Khách Hàng</th>
+                          <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none' }}>Khách Sạn</th>
+                          <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none' }}>Ngày Lưu Trú</th>
+                          <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none' }}>Tổng Tiền</th>
+                          <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none' }}>Trạng Thái</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bookings.slice(0, 5).map(b => (
+                          <tr key={b.id}>
+                            <td className="fw-bold text-primary font-monospace" style={{ fontSize: 12 }}>{b.id}</td>
+                            <td>
+                              <div style={{ fontWeight: 600, color: '#1e293b' }}>{b.contactName || b.guestName}</div>
+                              <div style={{ fontSize: 11, color: '#94a3b8' }}>{b.contactPhone}</div>
+                            </td>
+                            <td style={{ color: '#374151', fontWeight: 500 }}>{b.hotelName}</td>
+                            <td style={{ color: '#64748b', fontSize: 12 }}>{b.checkInDate} → {b.checkOutDate}</td>
+                            <td style={{ fontWeight: 700, color: '#dc2626' }}>{b.totalAmount?.toLocaleString('vi-VN')} đ</td>
+                            <td>
+                              {b.status === 'confirmed'
+                                ? <span style={{ background: '#dcfce7', color: '#16a34a', padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>✓ Xác nhận</span>
+                                : <span style={{ background: '#fee2e2', color: '#dc2626', padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>✕ Đã hủy</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ════════ TAB: QUẢN LÝ KHÁCH SẠN ════════ */}
+          {activeTab === 'hotels' && (
+            <div style={{ background: '#fff', borderRadius: 14, padding: 24, boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <div>
+                  <div style={{ fontWeight: 700, color: '#1e293b', fontSize: 18 }}>Danh Sách Khách Sạn & Khu Nghỉ Dưỡng</div>
+                  <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 4 }}>Thêm mới, cập nhật hoặc xóa khách sạn khỏi hệ thống</div>
+                </div>
+                <button onClick={handleOpenAddHotel} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 20px', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                  <Plus size={18} /> Thêm Khách Sạn Mới
                 </button>
               </div>
+              <div className="table-responsive">
+                <table className="table table-hover align-middle mb-0" style={{ fontSize: 13 }}>
+                  <thead style={{ background: '#f8fafc' }}>
+                    <tr>
+                      {['Hình Ảnh', 'Tên Khách Sạn', 'Thành Phố', 'Hạng Sao', 'Giá Khởi Điểm', 'Số Phòng', 'Thao Tác'].map(h => (
+                        <th key={h} style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none', paddingBottom: 12 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {hotels.map(h => (
+                      <tr key={h.id}>
+                        <td><img src={h.thumbnailUrl} alt={h.name} style={{ width: 64, height: 48, borderRadius: 8, objectFit: 'cover' }} /></td>
+                        <td>
+                          <div style={{ fontWeight: 600, color: '#1e293b' }}>{h.name}</div>
+                          <div style={{ fontSize: 11, color: '#94a3b8' }}>{h.address}</div>
+                        </td>
+                        <td><span style={{ background: '#f1f5f9', color: '#475569', padding: '3px 10px', borderRadius: 8, fontSize: 12 }}>{h.city}</span></td>
+                        <td style={{ color: '#f59e0b', fontWeight: 700 }}>{'★'.repeat(h.starRating)} {h.starRating} sao</td>
+                        <td style={{ fontWeight: 700, color: '#dc2626' }}>{(h.rooms[0]?.pricePerNight || 0).toLocaleString('vi-VN')} đ</td>
+                        <td>{h.rooms?.length || 1} phòng</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button onClick={() => handleOpenEditHotel(h)} style={{ background: '#eff6ff', color: '#3b82f6', border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <Edit2 size={13} /> Sửa
+                            </button>
+                            <button onClick={() => handleDeleteHotel(h.id)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <Trash2 size={13} /> Xóa
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
-              {bookings.length === 0 ? (
-                <p className="text-secondary small py-3 mb-0">Chưa có đơn đặt phòng nào trên hệ thống.</p>
+          {/* ════════ TAB: QUẢN LÝ ĐẶT PHÒNG ════════ */}
+          {activeTab === 'bookings' && (
+            <div style={{ background: '#fff', borderRadius: 14, padding: 24, boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontWeight: 700, color: '#1e293b', fontSize: 18 }}>Quản Lý Đơn Đặt Phòng & Nghiệp Vụ Lễ Tân</div>
+                <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 4 }}>Tra cứu đặt phòng, thu tiền mặt tại quầy và xuất hóa đơn</div>
+              </div>
+              {/* Thanh tìm kiếm */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 16px', marginBottom: 20 }}>
+                <Search size={16} color="#94a3b8" />
+                <input
+                  type="text"
+                  placeholder="Tìm theo mã đơn, tên khách, số điện thoại, tên khách sạn..."
+                  value={bookingSearch}
+                  onChange={e => setBookingSearch(e.target.value)}
+                  style={{ border: 'none', background: 'transparent', outline: 'none', flex: 1, fontSize: 13, color: '#1e293b' }}
+                />
+                {bookingSearch && <button onClick={() => setBookingSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}><X size={16} /></button>}
+              </div>
+              {filteredBookings.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8', fontSize: 14 }}>
+                  {bookingSearch ? `Không tìm thấy đơn khớp với "${bookingSearch}"` : 'Chưa có đơn đặt phòng nào'}
+                </div>
               ) : (
                 <div className="table-responsive">
-                  <table className="table table-hover align-middle mb-0">
-                    <thead className="table-light small text-secondary">
+                  <table className="table table-hover align-middle mb-0" style={{ fontSize: 12.5 }}>
+                    <thead style={{ background: '#f8fafc' }}>
                       <tr>
-                        <th>MÃ ĐƠN</th>
-                        <th>KHÁCH HÀNG</th>
-                        <th>KHÁCH SẠN</th>
-                        <th>NGÀY NHẬN/TRẢ</th>
-                        <th>TỔNG TIỀN</th>
-                        <th>TRẠNG THÁI</th>
+                        {['Mã Đơn', 'Khách Hàng', 'Khách Sạn & Phòng', 'Lưu Trú', 'Thanh Toán', 'Tổng Tiền', 'Trạng Thái', 'Thao Tác'].map(h => (
+                          <th key={h} style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none', paddingBottom: 12, whiteSpace: 'nowrap' }}>{h}</th>
+                        ))}
                       </tr>
                     </thead>
-                    <tbody className="small">
-                      {bookings.slice(0, 5).map(b => (
+                    <tbody>
+                      {filteredBookings.map(b => (
                         <tr key={b.id}>
-                          <td className="fw-bold text-primary font-monospace">{b.id}</td>
+                          <td className="font-monospace fw-bold text-primary" style={{ fontSize: 11.5 }}>{b.id}</td>
                           <td>
-                            <strong>{b.contactName || b.guestName}</strong>
-                            <div className="text-secondary" style={{ fontSize: '11px' }}>{b.contactPhone}</div>
+                            <div style={{ fontWeight: 600, color: '#1e293b' }}>{b.contactName || b.guestName}</div>
+                            <div style={{ fontSize: 11, color: '#94a3b8' }}>{b.contactPhone}</div>
+                            <span style={{ background: b.isGuest ? '#f1f5f9' : '#eff6ff', color: b.isGuest ? '#64748b' : '#3b82f6', padding: '2px 7px', borderRadius: 6, fontSize: 10, fontWeight: 600 }}>
+                              {b.isGuest ? 'Vãng lai' : 'Thành viên'}
+                            </span>
                           </td>
-                          <td>{b.hotelName}</td>
-                          <td>{b.checkInDate} ➔ {b.checkOutDate}</td>
-                          <td className="fw-bold text-danger">{b.totalAmount?.toLocaleString('vi-VN')} đ</td>
                           <td>
-                            {b.status === 'confirmed' ? (
-                              <span className="badge bg-success-subtle text-success">Đã xác nhận</span>
+                            <div style={{ fontWeight: 600, color: '#1e293b', maxWidth: 160 }}>{b.hotelName}</div>
+                            <div style={{ fontSize: 11, color: '#94a3b8' }}>{b.roomName}</div>
+                          </td>
+                          <td>
+                            <div style={{ fontSize: 11.5, color: '#374151' }}>{b.checkInDate} → {b.checkOutDate}</div>
+                            <span style={{ background: '#f1f5f9', color: '#64748b', padding: '2px 7px', borderRadius: 6, fontSize: 10 }}>{b.nights} đêm</span>
+                          </td>
+                          <td>
+                            {b.paymentMethod === 'pay_at_hotel' ? (
+                              b.paymentStatus === 'paid'
+                                ? <span style={{ background: '#dcfce7', color: '#16a34a', padding: '3px 8px', borderRadius: 8, fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, width: 'fit-content' }}><CheckCircle2 size={11} /> Đã thu tiền mặt</span>
+                                : <span style={{ background: '#fef9c3', color: '#92400e', padding: '3px 8px', borderRadius: 8, fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, width: 'fit-content' }}><Banknote size={11} /> Chờ thu tiền mặt</span>
                             ) : (
-                              <span className="badge bg-danger-subtle text-danger">Đã hủy</span>
+                              <span style={{ background: '#eff6ff', color: '#3b82f6', padding: '3px 8px', borderRadius: 8, fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, width: 'fit-content' }}><CheckCircle2 size={11} /> {b.paymentMethod === 'vnpay' ? 'VNPAY' : 'Thẻ/Ví'}</span>
                             )}
+                          </td>
+                          <td style={{ fontWeight: 700, color: '#dc2626' }}>{b.totalAmount?.toLocaleString('vi-VN')} đ</td>
+                          <td>
+                            {b.status === 'confirmed'
+                              ? <span style={{ background: '#dcfce7', color: '#16a34a', padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>✓ Xác nhận</span>
+                              : <span style={{ background: '#fee2e2', color: '#dc2626', padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>✕ Đã hủy</span>}
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              {b.paymentMethod === 'pay_at_hotel' && b.paymentStatus !== 'paid' && b.status === 'confirmed' && (
+                                <button onClick={() => handleMarkAsPaid(b.id)} style={{ background: '#dcfce7', color: '#16a34a', border: 'none', borderRadius: 7, padding: '5px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <Banknote size={12} /> Thu tiền
+                                </button>
+                              )}
+                              <button onClick={() => setSelectedInvoice(b)} style={{ background: '#eff6ff', color: '#3b82f6', border: 'none', borderRadius: 7, padding: '5px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <Printer size={12} /> Hóa đơn
+                              </button>
+                              {b.status === 'confirmed'
+                                ? <button onClick={() => handleToggleBookingStatus(b.id, 'cancelled')} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 7, padding: '5px 10px', fontSize: 11, cursor: 'pointer' }}>Hủy</button>
+                                : <button onClick={() => handleToggleBookingStatus(b.id, 'confirmed')} style={{ background: '#dcfce7', color: '#16a34a', border: 'none', borderRadius: 7, padding: '5px 10px', fontSize: 11, cursor: 'pointer' }}>Khôi phục</button>}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -456,646 +629,216 @@ export default function AdminDashboardPage() {
                 </div>
               )}
             </div>
+          )}
 
-          </div>
-        )}
-
-        {/* ================= TAB 2: QUẢN LÝ KHÁCH SẠN (CRUD HOTELS) ================= */}
-        {activeTab === 'hotels' && (
-          <div className="card border-0 shadow-sm rounded-4 p-4 bg-white">
-            <div className="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
-              <div>
-                <h4 className="fw-bold text-dark mb-1">Danh Sách Khách Sạn & Khu Nghỉ Dưỡng</h4>
-                <p className="text-secondary small mb-0">
-                  Thêm mới, cập nhật giá, chỉnh sửa thông tin hoặc xóa khách sạn khỏi hệ thống.
-                </p>
-              </div>
-              <button 
-                onClick={handleOpenAddHotel} 
-                className="btn btn-primary d-flex align-items-center gap-2 rounded-pill px-4 fw-bold shadow-sm"
-              >
-                <Plus size={18} /> Thêm Khách Sạn Mới
-              </button>
-            </div>
-
-            {/* Bảng danh sách khách sạn */}
-            <div className="table-responsive">
-              <table className="table table-hover align-middle mb-0">
-                <thead className="table-light small text-secondary">
-                  <tr>
-                    <th>HÌNH ẢNH</th>
-                    <th>TÊN KHÁCH SẠN</th>
-                    <th>THÀNH PHỐ</th>
-                    <th>HẠNG SAO</th>
-                    <th>GIÁ KHỞI ĐIỂM</th>
-                    <th>SỐ LOẠI PHÒNG</th>
-                    <th className="text-end">THAO TÁC</th>
-                  </tr>
-                </thead>
-                <tbody className="small">
-                  {hotels.map(h => (
-                    <tr key={h.id}>
-                      <td style={{ width: '80px' }}>
-                        <img 
-                          src={h.thumbnailUrl} 
-                          alt={h.name} 
-                          className="rounded-3 object-fit-cover shadow-sm"
-                          style={{ width: '64px', height: '48px' }}
-                        />
-                      </td>
-                      <td>
-                        <strong className="text-dark d-block">{h.name}</strong>
-                        <span className="text-secondary" style={{ fontSize: '11px' }}>{h.address}</span>
-                      </td>
-                      <td>
-                        <span className="badge bg-light text-dark border">{h.city}</span>
-                      </td>
-                      <td>
-                        <span className="text-warning fw-bold">★ {h.starRating} sao</span>
-                      </td>
-                      <td className="fw-bold text-danger">
-                        {(h.rooms[0]?.pricePerNight || 0).toLocaleString('vi-VN')} đ
-                      </td>
-                      <td>{h.rooms?.length || 1} phòng</td>
-                      <td className="text-end">
-                        <button 
-                          onClick={() => handleOpenEditHotel(h)} 
-                          className="btn btn-outline-primary btn-sm me-2 rounded-pill px-3"
-                          title="Sửa thông tin"
-                        >
-                          <Edit2 size={14} /> Sửa
-                        </button>
-                        <button 
-                          onClick={() => handleDeleteHotel(h.id)} 
-                          className="btn btn-outline-danger btn-sm rounded-pill px-3"
-                          title="Xóa khách sạn"
-                        >
-                          <Trash2 size={14} /> Xóa
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* ================= TAB 3: QUẢN LÝ ĐƠN ĐẶT PHÒNG (BOOKINGS) & NGHIỆP VỤ LỄ TÂN ================= */}
-        {activeTab === 'bookings' && (
-          <div className="card border-0 shadow-sm rounded-4 p-4 bg-white">
-            <div className="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
-              <div>
-                <h4 className="fw-bold text-dark mb-1">Quản Lý Đơn Đặt Phòng & Nghiệp Vụ Lễ Tân</h4>
-                <p className="text-secondary small mb-0">
-                  Tra cứu đặt phòng khi khách đến, thu tiền mặt tại quầy lễ tân và xuất Hóa đơn / Phiếu thu dịch vụ.
-                </p>
+          {/* ════════ CÁC TAB ĐANG PHÁT TRIỂN ════════ */}
+          {!['dashboard', 'hotels', 'bookings'].includes(activeTab) && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', color: '#94a3b8', gap: 12 }}>
+              <BarChart2 size={56} style={{ opacity: 0.3 }} />
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#64748b' }}>Tính Năng Đang Phát Triển</div>
+              <div style={{ fontSize: 14, textAlign: 'center', maxWidth: 340 }}>
+                Chức năng này sẽ sớm được hoàn thiện trong các phiên bản tiếp theo. Vui lòng quay lại sau!
               </div>
             </div>
+          )}
 
-            {/* Thanh tìm kiếm nhanh dành cho Lễ tân khi khách đến quầy */}
-            <div className="row g-3 align-items-center mb-4">
-              <div className="col-md-7 col-12">
-                <div className="input-group shadow-sm rounded-pill overflow-hidden border">
-                  <span className="input-group-text bg-white border-0 ps-3">
-                    <Search size={18} className="text-primary" />
-                  </span>
-                  <input 
-                    type="text" 
-                    className="form-control border-0 py-2" 
-                    placeholder="🔍 Lễ tân tra cứu: Nhập Mã đặt phòng (VD: TVLK-812147), Tên khách hoặc SĐT..." 
-                    value={bookingSearchQuery}
-                    onChange={(e) => setBookingSearchQuery(e.target.value)}
-                  />
-                  {bookingSearchQuery && (
-                    <button 
-                      className="btn btn-white border-0 text-secondary pe-3" 
-                      type="button" 
-                      onClick={() => setBookingSearchQuery('')}
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div className="col-md-5 col-12 text-md-end text-secondary small">
-                Hiển thị <strong>{searchedBookings.length}</strong> / {bookings.length} đơn đặt phòng
-              </div>
-            </div>
-
-            {searchedBookings.length === 0 ? (
-              <div className="text-center py-5 text-secondary border rounded-3 bg-light">
-                <p className="mb-0">
-                  {bookingSearchQuery 
-                    ? `Không tìm thấy đơn đặt phòng nào khớp với từ khóa "${bookingSearchQuery}"` 
-                    : "Chưa có đơn đặt phòng nào trong hệ thống."}
-                </p>
-              </div>
-            ) : (
-              <div className="table-responsive">
-                <table className="table table-hover align-middle mb-0">
-                  <thead className="table-light small text-secondary">
-                    <tr>
-                      <th>MÃ ĐƠN</th>
-                      <th>NGÀY ĐẶT</th>
-                      <th>KHÁCH HÀNG</th>
-                      <th>KHÁCH SẠN & PHÒNG</th>
-                      <th>LƯU TRÚ</th>
-                      <th>THANH TOÁN</th>
-                      <th>TỔNG TIỀN</th>
-                      <th>TRẠNG THÁI</th>
-                      <th className="text-end" style={{ minWidth: '220px' }}>THAO TÁC LỄ TÂN</th>
-                    </tr>
-                  </thead>
-                  <tbody className="small">
-                    {searchedBookings.map(b => (
-                      <tr key={b.id}>
-                        <td className="fw-bold text-primary font-monospace">{b.id}</td>
-                        <td className="text-secondary" style={{ fontSize: '11.5px' }}>{b.createdAt}</td>
-                        <td>
-                          <strong className="text-dark d-block">{b.contactName || b.guestName}</strong>
-                          <span className="text-secondary d-block" style={{ fontSize: '11px' }}>{b.contactPhone}</span>
-                          {b.isGuest ? (
-                            <span className="badge bg-secondary-subtle text-secondary" style={{ fontSize: '10px' }}>Khách vãng lai</span>
-                          ) : (
-                            <span className="badge bg-primary-subtle text-primary" style={{ fontSize: '10px' }}>Thành viên</span>
-                          )}
-                        </td>
-                        <td>
-                          <div className="fw-semibold text-dark text-truncate" style={{ maxWidth: '160px' }}>{b.hotelName}</div>
-                          <span className="text-secondary d-block text-truncate" style={{ maxWidth: '160px', fontSize: '11px' }}>{b.roomName}</span>
-                        </td>
-                        <td>
-                          <div style={{ fontSize: '11.5px' }}>{b.checkInDate} ➔ {b.checkOutDate}</div>
-                          <span className="badge bg-light text-secondary border" style={{ fontSize: '10px' }}>
-                            {b.nights} đêm
-                          </span>
-                        </td>
-                        <td>
-                          {/* Hình thức thanh toán & Trạng thái thu tiền */}
-                          {b.paymentMethod === 'pay_at_hotel' ? (
-                            b.paymentStatus === 'paid' ? (
-                              <span className="badge bg-success-subtle text-success border border-success-subtle py-1 px-2 rounded-pill d-inline-flex align-items-center gap-1" style={{ fontSize: '11px' }}>
-                                <CheckCircle2 size={12} /> Đã thu tiền mặt
-                              </span>
-                            ) : (
-                              <span className="badge bg-warning-subtle text-dark border border-warning-subtle py-1 px-2 rounded-pill d-inline-flex align-items-center gap-1" style={{ fontSize: '11px' }}>
-                                <Banknote size={12} className="text-danger" /> Chờ thu tiền mặt
-                              </span>
-                            )
-                          ) : (
-                            <span className="badge bg-primary-subtle text-primary border border-primary-subtle py-1 px-2 rounded-pill d-inline-flex align-items-center gap-1" style={{ fontSize: '11px' }}>
-                              <CheckCircle2 size={12} /> {b.paymentMethod === 'vnpay' ? 'VNPAY' : 'Thẻ/Ví'} (Đã trả)
-                            </span>
-                          )}
-                        </td>
-                        <td className="fw-bold text-danger fs-6">
-                          {b.totalAmount?.toLocaleString('vi-VN')} đ
-                        </td>
-                        <td>
-                          {b.status === 'confirmed' ? (
-                            <span className="badge bg-success-subtle text-success py-1 px-2 rounded-pill fw-semibold" style={{ fontSize: '11px' }}>
-                              ✓ Đã xác nhận
-                            </span>
-                          ) : (
-                            <span className="badge bg-danger-subtle text-danger py-1 px-2 rounded-pill fw-semibold" style={{ fontSize: '11px' }}>
-                              ✕ Đã hủy
-                            </span>
-                          )}
-                        </td>
-                        <td className="text-end">
-                          <div className="d-flex align-items-center justify-content-end gap-1 flex-wrap">
-                            {/* Nút Nghiệp vụ 1: Lễ tân bấm khi khách đưa tiền mặt */}
-                            {b.paymentMethod === 'pay_at_hotel' && b.paymentStatus !== 'paid' && b.status === 'confirmed' && (
-                              <button 
-                                onClick={() => handleMarkAsPaid(b.id)} 
-                                className="btn btn-success btn-sm rounded-pill px-2 py-1 fw-bold shadow-sm d-inline-flex align-items-center gap-1"
-                                style={{ fontSize: '11.5px' }}
-                                title="Bấm khi khách đã đưa tiền mặt tại quầy lễ tân"
-                              >
-                                <Banknote size={13} /> Thu tiền & In bill
-                              </button>
-                            )}
-
-                            {/* Nút Nghiệp vụ 2: In Hóa Đơn / Phiếu Thu Dịch Vụ */}
-                            <button 
-                              onClick={() => handleOpenInvoice(b)} 
-                              className="btn btn-outline-primary btn-sm rounded-pill px-2 py-1 d-inline-flex align-items-center gap-1"
-                              style={{ fontSize: '11.5px' }}
-                              title="Xem và in Phiếu thu / Hóa đơn"
-                            >
-                              <Printer size={13} /> Hóa đơn
-                            </button>
-
-                            {/* Nút Nghiệp vụ 3: Hủy hoặc Phục hồi đơn */}
-                            {b.status === 'confirmed' ? (
-                              <button 
-                                onClick={() => handleToggleBookingStatus(b.id, 'cancelled')} 
-                                className="btn btn-outline-danger btn-sm rounded-pill px-2 py-1"
-                                style={{ fontSize: '11px' }}
-                              >
-                                Hủy
-                              </button>
-                            ) : (
-                              <button 
-                                onClick={() => handleToggleBookingStatus(b.id, 'confirmed')} 
-                                className="btn btn-outline-success btn-sm rounded-pill px-2 py-1"
-                                style={{ fontSize: '11px' }}
-                              >
-                                Khôi phục
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
+        </main>
       </div>
 
-      {/* ================= MODAL THÊM / SỬA KHÁCH SẠN ================= */}
+      {/* ══════════════════ MODAL THÊM / SỬA KHÁCH SẠN ══════════════════ */}
       {showHotelModal && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog modal-dialog-centered modal-lg">
-            <div className="modal-content rounded-4 border-0 shadow">
-              <div className="modal-header border-bottom">
-                <h5 className="modal-title fw-bold text-dark">
-                  {editingHotel ? 'Chỉnh Sửa Khách Sạn' : 'Thêm Khách Sạn Mới Vào Hệ Thống'}
-                </h5>
-                <button type="button" className="btn-close" onClick={() => setShowHotelModal(false)}></button>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 16, width: '90%', maxWidth: 680, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontWeight: 700, fontSize: 17, color: '#1e293b' }}>
+                {editingHotel ? 'Chỉnh Sửa Thông Tin Khách Sạn' : 'Thêm Khách Sạn Mới Vào Hệ Thống'}
               </div>
-              <form onSubmit={handleSaveHotel}>
-                <div className="modal-body p-4">
-                  <div className="row g-3">
-                    
-                    {/* Tên khách sạn */}
-                    <div className="col-md-8">
-                      <label className="form-label small fw-semibold text-dark">Tên khách sạn *</label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        value={hotelFormData.name}
-                        onChange={(e) => setHotelFormData({ ...hotelFormData, name: e.target.value })}
-                        required
-                        placeholder="VD: Khách Sạn New World Sài Gòn"
-                      />
-                    </div>
+              <button onClick={() => setShowHotelModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex' }}><X size={22} /></button>
+            </div>
+            <form onSubmit={handleSaveHotel} style={{ overflowY: 'auto', flex: 1 }}>
+              <div style={{ padding: 24, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div style={{ gridColumn: '1 / 2' }}>
+                  <FormLabel>Tên khách sạn *</FormLabel>
+                  <input className="form-control" value={hotelForm.name} onChange={e => setHotelForm({ ...hotelForm, name: e.target.value })} required placeholder="VD: Khách Sạn New World Sài Gòn" />
+                </div>
+                <div>
+                  <FormLabel>Thành phố *</FormLabel>
+                  <select className="form-select" value={hotelForm.city} onChange={e => setHotelForm({ ...hotelForm, city: e.target.value })}>
+                    {['Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Nha Trang', 'Đà Lạt', 'Phú Quốc'].map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <FormLabel>Địa chỉ chi tiết *</FormLabel>
+                  <input className="form-control" value={hotelForm.address} onChange={e => setHotelForm({ ...hotelForm, address: e.target.value })} required placeholder="VD: 76 Lê Lai, Phường Bến Thành, Quận 1" />
+                </div>
+                <div>
+                  <FormLabel>Hạng sao</FormLabel>
+                  <select className="form-select" value={hotelForm.starRating} onChange={e => setHotelForm({ ...hotelForm, starRating: e.target.value })}>
+                    {[5, 4, 3, 2].map(s => <option key={s} value={s}>{s} sao</option>)}
+                  </select>
+                </div>
+                <div>
+                  <FormLabel>Giá phòng khởi điểm / đêm (VNĐ) *</FormLabel>
+                  <input type="number" step="50000" className="form-control" value={hotelForm.pricePerNight} onChange={e => setHotelForm({ ...hotelForm, pricePerNight: e.target.value })} required />
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <FormLabel>Đường dẫn hình ảnh đại diện (URL)</FormLabel>
+                  <input type="url" className="form-control" value={hotelForm.thumbnailUrl} onChange={e => setHotelForm({ ...hotelForm, thumbnailUrl: e.target.value })} placeholder="https://..." />
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <FormLabel>Mô tả giới thiệu</FormLabel>
+                  <textarea rows={3} className="form-control" value={hotelForm.description} onChange={e => setHotelForm({ ...hotelForm, description: e.target.value })} placeholder="Nêu các điểm nổi bật, vị trí, tiện ích..." />
+                </div>
+              </div>
+              <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button type="button" onClick={() => setShowHotelModal(false)} style={{ background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: 10, padding: '10px 24px', fontWeight: 600, cursor: 'pointer' }}>Hủy Bỏ</button>
+                <button type="submit" style={{ background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 24px', fontWeight: 700, cursor: 'pointer' }}>
+                  {editingHotel ? 'Lưu Thay Đổi' : 'Tạo Khách Sạn'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
-                    {/* Thành phố */}
-                    <div className="col-md-4">
-                      <label className="form-label small fw-semibold text-dark">Thành phố *</label>
-                      <select 
-                        className="form-select"
-                        value={hotelFormData.city}
-                        onChange={(e) => setHotelFormData({ ...hotelFormData, city: e.target.value })}
-                      >
-                        <option value="Hồ Chí Minh">Hồ Chí Minh</option>
-                        <option value="Hà Nội">Hà Nội</option>
-                        <option value="Đà Nẵng">Đà Nẵng</option>
-                        <option value="Nha Trang">Nha Trang</option>
-                        <option value="Đà Lạt">Đà Lạt</option>
-                        <option value="Phú Quốc">Phú Quốc</option>
-                      </select>
-                    </div>
-
-                    {/* Địa chỉ */}
-                    <div className="col-12">
-                      <label className="form-label small fw-semibold text-dark">Địa chỉ chi tiết *</label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        value={hotelFormData.address}
-                        onChange={(e) => setHotelFormData({ ...hotelFormData, address: e.target.value })}
-                        required
-                        placeholder="VD: 76 Lê Lai, Phường Bến Thành, Quận 1"
-                      />
-                    </div>
-
-                    {/* Hạng sao */}
-                    <div className="col-md-6">
-                      <label className="form-label small fw-semibold text-dark">Hạng sao (1-5 sao)</label>
-                      <select 
-                        className="form-select"
-                        value={hotelFormData.starRating}
-                        onChange={(e) => setHotelFormData({ ...hotelFormData, starRating: e.target.value })}
-                      >
-                        <option value={5}>5 sao</option>
-                        <option value={4}>4 sao</option>
-                        <option value={3}>3 sao</option>
-                        <option value={2}>2 sao</option>
-                      </select>
-                    </div>
-
-                    {/* Giá khởi điểm */}
-                    <div className="col-md-6">
-                      <label className="form-label small fw-semibold text-dark">Giá phòng khởi điểm / đêm (VNĐ) *</label>
-                      <input 
-                        type="number" 
-                        step="50000"
-                        className="form-control" 
-                        value={hotelFormData.pricePerNight}
-                        onChange={(e) => setHotelFormData({ ...hotelFormData, pricePerNight: e.target.value })}
-                        required
-                      />
-                    </div>
-
-                    {/* URL Ảnh */}
-                    <div className="col-12">
-                      <label className="form-label small fw-semibold text-dark">Đường dẫn hình ảnh đại diện (URL)</label>
-                      <input 
-                        type="url" 
-                        className="form-control" 
-                        value={hotelFormData.thumbnailUrl}
-                        onChange={(e) => setHotelFormData({ ...hotelFormData, thumbnailUrl: e.target.value })}
-                        placeholder="https://..."
-                      />
-                    </div>
-
-                    {/* Mô tả */}
-                    <div className="col-12">
-                      <label className="form-label small fw-semibold text-dark">Mô tả giới thiệu khách sạn</label>
-                      <textarea 
-                        rows="3" 
-                        className="form-control" 
-                        value={hotelFormData.description}
-                        onChange={(e) => setHotelFormData({ ...hotelFormData, description: e.target.value })}
-                        placeholder="Nêu các điểm nổi bật, vị trí, tiện ích..."
-                      ></textarea>
-                    </div>
-
+      {/* ══════════════════ MODAL HÓA ĐƠN / PHIẾU THU ══════════════════ */}
+      {selectedInvoice && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 16, width: '90%', maxWidth: 720, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '16px 24px', background: '#1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#fff', fontWeight: 700, fontSize: 15 }}>
+                <Receipt size={20} color="#f59e0b" /> Xem Trước Hóa Đơn Dịch Vụ & Phiếu Thu Lễ Tân
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => window.print()} style={{ background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Printer size={14} /> In Hóa Đơn
+                </button>
+                <button onClick={() => setSelectedInvoice(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fff', display: 'flex' }}><X size={22} /></button>
+              </div>
+            </div>
+            <div id="hotel-invoice-printable" style={{ overflowY: 'auto', flex: 1, padding: '28px 32px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #e2e8f0', paddingBottom: 20, marginBottom: 20 }}>
+                <div>
+                  <div style={{ fontSize: 24, fontWeight: 900, color: '#2563eb' }}>Traveloka</div>
+                  <div style={{ fontWeight: 700, fontSize: 16, color: '#1e293b', marginTop: 4 }}>{selectedInvoice.hotelName}</div>
+                  <div style={{ fontSize: 12, color: '#94a3b8' }}>{selectedInvoice.hotelAddress || 'Đối tác lưu trú Traveloka'}</div>
+                  <div style={{ fontSize: 12, color: '#94a3b8' }}>Hotline: 1900 1234 • MST: 0102938475</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontWeight: 800, fontSize: 18, color: '#1e293b', textTransform: 'uppercase' }}>Phiếu Thu Tiền</div>
+                  <div style={{ fontSize: 12, color: '#94a3b8' }}>Hotel Guest Folio</div>
+                  <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#2563eb', marginTop: 4 }}>Số: HD-{selectedInvoice.id}</div>
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>Ngày in: {new Date().toLocaleString('vi-VN')}</div>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+                {[
+                  { title: '👤 Thông Tin Khách Lưu Trú', rows: [['Họ và tên', selectedInvoice.contactName || selectedInvoice.guestName], ['Số điện thoại', selectedInvoice.contactPhone], ['Email', selectedInvoice.contactEmail], ['Phân loại', selectedInvoice.isGuest ? 'Khách vãng lai' : 'Thành viên thân thiết']] },
+                  { title: '🏨 Chi Tiết Phòng & Lưu Trú', rows: [['Mã đặt chỗ', selectedInvoice.id], ['Hạng phòng', selectedInvoice.roomName], ['Kỳ lưu trú', `${selectedInvoice.checkInDate} → ${selectedInvoice.checkOutDate} (${selectedInvoice.nights} đêm)`], ['Số khách', `${selectedInvoice.guestCount || 2} người`]] }
+                ].map(card => (
+                  <div key={card.title} style={{ background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', padding: 14 }}>
+                    <div style={{ fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#475569', marginBottom: 10 }}>{card.title}</div>
+                    {card.rows.map(([label, val]) => (
+                      <div key={label} style={{ display: 'flex', gap: 8, fontSize: 13, marginBottom: 5 }}>
+                        <span style={{ color: '#94a3b8', flexShrink: 0 }}>{label}:</span>
+                        <span style={{ fontWeight: 600, color: '#1e293b' }}>{val}</span>
+                      </div>
+                    ))}
                   </div>
+                ))}
+              </div>
+              <table className="table table-bordered" style={{ fontSize: 13, marginBottom: 16 }}>
+                <thead style={{ background: '#f8fafc' }}>
+                  <tr>
+                    <th style={{ width: '45%' }}>Nội Dung Dịch Vụ / Tiền Phòng</th>
+                    <th className="text-center" style={{ width: '15%' }}>Số Lượng</th>
+                    <th className="text-end" style={{ width: '20%' }}>Đơn Giá</th>
+                    <th className="text-end" style={{ width: '20%' }}>Thành Tiền</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>{selectedInvoice.roomName}</strong><br /><span style={{ fontSize: 11, color: '#94a3b8' }}>{selectedInvoice.checkInDate} → {selectedInvoice.checkOutDate}</span></td>
+                    <td className="text-center">{selectedInvoice.nights} đêm</td>
+                    <td className="text-end">{Math.round((selectedInvoice.roomPrice || selectedInvoice.totalAmount) / (selectedInvoice.nights || 1)).toLocaleString('vi-VN')} đ</td>
+                    <td className="text-end fw-semibold">{(selectedInvoice.roomPrice || selectedInvoice.totalAmount)?.toLocaleString('vi-VN')} đ</td>
+                  </tr>
+                  <tr>
+                    <td>Thuế VAT & Phí dịch vụ (10%)</td>
+                    <td className="text-center">1 gói</td>
+                    <td className="text-end">10%</td>
+                    <td className="text-end">{(selectedInvoice.taxAndFee || Math.round((selectedInvoice.totalAmount || 0) * 0.1))?.toLocaleString('vi-VN')} đ</td>
+                  </tr>
+                  {selectedInvoice.discountAmount > 0 && (
+                    <tr style={{ color: '#16a34a' }}>
+                      <td>Giảm giá từ mã khuyến mãi Traveloka</td>
+                      <td className="text-center">1</td>
+                      <td className="text-end">Voucher</td>
+                      <td className="text-end fw-semibold">-{selectedInvoice.discountAmount?.toLocaleString('vi-VN')} đ</td>
+                    </tr>
+                  )}
+                  <tr style={{ background: '#f8fafc' }}>
+                    <td colSpan={3} style={{ textAlign: 'right', fontWeight: 700, fontSize: 14 }}>TỔNG CỘNG TIỀN THANH TOÁN:</td>
+                    <td style={{ textAlign: 'right', fontWeight: 900, color: '#dc2626', fontSize: 16 }}>{selectedInvoice.totalAmount?.toLocaleString('vi-VN')} đ</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div style={{ background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', padding: '12px 16px', marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: 13 }}>
+                  <span style={{ color: '#94a3b8' }}>Hình thức thanh toán: </span>
+                  <strong>{selectedInvoice.paymentMethod === 'pay_at_hotel' ? '💵 Tiền mặt tại quầy lễ tân' : selectedInvoice.paymentMethod === 'vnpay' ? '💳 Cổng VNPAY QR' : '💳 Thẻ tín dụng / Ví điện tử'}</strong>
                 </div>
-                <div className="modal-footer border-top">
-                  <button type="button" className="btn btn-secondary rounded-pill px-4" onClick={() => setShowHotelModal(false)}>
-                    Hủy bỏ
-                  </button>
-                  <button type="submit" className="btn btn-primary rounded-pill px-4 fw-bold">
-                    {editingHotel ? 'Lưu Thay Đổi' : 'Tạo Khách Sạn'}
-                  </button>
-                </div>
-              </form>
+                {selectedInvoice.paymentStatus === 'paid' || selectedInvoice.paymentMethod !== 'pay_at_hotel'
+                  ? <span style={{ background: '#dcfce7', color: '#16a34a', padding: '5px 14px', borderRadius: 20, fontWeight: 700, fontSize: 13 }}>✓ ĐÃ THANH TOÁN ĐỦ</span>
+                  : <span style={{ background: '#fef9c3', color: '#92400e', padding: '5px 14px', borderRadius: 20, fontWeight: 700, fontSize: 13 }}>⚠️ CHƯA THU TIỀN MẶT</span>}
+              </div>
+            </div>
+            <div style={{ padding: '14px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button onClick={() => setSelectedInvoice(null)} style={{ background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: 10, padding: '10px 24px', fontWeight: 600, cursor: 'pointer' }}>Đóng</button>
+              <button onClick={() => window.print()} style={{ background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 24px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Printer size={15} /> In Phiếu Thu (Print)
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ================= MODAL XUẤT HÓA ĐƠN / PHIẾU THU LỄ TÂN ================= */}
-      {selectedInvoiceBooking && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.65)', zIndex: 1200 }}>
-          <div className="modal-dialog modal-dialog-centered modal-lg">
-            <div className="modal-content rounded-4 border-0 shadow-lg overflow-hidden">
-              
-              {/* Action Bar trên modal */}
-              <div className="p-3 bg-dark text-white d-flex justify-content-between align-items-center">
-                <div className="d-flex align-items-center gap-2">
-                  <Receipt size={20} className="text-primary" />
-                  <span className="fw-bold">Xem Trước Hóa Đơn Dịch Vụ & Phiếu Thu Lễ Tân</span>
-                </div>
-                <div className="d-flex align-items-center gap-2">
-                  <button 
-                    type="button" 
-                    onClick={() => window.print()}
-                    className="btn btn-primary btn-sm rounded-pill px-3 fw-bold d-inline-flex align-items-center gap-1 shadow-sm"
-                  >
-                    <Printer size={15} /> In Hóa Đơn (Print / PDF)
-                  </button>
-                  <button 
-                    type="button" 
-                    className="btn-close btn-close-white" 
-                    onClick={() => setSelectedInvoiceBooking(null)}
-                  ></button>
-                </div>
-              </div>
-
-              {/* Nội dung Hóa đơn chuẩn in */}
-              <div className="modal-body p-4 p-md-5 bg-white" id="hotel-invoice-printable" style={{ maxHeight: '75vh', overflowY: 'auto' }}>
-                
-                {/* Header hóa đơn */}
-                <div className="border-bottom pb-4 mb-4">
-                  <div className="row align-items-start">
-                    <div className="col-8">
-                      <div className="d-flex align-items-center gap-2 mb-1">
-                        <span className="fs-3 fw-bold text-primary">Traveloka</span>
-                        <span className="badge bg-primary-subtle text-primary">Đối Tác Khách Sạn</span>
-                      </div>
-                      <h5 className="fw-bold text-dark mb-1">{selectedInvoiceBooking.hotelName}</h5>
-                      <p className="text-secondary small mb-1">{selectedInvoiceBooking.hotelAddress || 'Địa chỉ đối tác lưu trú Traveloka'}</p>
-                      <p className="text-secondary small mb-0">Hotline quầy lễ tân: 1900 1234 • MST: 0102938475</p>
-                    </div>
-                    <div className="col-4 text-end">
-                      <div className="fw-bold text-uppercase text-dark fs-5">PHIẾU THU TIỀN</div>
-                      <div className="text-secondary small mb-1">HOTEL GUEST FOLIO</div>
-                      <div className="small font-monospace fw-bold text-primary">Số: HD-{selectedInvoiceBooking.id}</div>
-                      <div className="text-secondary" style={{ fontSize: '11px' }}>
-                        Ngày in: {new Date().toLocaleDateString('vi-VN')} {new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Thông tin Khách hàng & Kỳ lưu trú */}
-                <div className="row g-3 mb-4">
-                  <div className="col-md-6">
-                    <div className="p-3 bg-light rounded-3 border h-100">
-                      <h6 className="fw-bold text-dark mb-2 small text-uppercase" style={{ letterSpacing: '0.5px' }}>
-                        👤 Thông Tin Khách Lưu Trú
-                      </h6>
-                      <div className="small text-secondary mb-1">
-                        Họ và tên: <strong className="text-dark">{selectedInvoiceBooking.contactName || selectedInvoiceBooking.guestName}</strong>
-                      </div>
-                      <div className="small text-secondary mb-1">
-                        Số điện thoại: <strong className="text-dark">{selectedInvoiceBooking.contactPhone}</strong>
-                      </div>
-                      <div className="small text-secondary mb-1">
-                        Email nhận vé: <strong className="text-dark">{selectedInvoiceBooking.contactEmail}</strong>
-                      </div>
-                      <div className="small text-secondary">
-                        Phân loại: <span className="badge bg-white border text-dark">{selectedInvoiceBooking.isGuest ? 'Khách vãng lai' : 'Thành viên thân thiết'}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="col-md-6">
-                    <div className="p-3 bg-light rounded-3 border h-100">
-                      <h6 className="fw-bold text-dark mb-2 small text-uppercase" style={{ letterSpacing: '0.5px' }}>
-                        🏨 Chi Tiết Phòng & Lưu Trú
-                      </h6>
-                      <div className="small text-secondary mb-1">
-                        Mã đặt chỗ: <strong className="text-primary font-monospace">{selectedInvoiceBooking.id}</strong>
-                      </div>
-                      <div className="small text-secondary mb-1">
-                        Hạng phòng: <strong className="text-dark">{selectedInvoiceBooking.roomName}</strong>
-                      </div>
-                      <div className="small text-secondary mb-1">
-                        Kỳ lưu trú: <strong className="text-dark">{selectedInvoiceBooking.checkInDate}</strong> ➔ <strong className="text-dark">{selectedInvoiceBooking.checkOutDate}</strong> ({selectedInvoiceBooking.nights} đêm)
-                      </div>
-                      <div className="small text-secondary">
-                        Số lượng khách: <strong className="text-dark">{selectedInvoiceBooking.guestCount || 2} người</strong>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Bảng kê chi phí thanh toán */}
-                <div className="table-responsive mb-4">
-                  <table className="table table-bordered align-middle mb-0">
-                    <thead className="table-light small text-secondary">
-                      <tr>
-                        <th style={{ width: '45%' }}>NỘI DUNG DỊCH VỤ / TIỀN PHÒNG</th>
-                        <th className="text-center" style={{ width: '15%' }}>SỐ LƯỢNG</th>
-                        <th className="text-end" style={{ width: '20%' }}>ĐƠN GIÁ</th>
-                        <th className="text-end" style={{ width: '20%' }}>THÀNH TIỀN</th>
-                      </tr>
-                    </thead>
-                    <tbody className="small">
-                      <tr>
-                        <td>
-                          <strong className="text-dark d-block">Tiền thuê phòng: {selectedInvoiceBooking.roomName}</strong>
-                          <span className="text-secondary" style={{ fontSize: '11px' }}>
-                            Áp dụng từ {selectedInvoiceBooking.checkInDate} đến {selectedInvoiceBooking.checkOutDate} ({selectedInvoiceBooking.nights} đêm)
-                          </span>
-                        </td>
-                        <td className="text-center">{selectedInvoiceBooking.nights} đêm</td>
-                        <td className="text-end">
-                          {Math.round((selectedInvoiceBooking.roomPrice || selectedInvoiceBooking.totalAmount) / (selectedInvoiceBooking.nights || 1)).toLocaleString('vi-VN')} đ
-                        </td>
-                        <td className="text-end fw-semibold">
-                          {(selectedInvoiceBooking.roomPrice || selectedInvoiceBooking.totalAmount)?.toLocaleString('vi-VN')} đ
-                        </td>
-                      </tr>
-                      <tr>
-                        <td>
-                          <span className="text-dark">Thuế giá trị gia tăng VAT & Phí dịch vụ (10%)</span>
-                        </td>
-                        <td className="text-center">1 gói</td>
-                        <td className="text-end">10%</td>
-                        <td className="text-end">
-                          {(selectedInvoiceBooking.taxAndFee || Math.round((selectedInvoiceBooking.totalAmount || 0) * 0.1))?.toLocaleString('vi-VN')} đ
-                        </td>
-                      </tr>
-                      {selectedInvoiceBooking.discountAmount > 0 && (
-                        <tr className="text-success">
-                          <td>
-                            <span>Giảm giá từ mã khuyến mãi Traveloka</span>
-                          </td>
-                          <td className="text-center">1</td>
-                          <td className="text-end">Voucher</td>
-                          <td className="text-end fw-semibold">
-                            -{selectedInvoiceBooking.discountAmount?.toLocaleString('vi-VN')} đ
-                          </td>
-                        </tr>
-                      )}
-                      <tr className="table-light">
-                        <td colSpan={3} className="text-end fw-bold text-dark fs-6">
-                          TỔNG CỘNG TIỀN THANH TOÁN (TOTAL):
-                        </td>
-                        <td className="text-end fw-bold text-danger fs-5">
-                          {selectedInvoiceBooking.totalAmount?.toLocaleString('vi-VN')} đ
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Thông tin hình thức và trạng thái thu tiền */}
-                <div className="p-3 bg-light rounded-3 border mb-4">
-                  <div className="row g-2 small">
-                    <div className="col-md-7">
-                      <span className="text-secondary">Hình thức thanh toán: </span>
-                      <strong className="text-dark">
-                        {selectedInvoiceBooking.paymentMethod === 'pay_at_hotel' 
-                          ? '💵 TIỀN MẶT TẠI QUẦY LỄ TÂN (CASH ON ARRIVAL)' 
-                          : (selectedInvoiceBooking.paymentMethod === 'vnpay' ? '💳 CỔNG VNPAY QR' : '💳 THẺ TÍN DỤNG / VÍ ĐIỆN TỬ')}
-                      </strong>
-                    </div>
-                    <div className="col-md-5 text-md-end">
-                      <span className="text-secondary">Trạng thái: </span>
-                      {selectedInvoiceBooking.paymentStatus === 'paid' || selectedInvoiceBooking.paymentMethod !== 'pay_at_hotel' ? (
-                        <span className="badge bg-success fs-6 py-1 px-3 rounded-pill fw-bold">
-                          ✓ ĐÃ THANH TOÁN ĐỦ
-                        </span>
-                      ) : (
-                        <span className="badge bg-warning text-dark fs-6 py-1 px-3 rounded-pill fw-bold">
-                          ⚠️ CHƯA THU TIỀN MẶT
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Khu vực ký xác nhận */}
-                <div className="row text-center mt-4 pt-3 border-top">
-                  <div className="col-6">
-                    <strong className="d-block text-dark small text-uppercase">Khách Hàng Lưu Trú</strong>
-                    <small className="text-secondary" style={{ fontSize: '11px' }}>(Ký và ghi rõ họ tên)</small>
-                    <div style={{ height: '60px' }}></div>
-                    <div className="fw-semibold text-dark small">{selectedInvoiceBooking.contactName || selectedInvoiceBooking.guestName}</div>
-                  </div>
-                  <div className="col-6">
-                    <strong className="d-block text-dark small text-uppercase">Nhân Viên Lễ Tân / Thu Ngân</strong>
-                    <small className="text-secondary" style={{ fontSize: '11px' }}>(Ký, đóng dấu xác nhận)</small>
-                    <div style={{ height: '60px' }} className="d-flex align-items-center justify-content-center">
-                      <span className="badge bg-danger bg-opacity-10 text-danger border border-danger border-2 p-2 px-3 text-uppercase font-monospace" style={{ transform: 'rotate(-5deg)' }}>
-                        ✓ ĐÃ THU TIỀN MẶT
-                      </span>
-                    </div>
-                    <div className="fw-semibold text-dark small">{user?.name || 'Lễ Tân Khách Sạn'}</div>
-                  </div>
-                </div>
-
-              </div>
-
-              <div className="modal-footer bg-light border-top p-3 d-flex justify-content-between">
-                <button 
-                  type="button" 
-                  className="btn btn-secondary btn-sm rounded-pill px-4" 
-                  onClick={() => setSelectedInvoiceBooking(null)}
-                >
-                  Đóng
-                </button>
-                <button 
-                  type="button" 
-                  onClick={() => window.print()}
-                  className="btn btn-primary btn-sm rounded-pill px-4 fw-bold d-inline-flex align-items-center gap-1 shadow-sm"
-                >
-                  <Printer size={15} /> In Phiếu Thu Này (Print)
-                </button>
-              </div>
-
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* CSS dành riêng khi in hóa đơn */}
+      {/* CSS in hóa đơn */}
       <style>{`
         @media print {
-          body * {
-            visibility: hidden !important;
-          }
-          #hotel-invoice-printable, #hotel-invoice-printable * {
-            visibility: visible !important;
-          }
-          #hotel-invoice-printable {
-            position: fixed !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            margin: 0 !important;
-            padding: 20px !important;
-            background: white !important;
-            box-shadow: none !important;
-            max-height: none !important;
-            overflow: visible !important;
-          }
+          body * { visibility: hidden !important; }
+          #hotel-invoice-printable, #hotel-invoice-printable * { visibility: visible !important; }
+          #hotel-invoice-printable { position: fixed !important; left: 0 !important; top: 0 !important; width: 100% !important; margin: 0 !important; padding: 20px !important; background: white !important; max-height: none !important; overflow: visible !important; }
         }
       `}</style>
-
     </div>
   );
+}
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
+function KpiCard({ icon, iconBg, iconBgFull, value, label, sub, dark }) {
+  return (
+    <div style={{
+      background: dark ? '#f59e0b' : '#fff',
+      borderRadius: 14,
+      padding: '20px 20px 16px',
+      boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+      display: 'flex', flexDirection: 'column', gap: 10
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ color: dark ? 'rgba(255,255,255,0.85)' : '#94a3b8', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 6 }}>{label}</div>
+          <div style={{ color: dark ? '#fff' : '#1e293b', fontWeight: 800, fontSize: 28, lineHeight: 1 }}>{value}</div>
+        </div>
+        <div style={{ width: 46, height: 46, borderRadius: 12, background: iconBgFull ? 'rgba(255,255,255,0.25)' : iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          {icon}
+        </div>
+      </div>
+      <div>{sub}</div>
+    </div>
+  );
+}
+
+function FormLabel({ children }) {
+  return <label style={{ display: 'block', marginBottom: 6, fontSize: 13, fontWeight: 600, color: '#374151' }}>{children}</label>;
 }
