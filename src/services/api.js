@@ -3,11 +3,13 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL  || 'http://localhost:808
 export const apiFetch = async (endpoint, options = {}) => {
     const accessToken = localStorage.getItem('accessToken');
 
-    // Tạo headers mặc định là application/json
+    // Tạo headers mặc định là application/json khi body không phải FormData
     const headers = {
-        'Content-Type': 'application/json',
         ...options.headers,
     };
+    if (!(options.body instanceof FormData) && !options.headers?.['Content-Type']) {
+        headers['Content-Type'] = 'application/json';
+    }
 
     // Nếu có Access Token thì gửi lên Backend
     if (accessToken) {
