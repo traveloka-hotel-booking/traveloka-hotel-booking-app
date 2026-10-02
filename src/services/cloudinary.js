@@ -1,7 +1,7 @@
-// Cấu hình Cloudinary dùng chung cho hệ thống Traveloka
-const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'efddn40s';
-const API_KEY = import.meta.env.VITE_CLOUDINARY_API_KEY || '355369716636389';
-const API_SECRET = import.meta.env.VITE_CLOUDINARY_API_SECRET || 'AFdh-X6AXmjKr4G7NkVkxHipxSk';
+// Cấu hình Cloudinary đọc bảo mật từ biến môi trường .env (Không lưu cứng khóa bảo mật trong mã nguồn)
+const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+const API_KEY = import.meta.env.VITE_CLOUDINARY_API_KEY;
+const API_SECRET = import.meta.env.VITE_CLOUDINARY_API_SECRET;
 
 // Hàm tính mã băm SHA-1 bằng Web Crypto API tích hợp sẵn trong trình duyệt
 async function sha1(str) {
@@ -21,6 +21,10 @@ async function sha1(str) {
 export async function uploadToCloudinary(file, folder = 'traveloka/hotels') {
   if (!file) {
     throw new Error('Chưa chọn tập tin để tải lên');
+  }
+
+  if (!CLOUD_NAME || !API_KEY || !API_SECRET) {
+    throw new Error('Chưa cấu hình thông tin bảo mật Cloudinary trong file .env (VITE_CLOUDINARY_CLOUD_NAME, VITE_CLOUDINARY_API_KEY, VITE_CLOUDINARY_API_SECRET)');
   }
 
   const timestamp = Math.floor(Date.now() / 1000);
