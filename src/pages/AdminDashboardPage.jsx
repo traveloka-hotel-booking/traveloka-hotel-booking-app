@@ -12,7 +12,7 @@ import {
   BarChart2, CreditCard, Tag, MessageSquare, FileBarChart,
   Wifi, Coffee, Car, Dumbbell, Waves, UtensilsCrossed, Shield,
   TrendingUp, TrendingDown, Award, Clock, LogIn, LogOut as LogOutIcon,
-  AlertCircle, UploadCloud
+  AlertCircle, UploadCloud, Filter, RotateCcw, Check
 } from 'lucide-react';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -107,7 +107,26 @@ export default function AdminDashboardPage() {
 
   // ── Rooms state (FR-14) ──
   const [roomsList, setRoomsList] = useState(() => {
-    const flat = hotels.flatMap(h => (h.rooms || []).map(r => ({ ...r, hotelId: h.id, hotelName: h.name })));
+    try {
+      const s = localStorage.getItem('traveloka_custom_rooms');
+      if (s) {
+        const parsed = JSON.parse(s);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Error reading traveloka_custom_rooms:', e);
+    }
+    const flat = hotels.flatMap(h => (h.rooms || []).map(r => ({
+      ...r,
+      hotelId: h.id,
+      hotelName: h.name,
+      status: r.status || 'AVAILABLE',
+      bedType: r.bedType || '1 Giường đôi lớn (King Size)',
+      roomSize: r.roomSize || '35 m²'
+    })));
+    try {
+      localStorage.setItem('traveloka_custom_rooms', JSON.stringify(flat));
+    } catch {}
     return flat;
   });
 
@@ -116,6 +135,65 @@ export default function AdminDashboardPage() {
     try { return JSON.parse(localStorage.getItem('traveloka_bookings') || '[]'); }
     catch { return []; }
   });
+
+  const updateHotels = (next) => { setHotels(next); localStorage.setItem('traveloka_custom_hotels', JSON.stringify(next)); };
+  const updateBookings = (next) => { setBookings(next); localStorage.setItem('traveloka_bookings', JSON.stringify(next)); };
+  const updateRooms = (next) => { setRoomsList(next); localStorage.setItem('traveloka_custom_rooms', JSON.stringify(next)); };
+
+  // Đồng bộ thông tin khách sạn khi danh sách phòng thay đổi (minPrice, totalRooms, rooms)
+  const syncHotelWithRooms = (hotelId, currentRooms) => {
+    const hotelRooms = currentRooms.filter(r => String(r.hotelId) === String(hotelId));
+    const minPrice = hotelRooms.length > 0
+      ? Math.min(...hotelRooms.map(r => Number(r.pricePerNight) || 1000000))
+      : 1000000;
+    const updatedHotels = hotels.map(h => {
+      if (String(h.id) === String(hotelId)) {
+        return {
+          ...h,
+          rooms: hotelRooms,
+          minPrice: isFinite(minPrice) ? minPrice : (h.minPrice || 1000000),
+          totalRooms: hotelRooms.length
+        };
+      }
+      return h;
+    });
+    updateHotels(updatedHotels);
+  };
+
+  // ── Bộ lọc danh sách loại phòng (FR-14) ──
+  const [roomSearchQuery, setRoomSearchQuery] = useState('');
+  const [roomHotelFilter, setRoomHotelFilter] = useState('ALL');
+  const [roomStatusFilter, setRoomStatusFilter] = useState('ALL');
+
+  const filteredRoomsList = useMemo(() => {
+    return roomsList.filter(r => {
+      if (roomHotelFilter !== 'ALL' && String(r.hotelId) !== String(roomHotelFilter)) {
+        return false;
+      }
+      if (roomStatusFilter !== 'ALL' && r.status !== roomStatusFilter) {
+        return false;
+      }
+      if (roomSearchQuery.trim()) {
+        const q = roomSearchQuery.toLowerCase().trim();
+        const matchName = r.name?.toLowerCase().includes(q);
+        const matchHotel = r.hotelName?.toLowerCase().includes(q);
+        const matchBed = r.bedType?.toLowerCase().includes(q);
+        if (!matchName && !matchHotel && !matchBed) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [roomsList, roomHotelFilter, roomStatusFilter, roomSearchQuery]);
+
+  // Thống kê trạng thái loại phòng cho 4 thẻ KPI
+  const roomStats = useMemo(() => {
+    const total = roomsList.length;
+    const available = roomsList.filter(r => r.status === 'AVAILABLE').length;
+    const booked = roomsList.filter(r => r.status === 'BOOKED').length;
+    const maintenance = roomsList.filter(r => r.status === 'MAINTENANCE').length;
+    return { total, available, booked, maintenance };
+  }, [roomsList]);
 
   // Tải dữ liệu thật từ Backend nếu Backend online và đã đăng nhập
   useEffect(() => {
@@ -142,6 +220,7 @@ export default function AdminDashboardPage() {
           const roomData = await roomRes.json();
           if (roomData.result && roomData.result.length > 0) {
             setRoomsList(roomData.result);
+            localStorage.setItem('traveloka_custom_rooms', JSON.stringify(roomData.result));
           }
         }
       } catch (e) {
@@ -153,9 +232,6 @@ export default function AdminDashboardPage() {
       fetchBackendData();
     }
   }, [isAdmin]);
-
-  const updateHotels = (next) => { setHotels(next); localStorage.setItem('traveloka_custom_hotels', JSON.stringify(next)); };
-  const updateBookings = (next) => { setBookings(next); localStorage.setItem('traveloka_bookings', JSON.stringify(next)); };
 
   // ── Hotel modal (FR-13) ──
   const [showHotelModal, setShowHotelModal] = useState(false);
@@ -268,7 +344,8 @@ export default function AdminDashboardPage() {
       console.warn('Delete hotel API error, updating state:', e);
     }
     updateHotels(hotels.filter(h => h.id !== id));
-    setRoomsList(roomsList.filter(r => r.hotelId !== id));
+    const nextRooms = roomsList.filter(r => r.hotelId !== id);
+    updateRooms(nextRooms);
   };
 
   // ── Room modal (FR-14) ──
@@ -322,6 +399,43 @@ export default function AdminDashboardPage() {
     }
   };
 
+  // Đổi trạng thái phòng nhanh trực tiếp trên bảng danh sách (FR-14)
+  const handleQuickChangeRoomStatus = async (roomId, newStatus) => {
+    const updated = roomsList.map(r => r.id === roomId ? { ...r, status: newStatus } : r);
+    updateRooms(updated);
+    const targetRoom = updated.find(r => r.id === roomId);
+    if (targetRoom) {
+      syncHotelWithRooms(targetRoom.hotelId, updated);
+    }
+    const statusLabels = {
+      AVAILABLE: 'Sẵn Sàng (Available)',
+      BOOKED: 'Đang Có Khách (Booked)',
+      MAINTENANCE: 'Đang Bảo Trì (Maintenance)'
+    };
+    showToast(`Đã đổi trạng thái phòng thành: ${statusLabels[newStatus] || newStatus}`);
+
+    try {
+      if (typeof roomId === 'number' || !String(roomId).startsWith('r-')) {
+        await apiFetch(`/admin/rooms/${roomId}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            hotelId: Number(targetRoom.hotelId),
+            name: targetRoom.name,
+            pricePerNight: Number(targetRoom.pricePerNight),
+            maxGuests: Number(targetRoom.maxGuests),
+            bedType: targetRoom.bedType,
+            roomSize: targetRoom.roomSize,
+            status: newStatus,
+            imageUrl: targetRoom.imageUrl,
+            description: targetRoom.description
+          })
+        });
+      }
+    } catch (e) {
+      console.warn('Quick change room status API warning:', e);
+    }
+  };
+
   const openAddRoom = () => {
     setEditingRoom(null);
     setRoomForm({
@@ -357,6 +471,8 @@ export default function AdminDashboardPage() {
   const saveRoom = async (e) => {
     e.preventDefault();
     const targetHotel = hotels.find(h => String(h.id) === String(roomForm.hotelId)) || hotels[0];
+    let savedRoomObj = null;
+
     try {
       if (editingRoom) {
         const res = await apiFetch(`/admin/rooms/${editingRoom.id}`, {
@@ -375,12 +491,15 @@ export default function AdminDashboardPage() {
         });
         if (res.ok) {
           const json = await res.json();
-          setRoomsList(roomsList.map(r => r.id === editingRoom.id ? json.result : r));
+          savedRoomObj = { ...json.result, hotelName: targetHotel?.name };
           showToast('Cập nhật loại phòng trên máy chủ thành công!');
         } else {
-          setRoomsList(roomsList.map(r => r.id === editingRoom.id ? { ...r, ...roomForm, hotelName: targetHotel?.name } : r));
+          savedRoomObj = { ...editingRoom, ...roomForm, hotelId: targetHotel?.id, hotelName: targetHotel?.name };
           showToast('Đã lưu thay đổi loại phòng');
         }
+        const updated = roomsList.map(r => r.id === editingRoom.id ? savedRoomObj : r);
+        updateRooms(updated);
+        syncHotelWithRooms(roomForm.hotelId, updated);
       } else {
         const res = await apiFetch('/admin/rooms', {
           method: 'POST',
@@ -398,34 +517,54 @@ export default function AdminDashboardPage() {
         });
         if (res.ok) {
           const json = await res.json();
-          setRoomsList([json.result, ...roomsList]);
+          savedRoomObj = { ...json.result, hotelName: targetHotel?.name };
           showToast('Tạo mới loại phòng trên máy chủ thành công!');
         } else {
-          const newRoom = { id: `r-${Date.now()}`, ...roomForm, hotelName: targetHotel?.name };
-          setRoomsList([newRoom, ...roomsList]);
+          savedRoomObj = { id: `r-${Date.now()}`, ...roomForm, hotelId: targetHotel?.id, hotelName: targetHotel?.name };
           showToast('Đã tạo loại phòng mới');
         }
+        const updated = [savedRoomObj, ...roomsList];
+        updateRooms(updated);
+        syncHotelWithRooms(roomForm.hotelId, updated);
       }
     } catch (err) {
       console.warn('API room save fallback:', err);
-      const newRoom = { id: `r-${Date.now()}`, ...roomForm, hotelName: targetHotel?.name };
-      setRoomsList([newRoom, ...roomsList]);
-      showToast('Đã lưu loại phòng');
+      if (editingRoom) {
+        savedRoomObj = { ...editingRoom, ...roomForm, hotelId: targetHotel?.id, hotelName: targetHotel?.name };
+        const updated = roomsList.map(r => r.id === editingRoom.id ? savedRoomObj : r);
+        updateRooms(updated);
+        syncHotelWithRooms(roomForm.hotelId, updated);
+        showToast('Đã lưu loại phòng');
+      } else {
+        savedRoomObj = { id: `r-${Date.now()}`, ...roomForm, hotelId: targetHotel?.id, hotelName: targetHotel?.name };
+        const updated = [savedRoomObj, ...roomsList];
+        updateRooms(updated);
+        syncHotelWithRooms(roomForm.hotelId, updated);
+        showToast('Đã lưu loại phòng mới');
+      }
     }
     setShowRoomModal(false);
   };
 
   const deleteRoom = async (id) => {
-    if (!window.confirm('Bạn có chắc muốn xóa loại phòng này không?')) return;
+    const targetRoom = roomsList.find(r => r.id === id);
+    if (!window.confirm(`Bạn có chắc muốn xóa loại phòng "${targetRoom?.name || ''}" không?`)) return;
     try {
-      const res = await apiFetch(`/admin/rooms/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        showToast('Đã xóa loại phòng khỏi máy chủ');
+      if (typeof id === 'number' || !String(id).startsWith('r-')) {
+        const res = await apiFetch(`/admin/rooms/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          showToast('Đã xóa loại phòng khỏi máy chủ');
+        }
       }
     } catch (e) {
       console.warn('Delete room error:', e);
     }
-    setRoomsList(roomsList.filter(r => r.id !== id));
+    const updated = roomsList.filter(r => r.id !== id);
+    updateRooms(updated);
+    if (targetRoom) {
+      syncHotelWithRooms(targetRoom.hotelId, updated);
+    }
+    showToast('Đã xóa loại phòng khỏi hệ thống');
   };
 
   // ── Bookings logic ──
@@ -689,50 +828,253 @@ export default function AdminDashboardPage() {
             </SectionCard>
           )}
 
-          {/* ══ TAB: LOẠI PHÒNG (FR-14 - CRUD ĐỘC LẬP) ══ */}
+          {/* ══ TAB: LOẠI PHÒNG (FR-14 - QUẢN LÝ KHO PHÒNG CHUYÊN SÂU) ══ */}
           {activeTab === 'rooms' && (
-            <SectionCard title={`Quản Lý Danh Sách Loại Phòng (${roomsList.length} loại phòng)`} sub="Thêm mới, điều chỉnh giá, thay đổi trạng thái (Available/Booked/Maintenance) theo khách sạn"
-              action={<ActionBtn onClick={openAddRoom} icon={<Plus size={16} />}>Thêm Loại Phòng Mới</ActionBtn>}>
-              <div className="table-responsive">
-                <table className="table table-hover align-middle mb-0" style={{ fontSize: 13 }}>
-                  <thead style={{ background: '#f8fafc' }}>
-                    <tr>{['Hình Ảnh', 'Tên Loại Phòng', 'Khách Sạn', 'Loại Giường', 'Diện Tích', 'Sức Chứa', 'Giá / Đêm', 'Trạng Thái', 'Thao Tác'].map(h => <Th key={h}>{h}</Th>)}</tr>
-                  </thead>
-                  <tbody>
-                    {roomsList.length === 0 ? (
-                      <tr><td colSpan={9}><Empty text="Chưa có loại phòng nào trong hệ thống" /></td></tr>
-                    ) : (
-                      roomsList.map(r => (
-                        <tr key={r.id}>
-                          <td><img src={r.imageUrl || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60'} alt={r.name} style={{ width: 72, height: 48, borderRadius: 8, objectFit: 'cover' }} /></td>
-                          <td>
-                            <div style={{ fontWeight: 600, color: '#1e293b', maxWidth: 190 }}>{r.name}</div>
-                            <div style={{ fontSize: 11, color: '#94a3b8', maxWidth: 190 }}>{r.description ? r.description.substring(0, 50) + '...' : ''}</div>
-                          </td>
-                          <td><span style={{ background: '#eff6ff', color: '#3b82f6', padding: '3px 10px', borderRadius: 8, fontSize: 12 }}>{r.hotelName || 'Khách sạn'}</span></td>
-                          <td style={{ fontSize: 12, color: '#374151' }}>{r.bedType || 'Giường đôi'}</td>
-                          <td style={{ fontSize: 12 }}>{r.roomSize || '35 m²'}</td>
-                          <td><span style={{ background: '#f1f5f9', padding: '3px 8px', borderRadius: 6, fontSize: 12 }}>{r.maxGuests || 2} khách</span></td>
-                          <td style={{ fontWeight: 700, color: '#dc2626' }}>{Number(r.pricePerNight || 0).toLocaleString('vi-VN')} đ</td>
-                          <td>
-                            {r.status === 'AVAILABLE' && <Badge bg="#dcfce7" color="#16a34a">✓ Sẵn Sàng</Badge>}
-                            {r.status === 'BOOKED' && <Badge bg="#fef9c3" color="#92400e">⏳ Có Khách</Badge>}
-                            {r.status === 'MAINTENANCE' && <Badge bg="#fee2e2" color="#dc2626">🛠️ Bảo Trì</Badge>}
-                            {!['AVAILABLE', 'BOOKED', 'MAINTENANCE'].includes(r.status) && <Badge bg="#eff6ff" color="#3b82f6">{r.status || 'AVAILABLE'}</Badge>}
-                          </td>
-                          <td>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <SmBtn color="blue" onClick={() => openEditRoom(r)} icon={<Edit2 size={12} />}>Sửa</SmBtn>
-                              <SmBtn color="red" onClick={() => deleteRoom(r.id)} icon={<Trash2 size={12} />}>Xóa</SmBtn>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+            <div>
+              {/* 4 THẺ KPI TRẠNG THÁI KHO PHÒNG */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 20 }}>
+                <KpiCard
+                  icon={<BedDouble size={26} color="#6366f1" />}
+                  iconBg="#eef2ff"
+                  value={roomStats.total}
+                  label="Tổng Số Loại Phòng"
+                  sub={<span style={{ color: '#6366f1', fontWeight: 600, fontSize: 13 }}>Đang quản lý trong hệ thống</span>}
+                />
+                <KpiCard
+                  icon={<CheckCircle2 size={26} color="#22c55e" />}
+                  iconBg="#f0fdf4"
+                  value={roomStats.available}
+                  label="Phòng Sẵn Sàng"
+                  sub={<span style={{ color: '#22c55e', fontWeight: 600, fontSize: 13 }}>AVAILABLE • Sẵn sàng đón khách</span>}
+                />
+                <KpiCard
+                  icon={<Clock size={26} color="#f59e0b" />}
+                  iconBg="#fffbeb"
+                  value={roomStats.booked}
+                  label="Phòng Đang Có Khách"
+                  sub={<span style={{ color: '#f59e0b', fontWeight: 600, fontSize: 13 }}>BOOKED • Đang có khách lưu trú</span>}
+                />
+                <KpiCard
+                  icon={<AlertCircle size={26} color="#dc2626" />}
+                  iconBg="#fef2f2"
+                  value={roomStats.maintenance}
+                  label="Phòng Đang Bảo Trì"
+                  sub={<span style={{ color: '#dc2626', fontWeight: 600, fontSize: 13 }}>MAINTENANCE • Đang sửa chữa</span>}
+                />
               </div>
-            </SectionCard>
+
+              {/* THANH TÌM KIẾM & BỘ LỌC ĐA TIÊU CHÍ */}
+              <div style={{
+                background: '#fff',
+                borderRadius: 14,
+                padding: '16px 20px',
+                marginBottom: 20,
+                boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                border: '1px solid #e2e8f0',
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 14,
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', flex: 1 }}>
+                  {/* Ô tìm kiếm */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    background: '#f8fafc',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: 10,
+                    padding: '8px 14px',
+                    minWidth: 260,
+                    flex: 1
+                  }}>
+                    <Search size={16} color="#64748b" />
+                    <input
+                      type="text"
+                      placeholder="Tìm theo tên phòng, loại giường, khách sạn..."
+                      value={roomSearchQuery}
+                      onChange={e => setRoomSearchQuery(e.target.value)}
+                      style={{ border: 'none', background: 'transparent', outline: 'none', width: '100%', fontSize: 13, color: '#1e293b' }}
+                    />
+                    {roomSearchQuery && (
+                      <button onClick={() => setRoomSearchQuery('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 0, display: 'flex' }}>
+                        <X size={15} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Lọc theo khách sạn */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Building size={16} color="#64748b" />
+                    <select
+                      value={roomHotelFilter}
+                      onChange={e => setRoomHotelFilter(e.target.value)}
+                      className="form-select form-select-sm"
+                      style={{ fontSize: 13, minWidth: 200, borderRadius: 8, borderColor: '#cbd5e1' }}
+                    >
+                      <option value="ALL">Tất cả khách sạn ({hotels.length})</option>
+                      {hotels.map(h => (
+                        <option key={h.id} value={h.id}>{h.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Lọc theo trạng thái */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Filter size={16} color="#64748b" />
+                    <select
+                      value={roomStatusFilter}
+                      onChange={e => setRoomStatusFilter(e.target.value)}
+                      className="form-select form-select-sm"
+                      style={{ fontSize: 13, minWidth: 160, borderRadius: 8, borderColor: '#cbd5e1' }}
+                    >
+                      <option value="ALL">Tất cả trạng thái</option>
+                      <option value="AVAILABLE">✓ Sẵn Sàng (Available)</option>
+                      <option value="BOOKED">⏳ Có Khách (Booked)</option>
+                      <option value="MAINTENANCE">🛠️ Bảo Trì (Maintenance)</option>
+                    </select>
+                  </div>
+
+                  {/* Nút reset nếu đang có lọc */}
+                  {(roomSearchQuery || roomHotelFilter !== 'ALL' || roomStatusFilter !== 'ALL') && (
+                    <button
+                      onClick={() => {
+                        setRoomSearchQuery('');
+                        setRoomHotelFilter('ALL');
+                        setRoomStatusFilter('ALL');
+                      }}
+                      className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+                      style={{ borderRadius: 8, fontSize: 12.5 }}
+                    >
+                      <RotateCcw size={13} />
+                      <span>Xóa bộ lọc</span>
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 12.5, color: '#64748b', fontWeight: 600 }}>
+                    Hiển thị <span className="text-primary">{filteredRoomsList.length}</span> / {roomsList.length} loại phòng
+                  </span>
+                  <ActionBtn onClick={openAddRoom} icon={<Plus size={16} />}>Thêm Loại Phòng Mới</ActionBtn>
+                </div>
+              </div>
+
+              {/* BẢNG DỮ LIỆU PHÒNG */}
+              <SectionCard
+                title="Danh Sách Loại Phòng Lưu Trú"
+                sub="Quản lý chi tiết từng loại phòng, cập nhật đơn giá, tải ảnh Cloudinary và đổi trạng thái phòng nhanh"
+              >
+                {filteredRoomsList.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                    <Empty
+                      text={
+                        roomSearchQuery || roomHotelFilter !== 'ALL' || roomStatusFilter !== 'ALL'
+                          ? 'Không tìm thấy loại phòng nào phù hợp với bộ lọc hiện tại'
+                          : 'Chưa có loại phòng nào trong hệ thống'
+                      }
+                    />
+                    {(roomSearchQuery || roomHotelFilter !== 'ALL' || roomStatusFilter !== 'ALL') ? (
+                      <button
+                        onClick={() => { setRoomSearchQuery(''); setRoomHotelFilter('ALL'); setRoomStatusFilter('ALL'); }}
+                        className="btn btn-outline-primary btn-sm mt-3"
+                      >
+                        Đặt lại bộ lọc tìm kiếm
+                      </button>
+                    ) : (
+                      <button onClick={openAddRoom} className="btn btn-primary btn-sm mt-3">
+                        + Tạo loại phòng đầu tiên
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="table-responsive">
+                    <table className="table table-hover align-middle mb-0" style={{ fontSize: 13 }}>
+                      <thead style={{ background: '#f8fafc' }}>
+                        <tr>
+                          {['Hình Ảnh', 'Tên Loại Phòng', 'Khách Sạn', 'Loại Giường & DT', 'Sức Chứa', 'Giá / Đêm', 'Trạng Thái (Đổi Nhanh)', 'Thao Tác'].map(h => (
+                            <Th key={h}>{h}</Th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredRoomsList.map(r => (
+                          <tr key={r.id}>
+                            <td>
+                              <img
+                                src={r.imageUrl || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60'}
+                                alt={r.name}
+                                style={{ width: 72, height: 48, borderRadius: 8, objectFit: 'cover', border: '1px solid #e2e8f0' }}
+                                onError={(e) => {
+                                  e.target.src = 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60';
+                                }}
+                              />
+                            </td>
+                            <td>
+                              <div style={{ fontWeight: 700, color: '#1e293b', maxWidth: 220 }}>{r.name}</div>
+                              {r.description && (
+                                <div style={{ fontSize: 11, color: '#94a3b8', maxWidth: 220 }} className="text-truncate" title={r.description}>
+                                  {r.description}
+                                </div>
+                              )}
+                            </td>
+                            <td>
+                              <span style={{ background: '#eff6ff', color: '#2563eb', padding: '4px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600 }}>
+                                {r.hotelName || 'Khách sạn'}
+                              </span>
+                            </td>
+                            <td>
+                              <div style={{ fontSize: 12.5, fontWeight: 500, color: '#334155' }}>{r.bedType || 'Giường đôi'}</div>
+                              <span style={{ fontSize: 11, color: '#64748b' }}>📐 {r.roomSize || '35 m²'}</span>
+                            </td>
+                            <td>
+                              <span style={{ background: '#f1f5f9', color: '#475569', padding: '3px 8px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
+                                👥 {r.maxGuests || 2} khách
+                              </span>
+                            </td>
+                            <td style={{ fontWeight: 800, color: '#dc2626', fontSize: 14 }}>
+                              {Number(r.pricePerNight || 0).toLocaleString('vi-VN')} đ
+                              <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 400, display: 'block' }}>/ đêm</span>
+                            </td>
+                            <td>
+                              {/* Dropdown Đổi Trạng Thái Nhanh */}
+                              <select
+                                value={r.status || 'AVAILABLE'}
+                                onChange={(e) => handleQuickChangeRoomStatus(r.id, e.target.value)}
+                                style={{
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  padding: '5px 8px',
+                                  borderRadius: 8,
+                                  cursor: 'pointer',
+                                  border: '1px solid ' + (r.status === 'AVAILABLE' ? '#86efac' : r.status === 'BOOKED' ? '#fde047' : '#fca5a5'),
+                                  background: r.status === 'AVAILABLE' ? '#dcfce7' : r.status === 'BOOKED' ? '#fef9c3' : '#fee2e2',
+                                  color: r.status === 'AVAILABLE' ? '#16a34a' : r.status === 'BOOKED' ? '#92400e' : '#dc2626',
+                                  outline: 'none'
+                                }}
+                                title="Click để chuyển nhanh trạng thái phòng"
+                              >
+                                <option value="AVAILABLE" style={{ background: '#fff', color: '#16a34a' }}>✓ Sẵn Sàng</option>
+                                <option value="BOOKED" style={{ background: '#fff', color: '#92400e' }}>⏳ Có Khách</option>
+                                <option value="MAINTENANCE" style={{ background: '#fff', color: '#dc2626' }}>🛠️ Bảo Trì</option>
+                              </select>
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <SmBtn color="blue" onClick={() => openEditRoom(r)} icon={<Edit2 size={12} />}>Sửa</SmBtn>
+                                <SmBtn color="red" onClick={() => deleteRoom(r.id)} icon={<Trash2 size={12} />}>Xóa</SmBtn>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </SectionCard>
+            </div>
           )}
 
           {/* ══ TAB: TIỆN NGHI ══ */}
@@ -1102,7 +1444,18 @@ export default function AdminDashboardPage() {
               </div>
               <div>
                 <FL>Giá phòng 1 đêm (VNĐ) *</FL>
-                <input type="number" step="50000" className="form-control" value={roomForm.pricePerNight} onChange={e => setRoomForm({ ...roomForm, pricePerNight: e.target.value })} required />
+                <input
+                  type="number"
+                  step="50000"
+                  min="50000"
+                  className="form-control"
+                  value={roomForm.pricePerNight}
+                  onChange={e => setRoomForm({ ...roomForm, pricePerNight: e.target.value })}
+                  required
+                />
+                <div style={{ fontSize: 12, color: '#2563eb', fontWeight: 600, marginTop: 4 }}>
+                  💰 Xem nhanh: {Number(roomForm.pricePerNight || 0).toLocaleString('vi-VN')} VNĐ / đêm
+                </div>
               </div>
               <div>
                 <FL>Số lượng khách tối đa *</FL>
@@ -1119,10 +1472,50 @@ export default function AdminDashboardPage() {
               <div>
                 <FL>Loại giường</FL>
                 <input className="form-control" value={roomForm.bedType} onChange={e => setRoomForm({ ...roomForm, bedType: e.target.value })} placeholder="VD: 1 Giường King hoặc 2 Giường đơn" />
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                  {['1 Giường King', '2 Giường đơn', '1 King & 1 Đơn', '2 Giường đôi'].map(b => (
+                    <button
+                      key={b}
+                      type="button"
+                      onClick={() => setRoomForm({ ...roomForm, bedType: b })}
+                      style={{
+                        fontSize: 11,
+                        padding: '2px 8px',
+                        borderRadius: 6,
+                        border: '1px solid #cbd5e1',
+                        background: roomForm.bedType === b ? '#eff6ff' : '#f8fafc',
+                        color: roomForm.bedType === b ? '#2563eb' : '#475569',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {b}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div>
                 <FL>Diện tích phòng</FL>
                 <input className="form-control" value={roomForm.roomSize} onChange={e => setRoomForm({ ...roomForm, roomSize: e.target.value })} placeholder="VD: 45 m²" />
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                  {['28 m²', '35 m²', '45 m²', '65 m²'].map(s => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setRoomForm({ ...roomForm, roomSize: s })}
+                      style={{
+                        fontSize: 11,
+                        padding: '2px 8px',
+                        borderRadius: 6,
+                        border: '1px solid #cbd5e1',
+                        background: roomForm.roomSize === s ? '#eff6ff' : '#f8fafc',
+                        color: roomForm.roomSize === s ? '#2563eb' : '#475569',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div style={{ gridColumn: '1/-1' }}>
                 <FL>URL hình ảnh phòng</FL>
@@ -1268,13 +1661,15 @@ function SectionCard({ title, sub, action, children }) {
 }
 function Modal({ title, children, onClose, dark, action }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: '#fff', borderRadius: 16, width: '90%', maxWidth: 720, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '16px 24px', background: dark ? '#1e293b' : '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 740, maxHeight: '92vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+        <div style={{ padding: '16px 24px', background: dark ? '#1e293b' : '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 16, color: dark ? '#fff' : '#1e293b' }}>{title}</div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>{action}<button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: dark ? '#fff' : '#64748b', display: 'flex' }}><X size={22} /></button></div>
         </div>
-        {children}
+        <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column' }}>
+          {children}
+        </div>
       </div>
     </div>
   );
