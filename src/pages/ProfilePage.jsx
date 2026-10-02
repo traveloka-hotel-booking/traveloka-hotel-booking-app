@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { apiFetch } from '../services/api';
 import { 
   User, Shield, Lock, Smartphone, Mail, Key, Monitor, 
   History, Edit3, CheckCircle, AlertCircle, Hotel, LogOut, ChevronRight, X,
   Camera, Loader2
 } from 'lucide-react';
+import { apiFetch } from '../services/api';
 
 export default function ProfilePage() {
   const navigate = useNavigate();
@@ -22,53 +22,48 @@ export default function ProfilePage() {
   const [modalType, setModalType] = useState(null); // 'edit_profile', 'change_password', 'edit_email', 'edit_phone', 'devices', 'history'
   const [toastMessage, setToastMessage] = useState(null);
 
-  // Form State chỉnh sửa hồ sơ
+  // Thông tin profile lấy từ backend
+  const [profile, setProfile] = useState(null);
+
+  // Form chỉnh sửa profile
   const [profileForm, setProfileForm] = useState({
-    legalName: user?.legalName || user?.name || 'Nguyễn Văn A',
-    displayName: user?.name || 'Nguyễn Văn A',
-    birthDate: user?.birthDate || '1995-08-15',
-    gender: user?.gender || 'Nam',
-    idCard: user?.idCard || '001295008921'
+    fullName: '',
+    phone: '',
+    yob: '',
+    gender: '',
+    address: ''
   });
 
-  // Tự động tải thông tin hồ sơ và avatar mới nhất từ Backend khi vào trang nếu đã đăng nhập có token
-  useEffect(() => {
-    const fetchLatestProfile = async () => {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
+  const [errorMessage, setErrorMessage] = useState('');
 
-      try {
-        const res = await apiFetch('/users/profile');
-        if (res.ok) {
-          const json = await res.json();
-          if (json.result) {
-            const u = json.result;
-            updateUserProfile({
-              name: u.fullName || user?.name,
-              phone: u.phone || user?.phone,
-              avatarUrl: u.avatarUrl || user?.avatarUrl,
-              gender: u.gender || user?.gender,
-              birthDate: u.dateOfBirth || user?.birthDate,
-            });
-            setProfileForm(prev => ({
-              ...prev,
-              legalName: u.fullName || prev.legalName,
-              displayName: u.fullName || prev.displayName,
-              gender: u.gender || prev.gender,
-              birthDate: u.dateOfBirth || prev.birthDate,
-            }));
-            if (u.phone) setNewPhone(u.phone);
-          }
+  // Lấy profile khi mở trang
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const fetchProfile = async () => {
+        try {
+            const response = await apiFetch('/customer/profile');
+
+            console.log("PROFILE RESPONSE:", response);
+
+            const result = await response.json();
+
+            console.log("PROFILE RESULT:", JSON.stringify(result, null, 2));
+
+            if (!response.ok) {
+                throw new Error(result.message || 'Không thể lấy thông tin cá nhân');
+            }
+
+            setProfile(result.result);
+
+        } catch (error) {
+            console.error('Get profile error:', error);
+            showToast('Không thể lấy thông tin cá nhân');
         }
-      } catch (err) {
-        console.warn('API fetch profile fallback:', err);
-      }
     };
 
-    if (isAuthenticated) {
-      fetchLatestProfile();
-    }
-  }, [isAuthenticated]);
+    fetchProfile();
+}, [isAuthenticated]);
 
   // Form State đổi mật khẩu
   const [passwordForm, setPasswordForm] = useState({
@@ -93,6 +88,52 @@ export default function ProfilePage() {
     { id: 1, name: 'MacBook Pro 14" (macOS)', browser: 'Google Chrome', lastActive: 'Đang hoạt động', current: true },
     { id: 2, name: 'iPhone 15 Pro (iOS 18)', browser: 'Traveloka App', lastActive: 'Hôm qua lúc 21:15', current: false }
   ]);
+
+
+  // Tải ảnh đại diện lên backend (backend xử lý lưu ảnh lên Cloudinary)
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      showToast("Vui lòng chọn tập tin hình ảnh hợp lệ");
+      e.target.value = "";
+      return;
+    }
+
+    try {
+      setIsUploadingAvatar(true);
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await apiFetch("/customer/avatar", {
+        method: "PUT",
+        body: formData,
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.message || "Tải ảnh đại diện thất bại");
+      }
+
+      const avatarUrl = result.result;
+
+      if (!avatarUrl) {
+        throw new Error("API chưa trả về đường dẫn ảnh đại diện");
+      }
+
+      setProfile((prev) => prev ? { ...prev, avatarUrl } : prev);
+      updateUserProfile({ avatarUrl });
+      showToast("Cập nhật ảnh đại diện thành công");
+    } catch (error) {
+      console.error("Avatar upload error:", error);
+      showToast(error.message || "Tải ảnh đại diện thất bại");
+    } finally {
+      setIsUploadingAvatar(false);
+      e.target.value = "";
+    }
+  };
 
   // Hiển thị toast thông báo
   const showToast = (msg) => {
@@ -120,124 +161,114 @@ export default function ProfilePage() {
     return `${cleaned.slice(0, 4)} ••• ${cleaned.slice(-3)}`;
   };
 
-  // Tải ảnh đại diện lên Cloudinary thông qua MultipartFile API
-  const handleAvatarUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Mở modal chỉnh sửa và đổ dữ liệu hiện tại vào form
+  const handleOpenEditProfile = () => {
+    if (!profile) return;
 
-    if (!file.type.startsWith('image/')) {
-      alert('Vui lòng chọn tập tin hình ảnh hợp lệ (JPG, PNG, WEBP)');
-      return;
-    }
+    setProfileForm({
+      fullName: profile.fullName || '',
+      phone: profile.phone || '',
+      yob: profile.yob || '',
+      gender: profile.gender || '',
+      address: profile.address || ''
+    });
 
-    try {
-      setIsUploadingAvatar(true);
-      const formData = new FormData();
-      formData.append('avatar', file);
-
-      const res = await apiFetch('/users/profile', {
-        method: 'PUT',
-        body: formData,
-      });
-
-      if (res.ok) {
-        const json = await res.json();
-        const updated = json.result;
-        updateUserProfile({
-          avatarUrl: updated.avatarUrl,
-          name: updated.fullName || user?.name,
-          phone: updated.phone || user?.phone,
-        });
-        showToast('Tải ảnh đại diện lên Cloudinary thành công!');
-      } else {
-        showToast('Không thể tải ảnh lên máy chủ (Vui lòng kiểm tra Backend)');
-      }
-    } catch (err) {
-      console.error(err);
-      showToast('Lỗi kết nối khi tải ảnh lên');
-    } finally {
-      setIsUploadingAvatar(false);
-      if (avatarInputRef.current) {
-        avatarInputRef.current.value = '';
-      }
-    }
+    setModalType('edit_profile');
   };
 
-  // Xử lý lưu hồ sơ cá nhân (kèm ảnh đại diện nếu có chọn trong modal)
+  // Xử lý lưu hồ sơ cá nhân
   const handleSaveProfile = async (e) => {
     e.preventDefault();
-    setIsSavingProfile(true);
     try {
-      const formData = new FormData();
-      formData.append('fullName', profileForm.displayName || profileForm.legalName);
-      formData.append('phone', newPhone || user?.phone || '');
-      formData.append('gender', profileForm.gender || 'Nam');
-      formData.append('dateOfBirth', profileForm.birthDate || '');
-      if (modalAvatarFile) {
-        formData.append('avatar', modalAvatarFile);
-      }
-
-      const res = await apiFetch('/users/profile', {
+      const response = await apiFetch('/customer/profile', {
         method: 'PUT',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(profileForm)
       });
 
-      if (res.ok) {
-        const json = await res.json();
-        const updated = json.result;
-        updateUserProfile({
-          name: updated.fullName,
-          legalName: profileForm.legalName,
-          birthDate: updated.dateOfBirth,
-          gender: updated.gender,
-          phone: updated.phone,
-          avatarUrl: updated.avatarUrl || user?.avatarUrl,
-          idCard: profileForm.idCard
-        });
-        showToast('Cập nhật hồ sơ và ảnh đại diện thành công!');
-      } else {
-        updateUserProfile({
-          name: profileForm.displayName,
-          legalName: profileForm.legalName,
-          birthDate: profileForm.birthDate,
-          gender: profileForm.gender,
-          idCard: profileForm.idCard
-        });
-        showToast('Đã lưu thông tin hồ sơ');
+      const result = await response.json();
+
+      if (!response.ok) {
+        setErrorMessage(result.result.errors);
+        return;
       }
-    } catch (err) {
-      console.warn('Backend profile update failed, using local update:', err);
-      updateUserProfile({
-        name: profileForm.displayName,
-        legalName: profileForm.legalName,
-        birthDate: profileForm.birthDate,
-        gender: profileForm.gender,
-        idCard: profileForm.idCard
-      });
-      showToast('Đã lưu thông tin hồ sơ');
-    } finally {
-      setIsSavingProfile(false);
-      setModalAvatarFile(null);
-      setModalAvatarPreview(null);
-      setModalType(null);
+
+      // Backend trả về profile mới sau khi update
+      setProfile(result.result);
+      setErrorMessage('');
+
+    setModalType(null);
+    showToast('Cập nhật thông tin hồ sơ thành công!');
+  }catch (error) {
+      console.error('Update profile error:', error);
+      showToast(error.message || 'Cập nhật thông tin thất bại');
     }
-  };
+     };
+
 
   // Xử lý đổi mật khẩu
-  const handleChangePassword = (e) => {
-    e.preventDefault();
-    if (passwordForm.newPassword.length < 6) {
-      alert('Mật khẩu mới phải có ít nhất 6 ký tự!');
-      return;
+  const handleChangePassword = async (e) => {
+  e.preventDefault();
+
+  // Kiểm tra mật khẩu mới
+  if (passwordForm.newPassword.length < 6) {
+    alert('Mật khẩu mới phải có ít nhất 6 ký tự!');
+    return;
+  }
+
+  // Kiểm tra xác nhận mật khẩu
+  if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+    alert('Mật khẩu xác nhận không trùng khớp!');
+    return;
+  }
+
+  try {
+    const accessToken = localStorage.getItem('accessToken');
+
+    const response = await apiFetch('/auth/change-password', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        oldPassword: passwordForm.currentPassword,
+        newPassword: passwordForm.newPassword,
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        result.message || 'Đổi mật khẩu thất bại'
+      );
     }
-    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      alert('Mật khẩu xác nhận không trùng khớp!');
-      return;
-    }
-    setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+
+    // Đổi mật khẩu thành công
+    // Xóa token phía frontend
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('traveloka_auth_user');
+
+    // Đóng modal
     setModalType(null);
-    showToast('Đổi mật khẩu thành công!');
-  };
+
+    // Hiển thị thông báo bằng toast đã có sẵn trong component
+    showToast('Đổi mật khẩu thành công. Vui lòng đăng nhập lại!');
+
+    // Chuyển về trang đăng nhập
+    setTimeout(() => {
+      navigate('/login');
+    }, 1500);
+
+  } catch (error) {
+    console.error('Change password error:', error);
+    alert(error.message || 'Đổi mật khẩu thất bại');
+  }
+};
 
   // Xử lý lưu email
   const handleSaveEmail = (e) => {
@@ -540,7 +571,7 @@ export default function ProfilePage() {
                   </p>
                 </div>
                 <button 
-                  onClick={() => setModalType('edit_profile')} 
+                  onClick={handleOpenEditProfile} 
                   className="btn btn-outline-primary btn-sm rounded-pill px-3 fw-semibold d-flex align-items-center gap-1"
                 >
                   <Edit3 size={14} /> Chỉnh Sửa
@@ -553,35 +584,43 @@ export default function ProfilePage() {
                 <div className="col-md-6">
                   <div className="p-3 bg-light rounded-3">
                     <span className="small text-secondary d-block">Họ và tên đầy đủ (hợp pháp)</span>
-                    <strong className="text-dark">{profileForm.legalName}</strong>
+                    <strong className="text-dark">{profile?.fullName || "Chưa cập nhật"}</strong>
                   </div>
                 </div>
 
                 <div className="col-md-6">
                   <div className="p-3 bg-light rounded-3">
-                    <span className="small text-secondary d-block">Tên hiển thị</span>
-                    <strong className="text-dark">{profileForm.displayName}</strong>
+                    <span className="small text-secondary d-block">Số điện thoại</span>
+                    <strong className="text-dark">{profile?.phone || "Chưa cập nhật"}</strong>
                   </div>
                 </div>
 
                 <div className="col-md-4">
                   <div className="p-3 bg-light rounded-3">
                     <span className="small text-secondary d-block">Ngày sinh</span>
-                    <strong className="text-dark">{profileForm.birthDate}</strong>
+                    <strong className="text-dark">{profile?.yob || "Chưa cập nhật"}</strong>
                   </div>
                 </div>
 
                 <div className="col-md-4">
                   <div className="p-3 bg-light rounded-3">
                     <span className="small text-secondary d-block">Giới tính</span>
-                    <strong className="text-dark">{profileForm.gender}</strong>
+                    <strong className="text-dark">
+                      {profile?.gender === 'MALE'
+                        ? 'Nam'
+                        : profile?.gender === 'FEMALE'
+                          ? 'Nữ'
+                          : profile?.gender === 'OTHER'
+                            ? 'Khác'
+                            : 'Chưa cập nhật'}
+                    </strong>
                   </div>
                 </div>
 
                 <div className="col-md-4">
                   <div className="p-3 bg-light rounded-3">
-                    <span className="small text-secondary d-block">Số CCCD / Hộ chiếu</span>
-                    <strong className="text-dark">{profileForm.idCard}</strong>
+                    <span className="small text-secondary d-block">Địa chỉ</span>
+                    <strong className="text-dark">{profile?.address || "Chưa cập nhật"}</strong>
                   </div>
                 </div>
               </div>
@@ -598,111 +637,137 @@ export default function ProfilePage() {
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content rounded-4 border-0 shadow">
               <div className="modal-header border-bottom">
-                <h5 className="modal-title fw-bold text-dark">Chỉnh Sửa Thông Tin Cá Nhân</h5>
-                <button type="button" className="btn-close" onClick={() => setModalType(null)}></button>
+                <h5 className="modal-title fw-bold text-dark">
+                  Chỉnh Sửa Thông Tin Cá Nhân
+                </h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setModalType(null)}
+                ></button>
               </div>
+
               <form onSubmit={handleSaveProfile}>
                 <div className="modal-body p-4">
-                  {/* Chỗ 1: Trường cập nhật ảnh đại diện vào mục chỉnh sửa Thông tin cá nhân & Hồ Sơ */}
-                  <div className="mb-4 p-3 bg-light rounded-4 border">
-                    <label className="form-label small fw-bold text-dark d-flex align-items-center gap-2 mb-2">
-                      <Camera size={16} className="text-primary" /> Ảnh Đại Diện (Avatar)
-                    </label>
-                    <div className="d-flex align-items-center gap-3">
-                      <img 
-                        src={modalAvatarPreview || user.avatarUrl || user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=60"}
-                        alt="Preview Avatar"
-                        className="rounded-circle object-fit-cover shadow-sm border border-2 border-primary"
-                        style={{ width: '64px', height: '64px', flexShrink: 0 }}
-                      />
-                      <div className="flex-grow-1">
-                        <input 
-                          type="file" 
-                          className="form-control form-control-sm"
-                          accept="image/png, image/jpeg, image/jpg, image/webp"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              if (!file.type.startsWith('image/')) {
-                                alert('Vui lòng chọn tập tin ảnh hợp lệ (JPG, PNG, WEBP)');
-                                return;
-                              }
-                              setModalAvatarFile(file);
-                              setModalAvatarPreview(URL.createObjectURL(file));
-                            }
-                          }}
-                        />
-                        <div className="text-secondary mt-1" style={{ fontSize: '11px' }}>
-                          Ảnh sẽ được tải lên Cloudinary cùng lúc khi bạn lưu hồ sơ.
-                        </div>
-                      </div>
-                    </div>
+                  
+                  {/* Thông báo lỗi */}
+                  {errorMessage && (
+                  <div className="alert alert-danger py-2 small d-flex align-items-center gap-2 mb-3">
+                    <AlertCircle size={16} className="flex-shrink-0" />
+                    <span>{errorMessage}</span>
                   </div>
+                  )}
 
                   <div className="mb-3">
-                    <label className="form-label small fw-semibold text-dark">Họ và tên đầy đủ (như trên CCCD) *</label>
-                    <input 
-                      type="text" 
-                      className="form-control" 
-                      value={profileForm.legalName}
-                      onChange={(e) => setProfileForm({ ...profileForm, legalName: e.target.value })}
+                    <label className="form-label small fw-semibold text-dark">
+                      Họ và tên đầy đủ *
+                    </label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={profileForm.fullName}
+                      onChange={(e) =>
+                        setProfileForm({
+                          ...profileForm,
+                          fullName: e.target.value
+                        })
+                      }
                       required
                     />
                   </div>
 
                   <div className="mb-3">
-                    <label className="form-label small fw-semibold text-dark">Tên hiển thị *</label>
-                    <input 
-                      type="text" 
-                      className="form-control" 
-                      value={profileForm.displayName}
-                      onChange={(e) => setProfileForm({ ...profileForm, displayName: e.target.value })}
-                      required
+                    <label className="form-label small fw-semibold text-dark">
+                      Số điện thoại
+                    </label>
+                    <input
+                      type="tel"
+                      className="form-control"
+                      value={profileForm.phone}
+                      onChange={(e) =>
+                        setProfileForm({
+                          ...profileForm,
+                          phone: e.target.value
+                        })
+                      }
+                      placeholder="0912345678"
                     />
                   </div>
 
                   <div className="row g-2 mb-3">
                     <div className="col-6">
-                      <label className="form-label small fw-semibold text-dark">Ngày sinh</label>
-                      <input 
-                        type="date" 
-                        className="form-control" 
-                        value={profileForm.birthDate}
-                        onChange={(e) => setProfileForm({ ...profileForm, birthDate: e.target.value })}
+                      <label className="form-label small fw-semibold text-dark">
+                        Ngày sinh
+                      </label>
+                      <input
+                        type="date"
+                        className="form-control"
+                        value={profileForm.yob}
+                        onChange={(e) =>
+                          setProfileForm({
+                            ...profileForm,
+                            yob: e.target.value
+                          })
+                        }
                       />
                     </div>
+
                     <div className="col-6">
-                      <label className="form-label small fw-semibold text-dark">Giới tính</label>
-                      <select 
+                      <label className="form-label small fw-semibold text-dark">
+                        Giới tính
+                      </label>
+                      <select
                         className="form-select"
                         value={profileForm.gender}
-                        onChange={(e) => setProfileForm({ ...profileForm, gender: e.target.value })}
+                        onChange={(e) =>
+                          setProfileForm({
+                            ...profileForm,
+                            gender: e.target.value
+                          })
+                        }
                       >
-                        <option value="Nam">Nam</option>
-                        <option value="Nữ">Nữ</option>
-                        <option value="Khác">Khác</option>
+                        <option value="">Chọn giới tính</option>
+                        <option value="MALE">Nam</option>
+                        <option value="FEMALE">Nữ</option>
+                        <option value="OTHER">Khác</option>
                       </select>
                     </div>
                   </div>
 
                   <div className="mb-3">
-                    <label className="form-label small fw-semibold text-dark">Số CCCD / Hộ chiếu</label>
-                    <input 
-                      type="text" 
-                      className="form-control" 
-                      value={profileForm.idCard}
-                      onChange={(e) => setProfileForm({ ...profileForm, idCard: e.target.value })}
-                      placeholder="12 chữ số trên thẻ CCCD"
-                    />
+                    <label className="form-label small fw-semibold text-dark">
+                      Địa chỉ
+                    </label>
+                    <textarea
+                      className="form-control"
+                      rows="3"
+                      value={profileForm.address}
+                      onChange={(e) =>
+                        setProfileForm({
+                          ...profileForm,
+                          address: e.target.value
+                        })
+                      }
+                      placeholder="Nhập địa chỉ của bạn"
+                    ></textarea>
                   </div>
+
                 </div>
 
                 <div className="modal-footer border-top">
-                  <button type="button" className="btn btn-secondary rounded-pill px-3" onClick={() => { setModalAvatarFile(null); setModalAvatarPreview(null); setModalType(null); }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary rounded-pill px-3"
+                    onClick={() => setModalType(null)}
+                  >
                     Hủy bỏ
                   </button>
-                  <button type="submit" disabled={isSavingProfile} className="btn btn-primary rounded-pill px-4 fw-bold d-flex align-items-center gap-2">
-                    {isSavingProfile ? <><Loader2 size={16} className="spinner-border spinner-border-sm" /> Đang lưu...</> : 'Lưu Thay Đổi'}
+
+                  <button
+                    type="submit"
+                    className="btn btn-primary rounded-pill px-4 fw-bold"
+                  >
+                    Lưu Thay Đổi
                   </button>
                 </div>
               </form>
