@@ -1,7 +1,8 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../services/api';
+import { uploadToCloudinary } from '../services/cloudinary';
 import { MOCK_HOTELS } from '../data/mockData';
 import {
   LayoutDashboard, Building, BookOpen, LogOut, Plus, Edit2,
@@ -11,7 +12,7 @@ import {
   BarChart2, CreditCard, Tag, MessageSquare, FileBarChart,
   Wifi, Coffee, Car, Dumbbell, Waves, UtensilsCrossed, Shield,
   TrendingUp, TrendingDown, Award, Clock, LogIn, LogOut as LogOutIcon,
-  AlertCircle
+  AlertCircle, UploadCloud
 } from 'lucide-react';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -160,8 +161,46 @@ export default function AdminDashboardPage() {
   const [showHotelModal, setShowHotelModal] = useState(false);
   const [editingHotel, setEditingHotel] = useState(null);
   const [hotelForm, setHotelForm] = useState({ name: '', city: 'Hồ Chí Minh', address: '', starRating: 5, pricePerNight: 1200000, description: '', thumbnailUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&auto=format&fit=crop&q=60' });
+  const hotelImageInputRef = useRef(null);
+  const [isUploadingHotelImage, setIsUploadingHotelImage] = useState(false);
+
   const openAddHotel = () => { setEditingHotel(null); setHotelForm({ name: '', city: 'Hồ Chí Minh', address: '', starRating: 5, pricePerNight: 1200000, description: '', thumbnailUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&auto=format&fit=crop&q=60' }); setShowHotelModal(true); };
   const openEditHotel = (h) => { setEditingHotel(h); setHotelForm({ name: h.name, city: h.city, address: h.address, starRating: h.starRating, pricePerNight: h.minPrice || h.rooms?.[0]?.pricePerNight || h.pricePerNight || 1000000, description: h.description, thumbnailUrl: h.thumbnailUrl }); setShowHotelModal(true); };
+
+  // Xử lý upload ảnh đại diện khách sạn (MultipartFile) lên Cloudinary
+  const handleHotelImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Vui lòng chọn tập tin hình ảnh hợp lệ (JPG, PNG, WEBP)');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Dung lượng hình ảnh tối đa là 5MB');
+      return;
+    }
+
+    try {
+      setIsUploadingHotelImage(true);
+      showToast('Đang tải ảnh đại diện lên Cloudinary...');
+      const uploadedUrl = await uploadToCloudinary(file, 'traveloka/hotels');
+      setHotelForm(prev => ({ ...prev, thumbnailUrl: uploadedUrl }));
+      showToast('Tải ảnh đại diện lên Cloudinary thành công!');
+    } catch (err) {
+      console.error('Lỗi khi tải ảnh lên Cloudinary:', err);
+      // Fallback object URL cục bộ để người dùng vẫn xem trước được
+      const localPreview = URL.createObjectURL(file);
+      setHotelForm(prev => ({ ...prev, thumbnailUrl: localPreview }));
+      showToast('Lỗi tải ảnh lên Cloudinary: ' + err.message);
+    } finally {
+      setIsUploadingHotelImage(false);
+      if (hotelImageInputRef.current) {
+        hotelImageInputRef.current.value = '';
+      }
+    }
+  };
 
   const saveHotel = async (e) => {
     e.preventDefault();
@@ -246,6 +285,42 @@ export default function AdminDashboardPage() {
     imageUrl: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60',
     description: 'Phòng đầy đủ tiện nghi tiêu chuẩn cao cấp, nội thất hiện đại và view thoáng đãng.'
   });
+  const roomImageInputRef = useRef(null);
+  const [isUploadingRoomImage, setIsUploadingRoomImage] = useState(false);
+
+  // Xử lý upload ảnh loại phòng (MultipartFile) lên Cloudinary
+  const handleRoomImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Vui lòng chọn tập tin hình ảnh hợp lệ (JPG, PNG, WEBP)');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Dung lượng hình ảnh tối đa là 5MB');
+      return;
+    }
+
+    try {
+      setIsUploadingRoomImage(true);
+      showToast('Đang tải ảnh loại phòng lên Cloudinary...');
+      const uploadedUrl = await uploadToCloudinary(file, 'traveloka/rooms');
+      setRoomForm(prev => ({ ...prev, imageUrl: uploadedUrl }));
+      showToast('Tải ảnh loại phòng lên Cloudinary thành công!');
+    } catch (err) {
+      console.error('Lỗi khi tải ảnh phòng lên Cloudinary:', err);
+      const localPreview = URL.createObjectURL(file);
+      setRoomForm(prev => ({ ...prev, imageUrl: localPreview }));
+      showToast('Lỗi tải ảnh lên Cloudinary: ' + err.message);
+    } finally {
+      setIsUploadingRoomImage(false);
+      if (roomImageInputRef.current) {
+        roomImageInputRef.current.value = '';
+      }
+    }
+  };
 
   const openAddRoom = () => {
     setEditingRoom(null);
@@ -946,7 +1021,59 @@ export default function AdminDashboardPage() {
               <div style={{ gridColumn: '1/-1' }}><FL>Địa chỉ chi tiết *</FL><input className="form-control" value={hotelForm.address} onChange={e => setHotelForm({ ...hotelForm, address: e.target.value })} required placeholder="VD: 76 Lê Lai, Phường Bến Thành, Quận 1" /></div>
               <div><FL>Hạng sao</FL><select className="form-select" value={hotelForm.starRating} onChange={e => setHotelForm({ ...hotelForm, starRating: e.target.value })}>{[5,4,3,2].map(s => <option key={s} value={s}>{s} sao</option>)}</select></div>
               <div><FL>Giá phòng khởi điểm / đêm (VNĐ) *</FL><input type="number" step="50000" className="form-control" value={hotelForm.pricePerNight} onChange={e => setHotelForm({ ...hotelForm, pricePerNight: e.target.value })} required /></div>
-              <div style={{ gridColumn: '1/-1' }}><FL>URL hình ảnh đại diện</FL><input type="url" className="form-control" value={hotelForm.thumbnailUrl} onChange={e => setHotelForm({ ...hotelForm, thumbnailUrl: e.target.value })} placeholder="https://..." /></div>
+              <div style={{ gridColumn: '1/-1' }}>
+                <FL>URL hình ảnh đại diện</FL>
+                <div className="input-group">
+                  <input
+                    type="url"
+                    className="form-control"
+                    value={hotelForm.thumbnailUrl}
+                    onChange={e => setHotelForm({ ...hotelForm, thumbnailUrl: e.target.value })}
+                    placeholder="https://... hoặc bấm nút Upload để chọn ảnh"
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-primary d-flex align-items-center gap-2 fw-semibold px-3"
+                    onClick={() => hotelImageInputRef.current?.click()}
+                    disabled={isUploadingHotelImage}
+                    title="Tải ảnh từ máy tính (MultipartFile) lên Cloudinary"
+                  >
+                    {isUploadingHotelImage ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
+                        <span>Đang tải lên...</span>
+                      </>
+                    ) : (
+                      <>
+                        <UploadCloud size={16} />
+                        <span>Upload Ảnh</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <input
+                  type="file"
+                  ref={hotelImageInputRef}
+                  style={{ display: 'none' }}
+                  accept="image/png, image/jpeg, image/jpg, image/webp"
+                  onChange={handleHotelImageUpload}
+                />
+                {hotelForm.thumbnailUrl && (
+                  <div className="d-flex align-items-center gap-3 mt-2 p-2 bg-light rounded-3 border">
+                    <img
+                      src={hotelForm.thumbnailUrl}
+                      alt="Xem trước ảnh khách sạn"
+                      className="rounded-2 object-fit-cover shadow-sm border"
+                      style={{ width: 70, height: 50 }}
+                      onError={(e) => { e.target.style.display = 'none'; }}
+                    />
+                    <div className="small text-secondary" style={{ fontSize: '12px' }}>
+                      <div className="fw-semibold text-dark">Xem trước ảnh đại diện khách sạn</div>
+                      <div className="text-truncate" style={{ maxWidth: 380 }}>{hotelForm.thumbnailUrl}</div>
+                    </div>
+                  </div>
+                )}
+              </div>
               <div style={{ gridColumn: '1/-1' }}><FL>Mô tả giới thiệu</FL><textarea rows={3} className="form-control" value={hotelForm.description} onChange={e => setHotelForm({ ...hotelForm, description: e.target.value })} placeholder="Nêu các điểm nổi bật..." /></div>
             </div>
             <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
@@ -999,7 +1126,56 @@ export default function AdminDashboardPage() {
               </div>
               <div style={{ gridColumn: '1/-1' }}>
                 <FL>URL hình ảnh phòng</FL>
-                <input type="url" className="form-control" value={roomForm.imageUrl} onChange={e => setRoomForm({ ...roomForm, imageUrl: e.target.value })} placeholder="https://..." />
+                <div className="input-group">
+                  <input
+                    type="url"
+                    className="form-control"
+                    value={roomForm.imageUrl}
+                    onChange={e => setRoomForm({ ...roomForm, imageUrl: e.target.value })}
+                    placeholder="https://... hoặc bấm nút Upload để chọn ảnh"
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-primary d-flex align-items-center gap-2 fw-semibold px-3"
+                    onClick={() => roomImageInputRef.current?.click()}
+                    disabled={isUploadingRoomImage}
+                    title="Tải ảnh loại phòng từ máy tính lên Cloudinary"
+                  >
+                    {isUploadingRoomImage ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
+                        <span>Đang tải lên...</span>
+                      </>
+                    ) : (
+                      <>
+                        <UploadCloud size={16} />
+                        <span>Upload Ảnh (Cloudinary)</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <input
+                  type="file"
+                  ref={roomImageInputRef}
+                  style={{ display: 'none' }}
+                  accept="image/png, image/jpeg, image/jpg, image/webp"
+                  onChange={handleRoomImageUpload}
+                />
+                {roomForm.imageUrl && (
+                  <div className="d-flex align-items-center gap-3 mt-2 p-2 bg-light rounded-3 border">
+                    <img
+                      src={roomForm.imageUrl}
+                      alt="Xem trước ảnh phòng"
+                      className="rounded-2 object-fit-cover shadow-sm border"
+                      style={{ width: 70, height: 50 }}
+                      onError={(e) => { e.target.style.display = 'none'; }}
+                    />
+                    <div className="small text-secondary" style={{ fontSize: '12px' }}>
+                      <div className="fw-semibold text-dark">Xem trước ảnh phòng</div>
+                      <div className="text-truncate" style={{ maxWidth: 380 }}>{roomForm.imageUrl}</div>
+                    </div>
+                  </div>
+                )}
               </div>
               <div style={{ gridColumn: '1/-1' }}>
                 <FL>Mô tả chi tiết phòng</FL>
