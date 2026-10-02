@@ -46,24 +46,27 @@ export default function ProfilePage() {
 
             console.log("PROFILE RESPONSE:", response);
 
+            if (!response.ok) {
+                console.warn("Cannot fetch profile:", response.status);
+                if (user) setProfile(user);
+                return;
+            }
+
             const result = await response.json();
 
             console.log("PROFILE RESULT:", JSON.stringify(result, null, 2));
 
-            if (!response.ok) {
-                throw new Error(result.message || 'Không thể lấy thông tin cá nhân');
-            }
-
-            setProfile(result.result);
+            setProfile(result.result || result);
 
         } catch (error) {
             console.error('Get profile error:', error);
+            if (user) setProfile(user);
             showToast('Không thể lấy thông tin cá nhân');
         }
     };
 
     fetchProfile();
-}, [isAuthenticated]);
+}, [isAuthenticated, user]);
 
   // Form State đổi mật khẩu
   const [passwordForm, setPasswordForm] = useState({
@@ -163,14 +166,14 @@ export default function ProfilePage() {
 
   // Mở modal chỉnh sửa và đổ dữ liệu hiện tại vào form
   const handleOpenEditProfile = () => {
-    if (!profile) return;
+    const current = profile || user || {};
 
     setProfileForm({
-      fullName: profile.fullName || '',
-      phone: profile.phone || '',
-      yob: profile.yob || '',
-      gender: profile.gender || '',
-      address: profile.address || ''
+      fullName: current.fullName || current.name || '',
+      phone: current.phone || '',
+      yob: current.yob || '',
+      gender: current.gender || '',
+      address: current.address || ''
     });
 
     setModalType('edit_profile');
@@ -384,59 +387,52 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* Menu Danh Mục Tài Khoản */}
-            <div className="card border-0 shadow-sm rounded-4 overflow-hidden bg-white">
-              
-              {/* Nhóm: Đặt chỗ */}
-              <div className="p-3 border-bottom">
-                <span className="small text-secondary fw-bold text-uppercase d-block mb-2" style={{ fontSize: '11px', letterSpacing: '0.5px' }}>
-                  Đặt Chỗ Của Tôi
-                </span>
-                <div className="d-flex flex-column gap-1">
-                  <Link to="/my-bookings" className="d-flex align-items-center justify-content-between p-2 rounded-3 text-secondary text-decoration-none hover-bg-light small">
-                    <span className="d-flex align-items-center gap-2">
-                      <Hotel size={16} className="text-primary" /> Khách Sạn Đã Đặt
-                    </span>
-                    <ChevronRight size={14} className="text-secondary opacity-50" />
-                  </Link>
-                </div>
-              </div>
-
-              {/* Nhóm: Tài khoản */}
-              <div className="p-3">
-                <span className="small text-secondary fw-bold text-uppercase d-block mb-2" style={{ fontSize: '11px', letterSpacing: '0.5px' }}>
-                  Tài Khoản
-                </span>
-                <div className="d-flex flex-column gap-1">
-                  <div className="d-flex align-items-center justify-content-between p-2 rounded-3 bg-primary-subtle text-primary fw-semibold small">
-                    <span className="d-flex align-items-center gap-2">
-                      <Shield size={16} /> Hồ Sơ & Bảo Mật
-                    </span>
-                    <ChevronRight size={14} />
-                  </div>
-
-                  {isAdmin && (
-                    <Link to="/admin" className="d-flex align-items-center justify-content-between p-2 rounded-3 text-dark text-decoration-none hover-bg-light small fw-bold">
-                      <span className="d-flex align-items-center gap-2 text-warning">
-                        👑 Trang Quản Trị (Admin)
+            {/* Menu Danh Mục Tài Khoản (Chỉ hiển thị cho Khách hàng - Ẩn hoàn toàn với Admin) */}
+            {!isAdmin && (
+              <div className="card border-0 shadow-sm rounded-4 overflow-hidden bg-white">
+                
+                {/* Nhóm: Đặt chỗ */}
+                <div className="p-3 border-bottom">
+                  <span className="small text-secondary fw-bold text-uppercase d-block mb-2" style={{ fontSize: '11px', letterSpacing: '0.5px' }}>
+                    Đặt Chỗ Của Tôi
+                  </span>
+                  <div className="d-flex flex-column gap-1">
+                    <Link to="/my-bookings" className="d-flex align-items-center justify-content-between p-2 rounded-3 text-secondary text-decoration-none hover-bg-light small">
+                      <span className="d-flex align-items-center gap-2">
+                        <Hotel size={16} className="text-primary" /> Khách Sạn Đã Đặt
                       </span>
                       <ChevronRight size={14} className="text-secondary opacity-50" />
                     </Link>
-                  )}
-
-                  <button 
-                    onClick={() => {
-                      logout();
-                      navigate('/');
-                    }}
-                    className="d-flex align-items-center gap-2 p-2 rounded-3 text-danger border-0 bg-transparent text-start hover-bg-light small mt-2"
-                  >
-                    <LogOut size={16} /> Đăng xuất tài khoản
-                  </button>
+                  </div>
                 </div>
-              </div>
 
-            </div>
+                {/* Nhóm: Quản lý tài khoản */}
+                <div className="p-3">
+                  <span className="small text-secondary fw-bold text-uppercase d-block mb-2" style={{ fontSize: '11px', letterSpacing: '0.5px' }}>
+                    Tài Khoản
+                  </span>
+                  <div className="d-flex flex-column gap-1">
+                    <div className="d-flex align-items-center justify-content-between p-2 rounded-3 bg-primary-subtle text-primary fw-semibold small">
+                      <span className="d-flex align-items-center gap-2">
+                        <Shield size={16} /> Hồ Sơ & Bảo Mật
+                      </span>
+                      <ChevronRight size={14} />
+                    </div>
+
+                    <button 
+                      onClick={() => {
+                        logout();
+                        navigate('/');
+                      }}
+                      className="d-flex align-items-center gap-2 p-2 rounded-3 text-danger border-0 bg-transparent text-start hover-bg-light small mt-2"
+                    >
+                      <LogOut size={16} /> Đăng xuất tài khoản
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+            )}
 
           </div>
 
@@ -565,9 +561,13 @@ export default function ProfilePage() {
             <div className="card border-0 shadow-sm rounded-4 p-4 bg-white">
               <div className="d-flex justify-content-between align-items-center mb-2">
                 <div>
-                  <h4 className="fw-bold text-dark mb-1">Thông Tin Cá Nhân & Hồ Sơ</h4>
+                  <h4 className="fw-bold text-dark mb-1">
+                    {isAdmin ? "Hồ Sơ Quản Trị Viên" : "Thông Tin Cá Nhân & Hồ Sơ"}
+                  </h4>
                   <p className="text-secondary small mb-0">
-                    Hãy cập nhật thông tin chính xác để đối chiếu khi làm thủ tục nhận phòng khách sạn.
+                    {isAdmin 
+                      ? "Quản lý thông tin định danh và bảo mật cho tài khoản quản trị hệ thống Traveloka."
+                      : "Hãy cập nhật thông tin chính xác để đối chiếu khi làm thủ tục nhận phòng khách sạn."}
                   </p>
                 </div>
                 <button 
@@ -583,14 +583,18 @@ export default function ProfilePage() {
               <div className="row g-3">
                 <div className="col-md-6">
                   <div className="p-3 bg-light rounded-3">
-                    <span className="small text-secondary d-block">Họ và tên đầy đủ (hợp pháp)</span>
+                    <span className="small text-secondary d-block">
+                      {isAdmin ? "Họ và tên Quản trị viên" : "Họ và tên đầy đủ (hợp pháp)"}
+                    </span>
                     <strong className="text-dark">{profile?.fullName || "Chưa cập nhật"}</strong>
                   </div>
                 </div>
 
                 <div className="col-md-6">
                   <div className="p-3 bg-light rounded-3">
-                    <span className="small text-secondary d-block">Số điện thoại</span>
+                    <span className="small text-secondary d-block">
+                      {isAdmin ? "Số điện thoại liên hệ" : "Số điện thoại"}
+                    </span>
                     <strong className="text-dark">{profile?.phone || "Chưa cập nhật"}</strong>
                   </div>
                 </div>
@@ -610,9 +614,7 @@ export default function ProfilePage() {
                         ? 'Nam'
                         : profile?.gender === 'FEMALE'
                           ? 'Nữ'
-                          : profile?.gender === 'OTHER'
-                            ? 'Khác'
-                            : 'Chưa cập nhật'}
+                          : 'Chưa cập nhật'}
                     </strong>
                   </div>
                 </div>
@@ -623,6 +625,8 @@ export default function ProfilePage() {
                     <strong className="text-dark">{profile?.address || "Chưa cập nhật"}</strong>
                   </div>
                 </div>
+
+
               </div>
             </div>
 
@@ -638,7 +642,7 @@ export default function ProfilePage() {
             <div className="modal-content rounded-4 border-0 shadow">
               <div className="modal-header border-bottom">
                 <h5 className="modal-title fw-bold text-dark">
-                  Chỉnh Sửa Thông Tin Cá Nhân
+                  {isAdmin ? "Cập Nhật Hồ Sơ Quản Trị Viên" : "Chỉnh Sửa Thông Tin Cá Nhân"}
                 </h5>
                 <button
                   type="button"
@@ -729,7 +733,6 @@ export default function ProfilePage() {
                         <option value="">Chọn giới tính</option>
                         <option value="MALE">Nam</option>
                         <option value="FEMALE">Nữ</option>
-                        <option value="OTHER">Khác</option>
                       </select>
                     </div>
                   </div>

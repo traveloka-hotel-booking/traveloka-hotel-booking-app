@@ -102,11 +102,13 @@ export default function Navbar() {
                   Khách sạn
                 </Link>
               </li>
-              <li className="nav-item">
-                <Link className="nav-link px-3 py-1 text-white opacity-85 hover-opacity small fw-medium" to="/my-bookings">
-                  Chuyến đi của tôi
-                </Link>
-              </li>
+              {!isAdmin && (
+                <li className="nav-item">
+                  <Link className="nav-link px-3 py-1 text-white opacity-85 hover-opacity small fw-medium" to="/my-bookings">
+                    Chuyến đi của tôi
+                  </Link>
+                </li>
+              )}
               <li className="nav-item">
                 <a 
                   href="#hotel-list-section" 
@@ -202,16 +204,7 @@ export default function Navbar() {
                         )}
                       </div>
 
-                      {/* 2. Quản lý tài khoản & Hồ sơ bảo mật */}
-                      <Link 
-                        className="dropdown-item py-2 small d-flex align-items-center gap-2 rounded-2 text-dark fw-semibold" 
-                        to="/profile"
-                        onClick={() => setIsUserMenuOpen(false)}
-                      >
-                        <User size={16} className="text-primary" /> Quản Lý Tài Khoản
-                      </Link>
-
-                      {/* 3. Trang Quản Trị (Admin) - Chỉ hiển thị khi có quyền Admin */}
+                      {/* 2. Trang Quản Trị (Admin) - Ưu tiên hàng đầu cho Admin */}
                       {isAdmin && (
                         <Link 
                           className="dropdown-item py-2 small fw-bold text-primary d-flex align-items-center gap-2 rounded-2" 
@@ -222,14 +215,25 @@ export default function Navbar() {
                         </Link>
                       )}
 
-                      {/* 4. Chuyến đi của tôi */}
+                      {/* 3. Quản lý tài khoản / Hồ sơ */}
                       <Link 
-                        className="dropdown-item py-2 small d-flex align-items-center gap-2 rounded-2 text-dark" 
-                        to="/my-bookings"
+                        className="dropdown-item py-2 small d-flex align-items-center gap-2 rounded-2 text-dark fw-semibold" 
+                        to="/profile"
                         onClick={() => setIsUserMenuOpen(false)}
                       >
-                        <Hotel size={16} className="text-secondary" /> Chuyến đi của tôi
+                        <User size={16} className="text-primary" /> {isAdmin ? 'Hồ Sơ Quản Trị Viên' : 'Quản Lý Tài Khoản'}
                       </Link>
+
+                      {/* 4. Chuyến đi của tôi - Chỉ hiển thị cho Khách hàng (Customer) */}
+                      {!isAdmin && (
+                        <Link 
+                          className="dropdown-item py-2 small d-flex align-items-center gap-2 rounded-2 text-dark" 
+                          to="/my-bookings"
+                          onClick={() => setIsUserMenuOpen(false)}
+                        >
+                          <Hotel size={16} className="text-secondary" /> Chuyến đi của tôi
+                        </Link>
+                      )}
 
                       <hr className="dropdown-divider my-1" />
 
