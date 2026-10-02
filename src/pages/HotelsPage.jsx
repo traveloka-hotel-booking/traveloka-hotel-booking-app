@@ -85,8 +85,11 @@ export default function HotelsPage() {
 
       // 4. Lọc theo tiện ích (phải chứa ít nhất 1 tiện ích được chọn nếu có)
       if (selectedAmenities.length > 0) {
+        const hotelAmenities = Array.isArray(hotel.amenities)
+          ? hotel.amenities
+          : (typeof hotel.amenities === 'string' ? hotel.amenities.split(',').map(s => s.trim()) : []);
         const hasAmenity = selectedAmenities.some(a => 
-          hotel.amenities.some(item => item.toLowerCase().includes(a.toLowerCase()))
+          hotelAmenities.some(item => item.toLowerCase().includes(a.toLowerCase()))
         );
         if (!hasAmenity) return false;
       }
@@ -308,18 +311,25 @@ export default function HotelsPage() {
                           </p>
 
                           {/* Tiện ích nổi bật */}
-                          <div className="d-flex flex-wrap gap-1 mb-3">
-                            {hotel.amenities.slice(0, 4).map((a, i) => (
-                              <span key={i} className="badge bg-light text-dark border small">
-                                {a}
-                              </span>
-                            ))}
-                            {hotel.amenities.length > 4 && (
-                              <span className="badge bg-light text-secondary border small">
-                                +{hotel.amenities.length - 4}
-                              </span>
-                            )}
-                          </div>
+                          {(() => {
+                            const ams = Array.isArray(hotel.amenities)
+                              ? hotel.amenities
+                              : (typeof hotel.amenities === 'string' ? hotel.amenities.split(',').map(s => s.trim()).filter(Boolean) : []);
+                            return (
+                              <div className="d-flex flex-wrap gap-1 mb-3">
+                                {ams.slice(0, 4).map((a, i) => (
+                                  <span key={i} className="badge bg-light text-dark border small">
+                                    {a}
+                                  </span>
+                                ))}
+                                {ams.length > 4 && (
+                                  <span className="badge bg-light text-secondary border small">
+                                    +{ams.length - 4}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
 
                         {/* Giá và nút xem phòng */}

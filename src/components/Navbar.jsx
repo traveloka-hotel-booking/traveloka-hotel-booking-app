@@ -165,7 +165,7 @@ export default function Navbar() {
                     type="button"
                   >
                     <img 
-                      src={user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=60"} 
+                      src={user.avatarUrl || user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=60"} 
                       alt={user.name} 
                       className="rounded-circle object-fit-cover"
                       style={{ width: '26px', height: '26px' }}

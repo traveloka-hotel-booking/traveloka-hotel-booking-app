@@ -301,13 +301,58 @@ export const MOCK_HOTELS = [
   }
 ];
 
+// Hàm chuẩn hóa dữ liệu khách sạn (đảm bảo amenities luôn là mảng chuỗi)
+export const normalizeHotel = (hotel) => {
+  if (!hotel) return hotel;
+  let amenities = hotel.amenities;
+  if (typeof amenities === 'string') {
+    amenities = amenities.split(',').map(s => s.trim()).filter(Boolean);
+  } else if (!Array.isArray(amenities)) {
+    amenities = [];
+  }
+
+  const rooms = (hotel.rooms || []).map(r => {
+    let rAmenities = r.amenities;
+    if (typeof rAmenities === 'string') {
+      rAmenities = rAmenities.split(',').map(s => s.trim()).filter(Boolean);
+    } else if (!Array.isArray(rAmenities)) {
+      rAmenities = ["Wifi miễn phí", "Điều hòa"];
+    }
+    return {
+      ...r,
+      amenities: rAmenities
+    };
+  });
+
+  return {
+    ...hotel,
+    amenities,
+    rooms: rooms.length > 0 ? rooms : [
+      {
+        id: `r-${hotel.id || Date.now()}-def`,
+        name: `Phòng Tiêu Chuẩn - ${hotel.name || 'Khách sạn'}`,
+        pricePerNight: hotel.minPrice || hotel.pricePerNight || 1000000,
+        originalPrice: Math.round((hotel.minPrice || hotel.pricePerNight || 1000000) * 1.25),
+        amenities: ["Wifi miễn phí", "Điều hòa"],
+        maxGuests: 2,
+        status: "AVAILABLE"
+      }
+    ]
+  };
+};
+
 // Hàm tiện ích lấy danh sách khách sạn (đồng bộ với dữ liệu CRUD của Admin trong localStorage)
 export const getHotelsData = () => {
   try {
     const saved = localStorage.getItem('traveloka_custom_hotels');
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map(normalizeHotel);
+      }
+    }
   } catch (e) {
     console.error(e);
   }
-  return MOCK_HOTELS;
+  return MOCK_HOTELS.map(normalizeHotel);
 };

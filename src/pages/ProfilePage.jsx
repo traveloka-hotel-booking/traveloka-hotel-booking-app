@@ -1,15 +1,22 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
   User, Shield, Lock, Smartphone, Mail, Key, Monitor, 
-  History, Edit3, CheckCircle, AlertCircle, Hotel, LogOut, ChevronRight, X
+  History, Edit3, CheckCircle, AlertCircle, Hotel, LogOut, ChevronRight, X,
+  Camera, Loader2
 } from 'lucide-react';
 import { apiFetch } from '../services/api';
 
 export default function ProfilePage() {
   const navigate = useNavigate();
   const { user, isAuthenticated, isAdmin, updateUserProfile, logout } = useAuth();
+
+  const avatarInputRef = useRef(null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [modalAvatarFile, setModalAvatarFile] = useState(null);
+  const [modalAvatarPreview, setModalAvatarPreview] = useState(null);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   // State các Modal popup
   const [modalType, setModalType] = useState(null); // 'edit_profile', 'change_password', 'edit_email', 'edit_phone', 'devices', 'history'
@@ -82,6 +89,52 @@ export default function ProfilePage() {
     { id: 2, name: 'iPhone 15 Pro (iOS 18)', browser: 'Traveloka App', lastActive: 'Hôm qua lúc 21:15', current: false }
   ]);
 
+
+  // Tải ảnh đại diện lên backend (backend xử lý lưu ảnh lên Cloudinary)
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      showToast("Vui lòng chọn tập tin hình ảnh hợp lệ");
+      e.target.value = "";
+      return;
+    }
+
+    try {
+      setIsUploadingAvatar(true);
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await apiFetch("/customer/avatar", {
+        method: "PUT",
+        body: formData,
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.message || "Tải ảnh đại diện thất bại");
+      }
+
+      const avatarUrl = result.result;
+
+      if (!avatarUrl) {
+        throw new Error("API chưa trả về đường dẫn ảnh đại diện");
+      }
+
+      setProfile((prev) => prev ? { ...prev, avatarUrl } : prev);
+      updateUserProfile({ avatarUrl });
+      showToast("Cập nhật ảnh đại diện thành công");
+    } catch (error) {
+      console.error("Avatar upload error:", error);
+      showToast(error.message || "Tải ảnh đại diện thất bại");
+    } finally {
+      setIsUploadingAvatar(false);
+      e.target.value = "";
+    }
+  };
+
   // Hiển thị toast thông báo
   const showToast = (msg) => {
     setToastMessage(msg);
@@ -126,7 +179,6 @@ export default function ProfilePage() {
   // Xử lý lưu hồ sơ cá nhân
   const handleSaveProfile = async (e) => {
     e.preventDefault();
-
     try {
       const response = await apiFetch('/customer/profile', {
         method: 'PUT',
@@ -147,13 +199,14 @@ export default function ProfilePage() {
       setProfile(result.result);
       setErrorMessage('');
 
-      setModalType(null);
-      showToast('Cập nhật thông tin hồ sơ thành công!');
-    } catch (error) {
+    setModalType(null);
+    showToast('Cập nhật thông tin hồ sơ thành công!');
+  }catch (error) {
       console.error('Update profile error:', error);
       showToast(error.message || 'Cập nhật thông tin thất bại');
     }
-  };
+     };
+
 
   // Xử lý đổi mật khẩu
   const handleChangePassword = async (e) => {
@@ -282,20 +335,45 @@ export default function ProfilePage() {
           {/* ================= CỘT TRÁI: SIDEBAR MENU ================= */}
           <div className="col-lg-3 col-md-4">
             
-            {/* Thẻ Avatar Thành Viên */}
+            {/* Thẻ Avatar Thành Viên (Chỗ 2: Đổi avatar nhanh khi nhấp trực tiếp vào ảnh) */}
             <div className="card border-0 shadow-sm rounded-4 p-4 bg-white mb-3 text-center">
-              <div className="position-relative d-inline-block mx-auto mb-3">
+              <div 
+                className="position-relative d-inline-block mx-auto mb-2 cursor-pointer"
+                style={{ cursor: 'pointer' }}
+                onClick={() => avatarInputRef.current?.click()}
+                title="Nhấp vào ảnh để đổi nhanh ảnh đại diện"
+              >
                 <img 
-                  src={user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=60"} 
+                  src={user.avatarUrl || user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=60"} 
                   alt={user.name} 
                   className="rounded-circle object-fit-cover shadow-sm border border-3 border-primary-subtle"
-                  style={{ width: '84px', height: '84px' }}
+                  style={{ width: '88px', height: '88px', opacity: isUploadingAvatar ? 0.6 : 1, transition: 'opacity 0.2s' }}
+                />
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); avatarInputRef.current?.click(); }}
+                  disabled={isUploadingAvatar}
+                  className="btn btn-sm btn-primary rounded-circle position-absolute bottom-0 end-0 p-1 shadow border border-white"
+                  title="Nhấp để tải ảnh nhanh lên Cloudinary"
+                  style={{ width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  {isUploadingAvatar ? <Loader2 size={14} className="spinner-border spinner-border-sm" style={{ width: 14, height: 14 }} /> : <Camera size={14} />}
+                </button>
+                <input
+                  type="file"
+                  ref={avatarInputRef}
+                  style={{ display: 'none' }}
+                  accept="image/png, image/jpeg, image/jpg, image/webp"
+                  onChange={handleAvatarUpload}
                 />
                 {isAdmin && (
-                  <span className="position-absolute bottom-0 end-0 badge bg-warning text-dark border border-white rounded-pill px-2 py-1 small fw-bold">
+                  <span className="position-absolute top-0 start-0 badge bg-warning text-dark border border-white rounded-pill px-2 py-1 small fw-bold">
                     Admin
                   </span>
                 )}
+              </div>
+              <div className="text-primary small mb-2 fw-medium" style={{ fontSize: '11px', cursor: 'pointer' }} onClick={() => avatarInputRef.current?.click()}>
+                📷 Nhấp vào ảnh để đổi nhanh
               </div>
 
               <h5 className="fw-bold text-dark mb-1">{user.name}</h5>
