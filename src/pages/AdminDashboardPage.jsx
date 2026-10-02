@@ -517,15 +517,28 @@ export default function AdminDashboardPage() {
         });
         if (res.ok) {
           const json = await res.json();
-          savedRoomObj = { ...json.result, hotelName: targetHotel?.name };
+          savedRoomObj = {
+            ...json.result,
+            hotelId: json.result?.hotelId || Number(roomForm.hotelId),
+            hotelName: json.result?.hotelName || targetHotel?.name
+          };
           showToast('Tạo mới loại phòng trên máy chủ thành công!');
         } else {
-          savedRoomObj = { id: `r-${Date.now()}`, ...roomForm, hotelId: targetHotel?.id, hotelName: targetHotel?.name };
+          savedRoomObj = {
+            id: `r-${Date.now()}`,
+            ...roomForm,
+            hotelId: targetHotel ? targetHotel.id : (Number(roomForm.hotelId) || hotels[0]?.id),
+            hotelName: targetHotel?.name
+          };
           showToast('Đã tạo loại phòng mới');
         }
         const updated = [savedRoomObj, ...roomsList];
         updateRooms(updated);
         syncHotelWithRooms(roomForm.hotelId, updated);
+        // Đặt lại bộ lọc để phòng mới tạo luôn hiển thị ngay lập tức
+        setRoomSearchQuery('');
+        setRoomHotelFilter('ALL');
+        setRoomStatusFilter('ALL');
       }
     } catch (err) {
       console.warn('API room save fallback:', err);
@@ -536,10 +549,18 @@ export default function AdminDashboardPage() {
         syncHotelWithRooms(roomForm.hotelId, updated);
         showToast('Đã lưu loại phòng');
       } else {
-        savedRoomObj = { id: `r-${Date.now()}`, ...roomForm, hotelId: targetHotel?.id, hotelName: targetHotel?.name };
+        savedRoomObj = {
+          id: `r-${Date.now()}`,
+          ...roomForm,
+          hotelId: targetHotel ? targetHotel.id : (Number(roomForm.hotelId) || hotels[0]?.id),
+          hotelName: targetHotel?.name
+        };
         const updated = [savedRoomObj, ...roomsList];
         updateRooms(updated);
         syncHotelWithRooms(roomForm.hotelId, updated);
+        setRoomSearchQuery('');
+        setRoomHotelFilter('ALL');
+        setRoomStatusFilter('ALL');
         showToast('Đã lưu loại phòng mới');
       }
     }
