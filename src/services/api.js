@@ -28,6 +28,11 @@ export const apiFetch = async (endpoint, options = {}) => {
         const refreshToken = localStorage.getItem('refreshToken');
         // Không có Refresh Token
         if (!refreshToken) {
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            localStorage.removeItem('traveloka_auth_user');
+
+            window.location.href = '/login';
             return response;
         }
 
@@ -50,6 +55,8 @@ export const apiFetch = async (endpoint, options = {}) => {
             localStorage.removeItem('accessToken');
             localStorage.removeItem('refreshToken');
             localStorage.removeItem('traveloka_auth_user');
+
+            window.location.href = '/login';
 
             return response;
         }
