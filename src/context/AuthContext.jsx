@@ -44,7 +44,8 @@ export const AuthProvider = ({ children }) => {
       if (!response.ok) {
           throw new Error(
               data?.result?.message ||
-              'Email hoặc mật khẩu không đúng'
+              data?.message ||
+              'Email hoặc mật khẩu không đúng!'
           );
       }
 
@@ -74,9 +75,12 @@ export const AuthProvider = ({ children }) => {
 
         return true;
     } catch (error) {
-            console.error('Login error:', error);
-            throw error;
+        console.error('Login error:', error);
+        if (error.message?.toLowerCase().includes('failed to fetch') || error.name === 'TypeError') {
+            throw new Error('Không thể kết nối đến máy chủ! Vui lòng thử lại sau.');
         }
+        throw error;
+    }
     
   };
 

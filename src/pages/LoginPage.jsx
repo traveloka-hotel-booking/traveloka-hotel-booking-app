@@ -38,7 +38,11 @@ export default function LoginPage() {
         }
 
     } catch (error) {
-        setErrorMsg(error.message);
+        if (error.message?.toLowerCase().includes('failed to fetch') || error.name === 'TypeError') {
+            setErrorMsg('Không thể kết nối đến máy chủ! Vui lòng thử lại sau.');
+        } else {
+            setErrorMsg(error.message || 'Email hoặc mật khẩu không đúng!');
+        }
     }
   };
 
@@ -107,7 +111,7 @@ export default function LoginPage() {
                 {/* Email */}
                 <div className="mb-3">
                   <label className="form-label small fw-semibold text-dark mb-1">
-                    Email hoặc Tên đăng nhập <span className="text-danger">*</span>
+                    Email <span className="text-danger">*</span>
                   </label>
                   <input 
                     type="text" 
