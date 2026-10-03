@@ -2,9 +2,9 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../services/api';
-import { uploadToCloudinary } from '../services/cloudinary';
 import { getFriendlyErrorMessage, sanitizeErrorMessage } from '../utils/errorHandler';
 import { MOCK_HOTELS } from '../data/mockData';
+
 
 import {
   LayoutDashboard, Building, BookOpen, LogOut, Plus, Edit2,
@@ -263,14 +263,41 @@ export default function AdminDashboardPage() {
     try {
       setIsUploadingHotelImage(true);
       showToast('Đang tải ảnh đại diện lên Cloudinary...');
-      const uploadedUrl = await uploadToCloudinary(file, 'traveloka/hotels');
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      let uploadedUrl = '';
+      if (editingHotel?.id) {
+        // Cập nhật ảnh trực tiếp vào khách sạn theo ID trong database
+        const res = await apiFetch(`/admin/hotels/${editingHotel.id}/thumbnail`, {
+          method: 'PUT',
+          body: formData
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(getFriendlyErrorMessage(data, 'Tải ảnh đại diện khách sạn thất bại'));
+        }
+        uploadedUrl = data.result?.thumbnailUrl || data.result;
+        // Đồng bộ cập nhật ngay vào danh sách khách sạn
+        updateHotels(hotels.map(h => h.id === editingHotel.id ? { ...h, thumbnailUrl: uploadedUrl } : h));
+      } else {
+        // Tạo mới: tải ảnh qua Backend lấy link Cloudinary an toàn
+        const res = await apiFetch('/admin/hotels/upload-thumbnail', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(getFriendlyErrorMessage(data, 'Tải ảnh đại diện khách sạn thất bại'));
+        }
+        uploadedUrl = data.result;
+      }
+
       setHotelForm(prev => ({ ...prev, thumbnailUrl: uploadedUrl }));
       showToast('Tải ảnh đại diện lên Cloudinary thành công!');
     } catch (err) {
-      console.error('Lỗi khi tải ảnh lên Cloudinary:', err);
-      // Fallback object URL cục bộ để người dùng vẫn xem trước được
-      const localPreview = URL.createObjectURL(file);
-      setHotelForm(prev => ({ ...prev, thumbnailUrl: localPreview }));
+      console.error('Lỗi khi tải ảnh khách sạn lên Cloudinary:', err);
       showToast('Lỗi tải ảnh lên Cloudinary: ' + sanitizeErrorMessage(err));
     } finally {
       setIsUploadingHotelImage(false);
@@ -385,13 +412,42 @@ export default function AdminDashboardPage() {
     try {
       setIsUploadingRoomImage(true);
       showToast('Đang tải ảnh loại phòng lên Cloudinary...');
-      const uploadedUrl = await uploadToCloudinary(file, 'traveloka/rooms');
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      let uploadedUrl = '';
+      if (editingRoom?.id && !String(editingRoom.id).startsWith('r-')) {
+        // Cập nhật ảnh trực tiếp vào loại phòng theo ID trong database
+        const res = await apiFetch(`/admin/rooms/${editingRoom.id}/image`, {
+          method: 'PUT',
+          body: formData
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(getFriendlyErrorMessage(data, 'Tải ảnh loại phòng thất bại'));
+        }
+        uploadedUrl = data.result?.imageUrl || data.result;
+        // Đồng bộ cập nhật ngay vào danh sách loại phòng
+        const updated = roomsList.map(r => r.id === editingRoom.id ? { ...r, imageUrl: uploadedUrl } : r);
+        updateRooms(updated);
+      } else {
+        // Tạo mới: tải ảnh qua Backend lấy link Cloudinary an toàn
+        const res = await apiFetch('/admin/rooms/upload-image', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(getFriendlyErrorMessage(data, 'Tải ảnh loại phòng thất bại'));
+        }
+        uploadedUrl = data.result;
+      }
+
       setRoomForm(prev => ({ ...prev, imageUrl: uploadedUrl }));
       showToast('Tải ảnh loại phòng lên Cloudinary thành công!');
     } catch (err) {
-      console.error('Lỗi khi tải ảnh phòng lên Cloudinary:', err);
-      const localPreview = URL.createObjectURL(file);
-      setRoomForm(prev => ({ ...prev, imageUrl: localPreview }));
+      console.error('Lỗi khi tải ảnh loại phòng lên Cloudinary:', err);
       showToast('Lỗi tải ảnh lên Cloudinary: ' + sanitizeErrorMessage(err));
     } finally {
       setIsUploadingRoomImage(false);
