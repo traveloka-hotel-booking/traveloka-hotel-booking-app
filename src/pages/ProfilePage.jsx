@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { 
   User, Shield, Lock, Smartphone, Mail, Key, Monitor, 
   History, Edit3, CheckCircle, AlertCircle, Hotel, LogOut, ChevronRight, X,
-  Camera, Loader2
+  Camera, Loader2, Eye, EyeOff
 } from 'lucide-react';
 import { apiFetch } from '../services/api';
 
@@ -70,6 +70,13 @@ export default function ProfilePage() {
     currentPassword: '',
     newPassword: '',
     confirmPassword: ''
+  });
+
+  // Trạng thái hiển thị/ẩn từng ô mật khẩu
+  const [showPasswords, setShowPasswords] = useState({
+    current: false,
+    new: false,
+    confirm: false,
   });
 
   // Form State cập nhật email / sđt
@@ -177,98 +184,58 @@ export default function ProfilePage() {
   };
 
   // Xử lý lưu hồ sơ cá nhân
-  const handleSaveProfile = async (e) => {
+  const handleChangePassword = async (e) => {
     e.preventDefault();
+
+    if (passwordForm.newPassword.length < 6) {
+      alert('Mật khẩu mới phải có ít nhất 6 ký tự!');
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      alert('Mật khẩu xác nhận không trùng khớp!');
+      return;
+    }
+
     try {
-      const response = await apiFetch('/customer/profile', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(profileForm)
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        setErrorMessage(result.result.errors);
-        return;
+      const accessToken = localStorage.getItem('accessToken');
+      if (!accessToken) {
+        throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
       }
 
-      // Backend trả về profile mới sau khi update
-      setProfile(result.result);
-      setErrorMessage('');
+      const response = await apiFetch('/auth/change-password', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          currentPassword: passwordForm.currentPassword,
+          newPassword: passwordForm.newPassword,
+        }),
+      });
 
-    setModalType(null);
-    showToast('Cập nhật thông tin hồ sơ thành công!');
-  }catch (error) {
-      console.error('Update profile error:', error);
-      showToast(error.message || 'Cập nhật thông tin thất bại');
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result?.message || result?.result?.message || 'Đổi mật khẩu thất bại');
+      }
+
+      setModalType(null);
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      showToast('Đổi mật khẩu thành công. Vui lòng đăng nhập lại!');
+
+      // Đợi toast hiển thị rồi mới xóa phiên và chuyển về trang đăng nhập
+      setTimeout(() => {
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+        localStorage.removeItem('traveloka_auth_user');
+        navigate('/login', { replace: true });
+      }, 2000);
+    } catch (error) {
+      console.error('Change password error:', error);
+      showToast(error.message || 'Đổi mật khẩu thất bại');
     }
-     };
-
-
-  // Xử lý đổi mật khẩu
-  const handleChangePassword = async (e) => {
-  e.preventDefault();
-
-  // Kiểm tra mật khẩu mới
-  if (passwordForm.newPassword.length < 6) {
-    alert('Mật khẩu mới phải có ít nhất 6 ký tự!');
-    return;
-  }
-
-  // Kiểm tra xác nhận mật khẩu
-  if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-    alert('Mật khẩu xác nhận không trùng khớp!');
-    return;
-  }
-
-  try {
-    const accessToken = localStorage.getItem('accessToken');
-
-    const response = await apiFetch('/auth/change-password', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({
-        oldPassword: passwordForm.currentPassword,
-        newPassword: passwordForm.newPassword,
-      }),
-    });
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(
-        result.message || 'Đổi mật khẩu thất bại'
-      );
-    }
-
-    // Đổi mật khẩu thành công
-    // Xóa token phía frontend
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('traveloka_auth_user');
-
-    // Đóng modal
-    setModalType(null);
-
-    // Hiển thị thông báo bằng toast đã có sẵn trong component
-    showToast('Đổi mật khẩu thành công. Vui lòng đăng nhập lại!');
-
-    // Chuyển về trang đăng nhập
-    setTimeout(() => {
-      navigate('/login');
-    }, 1500);
-
-  } catch (error) {
-    console.error('Change password error:', error);
-    alert(error.message || 'Đổi mật khẩu thất bại');
-  }
-};
+  };
 
   // Xử lý lưu email
   const handleSaveEmail = (e) => {
@@ -322,8 +289,11 @@ export default function ProfilePage() {
         
         {/* Toast thông báo nổi */}
         {toastMessage && (
-          <div className="position-fixed top-0 start-50 translate-middle-x mt-4 z-3">
-            <div className="alert alert-success shadow-lg border-0 rounded-pill px-4 py-2 d-flex align-items-center gap-2">
+          <div
+            className="position-fixed top-0 start-50 translate-middle-x mt-4"
+            style={{ zIndex: 99999, maxWidth: 'calc(100vw - 32px)' }}
+          >
+            <div className="alert alert-success shadow-lg border-0 rounded-pill px-4 py-2 d-flex align-items-center gap-2 mb-0">
               <CheckCircle size={18} className="text-success" />
               <span className="fw-semibold small">{toastMessage}</span>
             </div>
@@ -789,36 +759,69 @@ export default function ProfilePage() {
                 <div className="modal-body p-4">
                   <div className="mb-3">
                     <label className="form-label small fw-semibold text-dark">Mật khẩu hiện tại</label>
-                    <input 
-                      type="password" 
-                      className="form-control" 
-                      placeholder="••••••••"
-                      value={passwordForm.currentPassword}
-                      onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
-                      required
-                    />
+                    <div className="input-group">
+                      <input
+                        type={showPasswords.current ? 'text' : 'password'}
+                        className="form-control"
+                        placeholder="Nhập mật khẩu hiện tại"
+                        value={passwordForm.currentPassword}
+                        onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+                        autoComplete="current-password"
+                        required
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary"
+                        aria-label={showPasswords.current ? 'Ẩn mật khẩu hiện tại' : 'Hiển thị mật khẩu hiện tại'}
+                        onClick={() => setShowPasswords(prev => ({ ...prev, current: !prev.current }))}
+                      >
+                        {showPasswords.current ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
                   </div>
                   <div className="mb-3">
                     <label className="form-label small fw-semibold text-dark">Mật khẩu mới (ít nhất 6 ký tự)</label>
-                    <input 
-                      type="password" 
-                      className="form-control" 
-                      placeholder="••••••••"
-                      value={passwordForm.newPassword}
-                      onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
-                      required
-                    />
+                    <div className="input-group">
+                      <input
+                        type={showPasswords.new ? 'text' : 'password'}
+                        className="form-control"
+                        placeholder="Nhập mật khẩu mới"
+                        value={passwordForm.newPassword}
+                        onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                        autoComplete="new-password"
+                        required
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary"
+                        aria-label={showPasswords.new ? 'Ẩn mật khẩu mới' : 'Hiển thị mật khẩu mới'}
+                        onClick={() => setShowPasswords(prev => ({ ...prev, new: !prev.new }))}
+                      >
+                        {showPasswords.new ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
                   </div>
                   <div className="mb-3">
                     <label className="form-label small fw-semibold text-dark">Xác nhận mật khẩu mới</label>
-                    <input 
-                      type="password" 
-                      className="form-control" 
-                      placeholder="••••••••"
-                      value={passwordForm.confirmPassword}
-                      onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
-                      required
-                    />
+                    <div className="input-group">
+                      <input
+                        type={showPasswords.confirm ? 'text' : 'password'}
+                        className="form-control"
+                        placeholder="Nhập lại mật khẩu mới"
+                        value={passwordForm.confirmPassword}
+                        onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                        autoComplete="new-password"
+                        required
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary"
+                        aria-label={showPasswords.confirm ? 'Ẩn mật khẩu xác nhận' : 'Hiển thị mật khẩu xác nhận'}
+                        onClick={() => setShowPasswords(prev => ({ ...prev, confirm: !prev.confirm }))}
+                      >
+                        {showPasswords.confirm ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <div className="modal-footer border-top">
