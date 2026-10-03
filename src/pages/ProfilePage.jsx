@@ -7,6 +7,8 @@ import {
   Camera, Loader2
 } from 'lucide-react';
 import { apiFetch } from '../services/api';
+import { getFriendlyErrorMessage, sanitizeErrorMessage } from '../utils/errorHandler';
+
 
 export default function ProfilePage() {
   const navigate = useNavigate();
@@ -117,7 +119,7 @@ export default function ProfilePage() {
 
       const result = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(result.message || "Tải ảnh đại diện thất bại");
+        throw new Error(getFriendlyErrorMessage(result, "Tải ảnh đại diện thất bại"));
       }
 
       const avatarUrl = result.result;
@@ -131,7 +133,7 @@ export default function ProfilePage() {
       showToast("Cập nhật ảnh đại diện thành công");
     } catch (error) {
       console.error("Avatar upload error:", error);
-      showToast(error.message || "Tải ảnh đại diện thất bại");
+      showToast(sanitizeErrorMessage(error, "Tải ảnh đại diện thất bại"));
     } finally {
       setIsUploadingAvatar(false);
       e.target.value = "";
@@ -191,10 +193,10 @@ export default function ProfilePage() {
         body: JSON.stringify(profileForm)
       });
 
-      const result = await response.json();
+      const result = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        setErrorMessage(result.result.errors);
+        setErrorMessage(getFriendlyErrorMessage(result, 'Cập nhật thông tin thất bại'));
         return;
       }
 
@@ -202,13 +204,13 @@ export default function ProfilePage() {
       setProfile(result.result);
       setErrorMessage('');
 
-    setModalType(null);
-    showToast('Cập nhật thông tin hồ sơ thành công!');
-  }catch (error) {
+      setModalType(null);
+      showToast('Cập nhật thông tin hồ sơ thành công!');
+    } catch (error) {
       console.error('Update profile error:', error);
-      showToast(error.message || 'Cập nhật thông tin thất bại');
+      showToast(sanitizeErrorMessage(error, 'Cập nhật thông tin thất bại'));
     }
-     };
+  };
 
 
   // Xử lý đổi mật khẩu
@@ -242,12 +244,10 @@ export default function ProfilePage() {
       }),
     });
 
-    const result = await response.json();
+    const result = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      throw new Error(
-        result.message || 'Đổi mật khẩu thất bại'
-      );
+      throw new Error(getFriendlyErrorMessage(result, 'Đổi mật khẩu thất bại'));
     }
 
     // Đổi mật khẩu thành công
@@ -269,7 +269,7 @@ export default function ProfilePage() {
 
   } catch (error) {
     console.error('Change password error:', error);
-    alert(error.message || 'Đổi mật khẩu thất bại');
+    alert(sanitizeErrorMessage(error, 'Đổi mật khẩu thất bại'));
   }
 };
 
