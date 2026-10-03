@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Hotel, Eye, EyeOff, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { apiFetch } from '../services/api';
+import { getFriendlyErrorMessage, sanitizeErrorMessage } from '../utils/errorHandler';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
@@ -55,7 +56,7 @@ export default function RegisterPage() {
         const data = await response.json();
 
         if (!response.ok) {
-            setErrorMsg(data.result?.errors || 'Đăng ký thất bại!');
+            setErrorMsg(getFriendlyErrorMessage(data, 'Đăng ký tài khoản không thành công!'));
             return;
         }
 
@@ -68,9 +69,10 @@ export default function RegisterPage() {
         }, 1000);
 
     } catch (error) {
-        setErrorMsg('Không thể kết nối đến server!');
-        console.error(error);
+        setErrorMsg(sanitizeErrorMessage(error, 'Không thể kết nối đến máy chủ! Vui lòng thử lại sau.'));
+        console.error('Register error:', error);
     }
+
   };
 
   // Đăng nhập nhanh qua Google

@@ -3,7 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../services/api';
 import { uploadToCloudinary } from '../services/cloudinary';
+import { getFriendlyErrorMessage, sanitizeErrorMessage } from '../utils/errorHandler';
 import { MOCK_HOTELS } from '../data/mockData';
+
 import {
   LayoutDashboard, Building, BookOpen, LogOut, Plus, Edit2,
   Trash2, Search, DollarSign, Users, Star,
@@ -269,7 +271,7 @@ export default function AdminDashboardPage() {
       // Fallback object URL cục bộ để người dùng vẫn xem trước được
       const localPreview = URL.createObjectURL(file);
       setHotelForm(prev => ({ ...prev, thumbnailUrl: localPreview }));
-      showToast('Lỗi tải ảnh lên Cloudinary: ' + err.message);
+      showToast('Lỗi tải ảnh lên Cloudinary: ' + sanitizeErrorMessage(err));
     } finally {
       setIsUploadingHotelImage(false);
       if (hotelImageInputRef.current) {
@@ -301,7 +303,7 @@ export default function AdminDashboardPage() {
           showToast('Cập nhật khách sạn lên máy chủ thành công!');
         } else {
           const errJson = await res.json().catch(() => ({}));
-          showToast('Lỗi cập nhật: ' + (errJson.message || errJson.errors || 'Cập nhật thất bại'));
+          showToast('Lỗi cập nhật: ' + getFriendlyErrorMessage(errJson, 'Cập nhật thất bại'));
         }
       } else {
         const res = await apiFetch('/admin/hotels', {
@@ -323,12 +325,12 @@ export default function AdminDashboardPage() {
           showToast('Thêm khách sạn mới lên cơ sở dữ liệu thành công!');
         } else {
           const errJson = await res.json().catch(() => ({}));
-          showToast('Lỗi thêm khách sạn: ' + (errJson.message || errJson.errors || 'Thêm thất bại'));
+          showToast('Lỗi thêm khách sạn: ' + getFriendlyErrorMessage(errJson, 'Thêm thất bại'));
         }
       }
     } catch (err) {
       console.warn('Lỗi kết nối API khách sạn:', err);
-      showToast('Lỗi kết nối máy chủ: ' + err.message);
+      showToast(sanitizeErrorMessage(err, 'Lỗi kết nối máy chủ'));
     }
     setShowHotelModal(false);
   };
@@ -390,7 +392,7 @@ export default function AdminDashboardPage() {
       console.error('Lỗi khi tải ảnh phòng lên Cloudinary:', err);
       const localPreview = URL.createObjectURL(file);
       setRoomForm(prev => ({ ...prev, imageUrl: localPreview }));
-      showToast('Lỗi tải ảnh lên Cloudinary: ' + err.message);
+      showToast('Lỗi tải ảnh lên Cloudinary: ' + sanitizeErrorMessage(err));
     } finally {
       setIsUploadingRoomImage(false);
       if (roomImageInputRef.current) {
