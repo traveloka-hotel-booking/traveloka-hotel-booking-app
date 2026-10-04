@@ -34,9 +34,10 @@ export default function MyBookingsPage() {
       rawStatus = 'CONFIRMED';
     }
 
-    // 3. Xác định xem đơn có bị quá hạn nhận phòng hay không
+    // 3. Xác định xem đơn có bị quá hạn nhận phòng hoặc trả phòng hay không
     const todayStr = new Date().toISOString().split('T')[0];
     let isPastCheckIn = false;
+    let isPastCheckOut = false;
     if (checkInDate && checkInDate !== '—') {
       if (/^\d{4}-\d{2}-\d{2}$/.test(checkInDate)) {
         isPastCheckIn = checkInDate < todayStr;
@@ -45,7 +46,28 @@ export default function MyBookingsPage() {
         isPastCheckIn = `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}` < todayStr;
       }
     }
-    const isExpired = (rawStatus === 'PENDING' || rawStatus === 'EXPIRED') && isPastCheckIn;
+    if (checkOutDate && checkOutDate !== '—') {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(checkOutDate)) {
+        isPastCheckOut = checkOutDate < todayStr;
+      } else if (/^\d{2}\/\d{2}\/\d{4}$/.test(checkOutDate)) {
+        const [dd, mm, yyyy] = checkOutDate.split('/');
+        isPastCheckOut = `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}` < todayStr;
+      }
+    }
+
+    // Các trường hợp Quá hạn (EXPIRED):
+    // - PENDING mà checkIn < today
+    // - CONFIRMED mà checkIn < today (No show)
+    // - VNPay chưa thanh toán mà checkIn < today
+    // - rawStatus === 'EXPIRED'
+    const isExpired = (
+      (rawStatus === 'PENDING' && isPastCheckIn) ||
+      (rawStatus === 'CONFIRMED' && isPastCheckIn) ||
+      (paymentMethod === 'vnpay' && paymentStatus !== 'paid' && isPastCheckIn) ||
+      rawStatus === 'EXPIRED'
+    );
+
+    const isOverdueCheckout = (rawStatus === 'CHECKED_IN' && isPastCheckOut);
 
     // 4. Giới hạn thời gian 30 phút cho đơn chuyển khoản VNPay chưa thanh toán -> Tự động HỦY (CANCELLED)
     let isPaymentTimeout = false;
@@ -108,6 +130,7 @@ export default function MyBookingsPage() {
       status: finalStatus,
       rawStatus: finalRawStatus,
       isExpired,
+      isOverdueCheckout,
       isPaymentTimeout,
       isGuest: b.isGuest || false,
       raw: b

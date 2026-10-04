@@ -154,9 +154,10 @@ export default function AdminDashboardPage() {
       rawStatus = 'CONFIRMED';
     }
 
-    // 3. Xác định xem đơn có bị quá hạn nhận phòng hay không (checkInDate < today)
+    // 3. Xác định xem đơn có bị quá hạn nhận phòng hoặc trả phòng hay không
     const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
     let isPastCheckIn = false;
+    let isPastCheckOut = false;
     if (checkInDate && checkInDate !== '—') {
       if (/^\d{4}-\d{2}-\d{2}$/.test(checkInDate)) {
         isPastCheckIn = checkInDate < todayStr;
@@ -165,7 +166,29 @@ export default function AdminDashboardPage() {
         isPastCheckIn = `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}` < todayStr;
       }
     }
-    const isExpired = (rawStatus === 'PENDING' || rawStatus === 'EXPIRED') && isPastCheckIn;
+    if (checkOutDate && checkOutDate !== '—') {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(checkOutDate)) {
+        isPastCheckOut = checkOutDate < todayStr;
+      } else if (/^\d{2}\/\d{2}\/\d{4}$/.test(checkOutDate)) {
+        const [dd, mm, yyyy] = checkOutDate.split('/');
+        isPastCheckOut = `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}` < todayStr;
+      }
+    }
+
+    // Các trường hợp Quá hạn (EXPIRED):
+    // - PENDING mà checkIn < today (quá hạn duyệt)
+    // - CONFIRMED mà checkIn < today (Khách không đến nhận phòng - No Show)
+    // - VNPay chưa thanh toán mà checkIn < today
+    // - rawStatus === 'EXPIRED'
+    const isExpired = (
+      (rawStatus === 'PENDING' && isPastCheckIn) ||
+      (rawStatus === 'CONFIRMED' && isPastCheckIn) ||
+      (paymentMethod === 'vnpay' && paymentStatus !== 'paid' && isPastCheckIn) ||
+      rawStatus === 'EXPIRED'
+    );
+
+    // Quá hạn trả phòng: CHECKED_IN mà checkOut < today
+    const isOverdueCheckout = (rawStatus === 'CHECKED_IN' && isPastCheckOut);
 
     // 4. Giới hạn thời gian 30 phút cho đơn chuyển khoản VNPay chưa thanh toán -> Tự động HỦY (CANCELLED)
     let isPaymentTimeout = false;
@@ -216,6 +239,9 @@ export default function AdminDashboardPage() {
       status: finalStatus,
       rawStatus: finalRawStatus,
       isExpired,
+      isOverdueCheckout,
+      isPastCheckIn,
+      isPastCheckOut,
       isPaymentTimeout,
       createdAt: b.createdAt || new Date().toLocaleString('vi-VN'),
       raw: b
@@ -938,20 +964,106 @@ export default function AdminDashboardPage() {
 
   const markAsPaid = async (id) => {
     const target = bookings.find(b => b.id === id);
-    if (target?.rawStatus === 'PENDING') {
-      await handleConfirmBooking(target);
+    const bookingId = target?.raw?.id || (typeof id === 'number' ? id : null);
+    try {
+      showToast('Đang ghi nhận thu tiền mặt...');
+      if (bookingId) {
+        const res = await apiFetch(`/admin/bookings/${bookingId}/pay-cash`, { method: 'PUT' });
+        if (res.ok) {
+          showToast('Đã xác nhận thu tiền mặt thành công!');
+          await fetchBookings();
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('pay-cash API fallback:', e);
     }
-    const next = bookings.map(b => b.id === id ? { ...b, paymentStatus: 'paid', status: 'confirmed', paidAt: new Date().toLocaleString('vi-VN') } : b);
+    const next = bookings.map(b => b.id === id ? { ...b, paymentStatus: 'paid', paidAt: new Date().toLocaleString('vi-VN') } : b);
     updateBookings(next);
-    setSelectedInvoice(next.find(b => b.id === id));
     showToast('Đã xác nhận thu tiền mặt cho đơn!');
+  };
+
+  // ── Flexible Checkout Modal state & handlers ──
+  const [checkoutModalBooking, setCheckoutModalBooking] = useState(null);
+  const [actualCheckOutDate, setActualCheckOutDate] = useState('');
+  const [isSubmittingCheckout, setIsSubmittingCheckout] = useState(false);
+
+  const openCheckoutModal = (b) => {
+    setCheckoutModalBooking(b);
+    const todayStr = new Date().toISOString().split('T')[0];
+    const defaultDate = (b.checkOutDate && /^\d{4}-\d{2}-\d{2}$/.test(b.checkOutDate) && b.checkOutDate >= todayStr)
+      ? b.checkOutDate
+      : todayStr;
+    setActualCheckOutDate(defaultDate);
+  };
+
+  const handleConfirmCheckout = async () => {
+    if (!checkoutModalBooking || !actualCheckOutDate) return;
+    const b = checkoutModalBooking;
+    const bookingId = b.raw?.id || (typeof b.id === 'number' ? b.id : null);
+
+    if (b.checkInDate && /^\d{4}-\d{2}-\d{2}$/.test(b.checkInDate) && actualCheckOutDate < b.checkInDate) {
+      alert(`Ngày trả phòng thực tế (${actualCheckOutDate}) không thể trước ngày nhận phòng (${b.checkInDate})!`);
+      return;
+    }
+
+    try {
+      setIsSubmittingCheckout(true);
+      showToast('Đang xử lý trả phòng và quyết toán hóa đơn...');
+      if (bookingId) {
+        const res = await apiFetch(`/admin/bookings/${bookingId}/checkout?actualCheckOutDate=${actualCheckOutDate}`, {
+          method: 'PUT'
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(getFriendlyErrorMessage(data, 'Trả phòng thất bại'));
+        }
+      }
+      showToast('Đã hoàn tất trả phòng và quyết toán hóa đơn thành công!');
+      setCheckoutModalBooking(null);
+      await fetchBookings();
+    } catch (err) {
+      console.error('Checkout error:', err);
+      // Fallback tính toán cục bộ
+      let nights = 1;
+      if (b.checkInDate && /^\d{4}-\d{2}-\d{2}$/.test(b.checkInDate)) {
+        nights = Math.max(1, Math.round((new Date(actualCheckOutDate) - new Date(b.checkInDate)) / (1000 * 60 * 60 * 24)));
+      }
+      const pricePerNight = Math.round((b.totalAmount || 0) / (b.nights || 1));
+      const newTotal = pricePerNight * nights;
+
+      const updated = bookings.map(item => {
+        if (item.id === b.id || (bookingId && item.raw?.id === bookingId)) {
+          return {
+            ...item,
+            status: 'completed',
+            rawStatus: 'COMPLETED',
+            checkOutDate: actualCheckOutDate,
+            nights,
+            totalAmount: newTotal,
+            paymentStatus: item.paymentMethod === 'pay_at_hotel' ? 'paid' : item.paymentStatus,
+            isOverdueCheckout: false
+          };
+        }
+        return item;
+      });
+      updateBookings(updated);
+      setCheckoutModalBooking(null);
+      showToast('Đã hoàn tất trả phòng và cập nhật hóa đơn!');
+    } finally {
+      setIsSubmittingCheckout(false);
+    }
   };
 
   const filteredBookings = useMemo(() => {
     return bookings.filter(b => {
       if (bookingStatusFilter !== 'ALL') {
         const rawS = (b.rawStatus || b.status || '').toUpperCase();
-        if (rawS !== bookingStatusFilter) return false;
+        if (bookingStatusFilter === 'EXPIRED') {
+          if (!b.isExpired && rawS !== 'EXPIRED') return false;
+        } else {
+          if (rawS !== bookingStatusFilter) return false;
+        }
       }
       if (!bookingSearch.trim()) return true;
       const q = bookingSearch.toLowerCase();
@@ -1638,7 +1750,7 @@ export default function AdminDashboardPage() {
                             )}
                           </td>
                           <td style={{ fontWeight: 700, color: '#dc2626', whiteSpace: 'nowrap' }}>{b.totalAmount?.toLocaleString('vi-VN')} đ</td>
-                          <td><StatusBadge status={rawS} /></td>
+                          <td><StatusBadge status={rawS} isOverdueCheckout={b.isOverdueCheckout} /></td>
                           <td>
                             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                               {/* Đơn QUÁ HẠN: Nút Xóa đơn quá hạn */}
@@ -1683,37 +1795,58 @@ export default function AdminDashboardPage() {
                                 </>
                               )}
 
-                              {/* Nếu là tiền mặt và chưa thanh toán khi CONFIRMED */}
-                              {b.paymentMethod === 'pay_at_hotel' && b.paymentStatus !== 'paid' && rawS === 'CONFIRMED' && (
-                                <SmBtn color="green" onClick={() => markAsPaid(b.id)} icon={<Banknote size={12} />}>
-                                  Thu tiền
-                                </SmBtn>
-                              )}
-
-                              {/* Nếu đã xác nhận: Nhận phòng */}
+                              {/* Đơn CONFIRMED: Khách thanh toán tiền mặt bắt buộc: Thu tiền -> Nhận phòng */}
                               {rawS === 'CONFIRMED' && (
-                                <SmBtn color="blue" onClick={() => handleUpdateBookingStatus(b, 'CHECKED_IN')} icon={<LogIn size={12} />}>
-                                  Nhận phòng
-                                </SmBtn>
+                                <>
+                                  {b.paymentMethod === 'pay_at_hotel' && b.paymentStatus !== 'paid' ? (
+                                    <>
+                                      <SmBtn color="green" onClick={() => markAsPaid(b.id)} icon={<Banknote size={12} />}>
+                                        Thu tiền
+                                      </SmBtn>
+                                      <button
+                                        type="button"
+                                        onClick={() => alert(`Chặn nhận phòng: Đơn phòng này chọn thanh toán tiền mặt tại khách sạn (${(b.totalAmount || 0).toLocaleString('vi-VN')} đ) nhưng chưa được ghi nhận thu tiền.\n\nTheo quy định nghiệp vụ, Lễ tân phải bấm nút "Thu tiền" trước khi bàn giao phòng cho khách!`)}
+                                        style={{
+                                          background: '#f1f5f9',
+                                          color: '#94a3b8',
+                                          border: '1px dashed #cbd5e1',
+                                          borderRadius: 8,
+                                          padding: '6px 10px',
+                                          fontSize: 12,
+                                          fontWeight: 600,
+                                          cursor: 'not-allowed',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: 4
+                                        }}
+                                        title="Bắt buộc thu tiền mặt trước khi làm thủ tục nhận phòng!"
+                                      >
+                                        <LogIn size={12} /> Chưa thu tiền
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <SmBtn color="blue" onClick={() => handleUpdateBookingStatus(b, 'CHECKED_IN')} icon={<LogIn size={12} />}>
+                                      Nhận phòng
+                                    </SmBtn>
+                                  )}
+                                  <SmBtn color="red" onClick={() => handleCancelBooking(b)}>
+                                    Hủy
+                                  </SmBtn>
+                                </>
                               )}
 
-                              {/* Nếu đã nhận phòng: Trả phòng/Hoàn thành */}
+                              {/* Đơn CHECKED_IN: Trả phòng linh hoạt (chọn ngày & tính lại bill) */}
                               {rawS === 'CHECKED_IN' && (
-                                <SmBtn color="purple" onClick={() => handleUpdateBookingStatus(b, 'COMPLETED')} icon={<CheckCircle2 size={12} />}>
-                                  Trả phòng
-                                </SmBtn>
-                              )}
-
-                              {/* Nút Hóa đơn / Chi tiết */}
-                              <SmBtn color="blue" onClick={() => setSelectedInvoice(b)} icon={<Printer size={12} />}>
-                                Hóa đơn
-                              </SmBtn>
-
-                              {/* Nút Hủy đối với CONFIRMED */}
-                              {rawS === 'CONFIRMED' && (
-                                <SmBtn color="red" onClick={() => handleCancelBooking(b)}>
-                                  Hủy
-                                </SmBtn>
+                                <>
+                                  <SmBtn color="purple" onClick={() => openCheckoutModal(b)} icon={<CheckCircle2 size={12} />}>
+                                    Trả phòng
+                                  </SmBtn>
+                                  {b.isOverdueCheckout && (
+                                    <SmBtn color="red" onClick={() => handleDeleteBooking(b)} icon={<Trash2 size={12} />}>
+                                      Xóa
+                                    </SmBtn>
+                                  )}
+                                </>
                               )}
 
                               {/* Đơn CANCELLED: Cho phép Xóa vĩnh viễn hoặc Duyệt lại */}
@@ -2215,6 +2348,120 @@ export default function AdminDashboardPage() {
         </Modal>
       )}
 
+      {/* ════ MODAL TRẢ PHÒNG LINH HOẠT & QUYẾT TOÁN HÓA ĐƠN ════ */}
+      {checkoutModalBooking && (
+        <Modal onClose={() => setCheckoutModalBooking(null)} title="Thủ Tục Trả Phòng & Quyết Toán Hóa Đơn">
+          <div style={{ padding: '24px 28px' }}>
+            <div style={{ background: '#f8fafc', borderRadius: 12, padding: 16, border: '1px solid #e2e8f0', marginBottom: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 13 }}>
+                <div><span style={{ color: '#64748b' }}>Mã đặt phòng: </span><strong>{checkoutModalBooking.bookingCode || checkoutModalBooking.id}</strong></div>
+                <div><span style={{ color: '#64748b' }}>Khách hàng: </span><strong>{checkoutModalBooking.contactName}</strong> ({checkoutModalBooking.contactPhone})</div>
+                <div><span style={{ color: '#64748b' }}>Khách sạn & Phòng: </span><strong>{checkoutModalBooking.hotelName}</strong> - {checkoutModalBooking.roomName}</div>
+                <div><span style={{ color: '#64748b' }}>Phương thức: </span><strong>{checkoutModalBooking.paymentMethod === 'pay_at_hotel' ? 'Tiền mặt tại quầy' : 'VNPAY'}</strong></div>
+                <div><span style={{ color: '#64748b' }}>Ngày nhận phòng ban đầu: </span><strong>{checkoutModalBooking.checkInDate}</strong></div>
+                <div><span style={{ color: '#64748b' }}>Ngày trả dự kiến: </span><strong>{checkoutModalBooking.checkOutDate}</strong> ({checkoutModalBooking.nights} đêm)</div>
+              </div>
+            </div>
+
+            {/* Input chọn ngày trả phòng thực tế */}
+            <div style={{ marginBottom: 20 }}>
+              <FL>Lựa chọn ngày trả phòng thực tế của khách hàng</FL>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                <input
+                  type="date"
+                  className="form-control"
+                  style={{ maxWidth: 260, fontSize: 14, fontWeight: 600 }}
+                  value={actualCheckOutDate}
+                  min={checkoutModalBooking.checkInDate}
+                  onChange={(e) => setActualCheckOutDate(e.target.value)}
+                  required
+                />
+                <span style={{ fontSize: 12.5, color: '#64748b' }}>
+                  (Hệ thống tự động tính toán lại số đêm và quyết toán hóa đơn)
+                </span>
+              </div>
+            </div>
+
+            {/* Bảng tính toán lại số đêm & tổng tiền */}
+            {(() => {
+              const checkInDate = checkoutModalBooking.checkInDate;
+              let calcNights = checkoutModalBooking.nights || 1;
+              if (checkInDate && actualCheckOutDate && /^\d{4}-\d{2}-\d{2}$/.test(checkInDate) && /^\d{4}-\d{2}-\d{2}$/.test(actualCheckOutDate)) {
+                const diffTime = new Date(actualCheckOutDate).getTime() - new Date(checkInDate).getTime();
+                calcNights = Math.max(1, Math.round(diffTime / (1000 * 60 * 60 * 24)));
+              }
+              const origNights = checkoutModalBooking.nights || 1;
+              const pricePerNight = Math.round((checkoutModalBooking.totalAmount || 0) / origNights);
+              const newTotal = pricePerNight * calcNights;
+              const diffAmount = newTotal - (checkoutModalBooking.totalAmount || 0);
+
+              return (
+                <div style={{ background: '#f0fdf4', borderRadius: 12, padding: 18, border: '1px solid #bbf7d0', marginBottom: 20 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#166534', marginBottom: 10 }}>
+                    📊 Bảng Quyết Toán Tiền Phòng Theo Ngày Trả Thực Tế
+                  </div>
+                  <table className="table table-sm table-bordered bg-white mb-2" style={{ fontSize: 13 }}>
+                    <tbody>
+                      <tr>
+                        <td style={{ color: '#64748b', width: '40%' }}>Số đêm lưu trú thực tế:</td>
+                        <td><strong>{calcNights} đêm</strong> {calcNights !== origNights && <span style={{ fontSize: 11.5, color: '#b45309' }}>(Ban đầu: {origNights} đêm)</span>}</td>
+                      </tr>
+                      <tr>
+                        <td style={{ color: '#64748b' }}>Đơn giá mỗi đêm:</td>
+                        <td><strong>{pricePerNight.toLocaleString('vi-VN')} đ</strong> / đêm</td>
+                      </tr>
+                      <tr>
+                        <td style={{ color: '#64748b' }}>Tổng tiền ban đầu:</td>
+                        <td style={{ color: '#64748b' }}>{checkoutModalBooking.totalAmount?.toLocaleString('vi-VN')} đ</td>
+                      </tr>
+                      <tr style={{ background: '#f8fafc' }}>
+                        <td style={{ fontWeight: 700, color: '#1e293b' }}>Tổng tiền hóa đơn mới:</td>
+                        <td style={{ fontWeight: 800, fontSize: 15, color: '#dc2626' }}>{newTotal.toLocaleString('vi-VN')} đ</td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  {diffAmount > 0 && (
+                    <div style={{ fontSize: 12.5, color: '#92400e', background: '#fef3c7', padding: '8px 12px', borderRadius: 8, border: '1px solid #fde68a' }}>
+                      ⚠️ Khách ở thêm {calcNights - origNights} đêm so với dự kiến. Phát sinh phụ thu cần thu thêm: <strong>+{diffAmount.toLocaleString('vi-VN')} đ</strong>.
+                    </div>
+                  )}
+                  {diffAmount < 0 && (
+                    <div style={{ fontSize: 12.5, color: '#1e40af', background: '#dbeafe', padding: '8px 12px', borderRadius: 8, border: '1px solid #bfdbfe' }}>
+                      ℹ️ Khách trả phòng sớm {origNights - calcNights} đêm. Số tiền giảm trừ: <strong>{diffAmount.toLocaleString('vi-VN')} đ</strong>.
+                    </div>
+                  )}
+                  {diffAmount === 0 && (
+                    <div style={{ fontSize: 12.5, color: '#166534' }}>
+                      ✓ Khách trả phòng đúng kỳ hạn dự kiến. Số tiền hóa đơn giữ nguyên.
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setCheckoutModalBooking(null)}
+                style={{ background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: 10, padding: '10px 22px', fontWeight: 600, cursor: 'pointer' }}
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                type="button"
+                disabled={isSubmittingCheckout}
+                onClick={handleConfirmCheckout}
+                style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 24px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <CheckCircle2 size={16} />
+                {isSubmittingCheckout ? 'Đang Xử Lý...' : 'Xác Nhận Trả Phòng & Cập Nhật Hóa Đơn'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       <style>{`@media print { body * { visibility: hidden !important; } #hotel-invoice-printable, #hotel-invoice-printable * { visibility: visible !important; } #hotel-invoice-printable { position: fixed !important; left: 0 !important; top: 0 !important; width: 100% !important; padding: 20px !important; background: white !important; max-height: none !important; overflow: visible !important; } }`}</style>
     </div>
   );
@@ -2271,7 +2518,8 @@ function Modal({ title, children, onClose, dark, action }) {
 }
 function Th({ children }) { return <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none', paddingBottom: 12, whiteSpace: 'nowrap' }}>{children}</th>; }
 function Badge({ bg, color, children }) { return <span style={{ background: bg, color, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>{children}</span>; }
-function StatusBadge({ status }) {
+function StatusBadge({ status, isOverdueCheckout }) {
+  if (isOverdueCheckout) return <Badge bg="#fee2e2" color="#b91c1c">⚠️ Quá hạn trả phòng</Badge>;
   const s = String(status || '').toUpperCase();
   if (s === 'CONFIRMED') return <Badge bg="#dcfce7" color="#16a34a">✓ Đã xác nhận</Badge>;
   if (s === 'PENDING') return <Badge bg="#fef9c3" color="#92400e">⏳ Chờ duyệt</Badge>;
