@@ -14,12 +14,19 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!fullName || !email || !password) {
+    if (isSubmitting) return;
+
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    if (!fullName.trim() || !email.trim() || !password) {
       setErrorMsg('Vui lòng điền đầy đủ các trường bắt buộc!');
       return;
     }
@@ -34,42 +41,68 @@ export default function RegisterPage() {
       return;
     }
 
+    setIsSubmitting(true);
+    let timeoutId;
+
     try {
-        const response = await apiFetch(
-            `/auth/register`,
-            {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    fullName,
-                    email,
-                    phone,
-                    password,
-		    confirmPassword
-                })
-            }
-        );
+      const request = (async () => {
+        const response = await apiFetch('/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fullName,
+            email,
+            phone,
+            password,
+            confirmPassword
+          })
+        });
 
-        const data = await response.json();
-
-        if (!response.ok) {
-            setErrorMsg(data.result?.errors || 'Đăng ký thất bại!');
-            return;
+        let data = {};
+        try {
+          data = await response.json();
+        } catch {
+          // Cho phép xử lý response không có JSON body.
         }
+        return { response, data };
+      })();
 
-        setSuccessMsg(
-            'Đăng ký tài khoản thành công! Đang chuyển hướng...'
+      const timeout = new Promise((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error('REGISTER_TIMEOUT')),
+          20000
         );
+      });
 
-        setTimeout(() => {
-            navigate('/login');
-        }, 1000);
+      const { response, data } = await Promise.race([request, timeout]);
 
+      if (!response.ok) {
+        const errors = data?.result?.errors;
+        const message =
+          data?.result?.message ||
+          (typeof errors === 'string'
+            ? errors
+            : Array.isArray(errors)
+              ? errors.join(', ')
+              : errors && typeof errors === 'object'
+                ? Object.values(errors).flat().join(', ')
+                : 'Đăng ký thất bại!');
+        setErrorMsg(message);
+        return;
+      }
+
+      setSuccessMsg('Đăng ký tài khoản thành công! Đang chuyển hướng...');
+      setTimeout(() => navigate('/login'), 1000);
     } catch (error) {
+      if (error?.message === 'REGISTER_TIMEOUT') {
+        setErrorMsg('Yêu cầu đăng ký mất quá nhiều thời gian. Vui lòng kiểm tra kết nối và thử lại.');
+      } else {
         setErrorMsg('Không thể kết nối đến server!');
-        console.error(error);
+      }
+      console.error('Register error:', error);
+    } finally {
+      clearTimeout(timeoutId);
+      setIsSubmitting(false);
     }
   };
 
@@ -205,17 +238,26 @@ export default function RegisterPage() {
                   <label className="form-label small fw-semibold text-dark mb-1">
                     Xác nhận mật khẩu <span className="text-danger">*</span>
                   </label>
-                  <input 
-                    type={showPassword ? "text" : "password"} 
-                    className="form-control border-secondary-subtle" 
-                    placeholder="Nhập lại mật khẩu"
-                    value={confirmPassword}
-                    onChange={(e) => {
-                      setConfirmPassword(e.target.value);
-                      setErrorMsg('');
-                    }}
-                    required
-                  />
+                  <div className="input-group">
+                    <input 
+                      type={showConfirmPassword ? "text" : "password"} 
+                      className="form-control border-secondary-subtle" 
+                      placeholder="Nhập lại mật khẩu"
+                      value={confirmPassword}
+                      onChange={(e) => {
+                        setConfirmPassword(e.target.value);
+                        setErrorMsg('');
+                      }}
+                      required
+                    />
+                    <button 
+                      type="button" 
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)} 
+                      className="btn btn-outline-secondary border-secondary-subtle"
+                    >
+                      {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Điều khoản */}
@@ -230,8 +272,23 @@ export default function RegisterPage() {
 
                 {/* Nút Đăng ký */}
                 <div className="col-12 mt-3">
-                  <button type="submit" className="btn btn-primary btn-lg w-100 fw-bold shadow-sm">
-                    Đăng Ký Tài Khoản
+                  <button
+                    type="submit"
+                    className="btn btn-primary btn-lg w-100 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2"
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <span
+                          className="spinner-border spinner-border-sm"
+                          role="status"
+                          aria-hidden="true"
+                        />
+                        <span>Đang đăng ký...</span>
+                      </>
+                    ) : (
+                      'Đăng Ký Tài Khoản'
+                    )}
                   </button>
                 </div>
               </form>

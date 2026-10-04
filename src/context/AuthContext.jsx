@@ -114,33 +114,28 @@ export const AuthProvider = ({ children }) => {
     return updated;
   };
 
-  // Hàm đăng xuất
-  const logout = async () => {
-     try {
-        const refreshToken = localStorage.getItem('refreshToken');
+  // Hàm đăng xuất: xóa phiên local ngay để giao diện không bị treo
+  // API logout được gọi nền, không chặn việc chuyển trang.
+  const logout = () => {
+    const refreshToken = localStorage.getItem('refreshToken');
 
-        if (refreshToken) {
-            await apiFetch(
-                `/auth/logout`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        refreshToken,
-                    }),
-                }
-            );
-        }
-    } catch (error) {
+    // Xóa thông tin đăng nhập ngay lập tức
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('traveloka_auth_user');
+    setUser(null);
+
+    // Gửi yêu cầu thu hồi refresh token ở nền
+    if (refreshToken) {
+      apiFetch('/auth/logout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refreshToken }),
+      }).catch((error) => {
         console.error('Logout API error:', error);
-    } finally {
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('traveloka_auth_user');
-
-        setUser(null);
+      });
     }
   };
 

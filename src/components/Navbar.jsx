@@ -12,6 +12,7 @@ export default function Navbar() {
 
   // State điều khiển đóng/mở dropdown menu của người dùng
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const userMenuRef = useRef(null);
 
   // State điều khiển Modal Trung tâm Hỗ trợ khách hàng 24/7
@@ -49,8 +50,38 @@ export default function Navbar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Đăng xuất và hiển thị trạng thái loading trong lúc xử lý
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+
+    setIsLoggingOut(true);
+
+    try {
+      await logout();
+      setIsUserMenuOpen(false);
+      navigate("/", { replace: true });
+    } catch (error) {
+      console.error("Logout error:", error);
+      alert("Đăng xuất thất bại. Vui lòng thử lại.");
+      setIsLoggingOut(false);
+    }
+  };
+
   return (
     <header className="fixed-top" style={{ zIndex: 1050 }}>
+      {isLoggingOut && (
+        <div
+          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
+          style={{ background: "rgba(15, 23, 42, 0.35)", zIndex: 2000 }}
+          role="status"
+          aria-live="polite"
+        >
+          <div className="bg-white rounded-3 shadow px-4 py-3 d-flex align-items-center gap-3">
+            <span className="spinner-border text-primary" aria-hidden="true" />
+            <span className="fw-semibold text-dark">Đang đăng xuất...</span>
+          </div>
+        </div>
+      )}
       <nav 
         className="navbar navbar-expand-lg navbar-dark py-2 px-3 transition-all"
         style={{
@@ -234,14 +265,27 @@ export default function Navbar() {
                       <hr className="dropdown-divider my-1" />
 
                       {/* 4. Đăng xuất */}
-                      <button 
-                        onClick={() => {
-                          setIsUserMenuOpen(false);
-                          logout();
-                        }} 
+                      <button
+                        type="button"
+                        onClick={handleLogout}
+                        disabled={isLoggingOut}
                         className="dropdown-item py-2 small text-danger d-flex align-items-center gap-2 rounded-2"
                       >
-                        <LogOut size={16} /> Đăng xuất
+                        {isLoggingOut ? (
+                          <>
+                            <span
+                              className="spinner-border spinner-border-sm"
+                              role="status"
+                              aria-hidden="true"
+                            />
+                            <span>Đang đăng xuất...</span>
+                          </>
+                        ) : (
+                          <>
+                            <LogOut size={16} />
+                            <span>Đăng xuất</span>
+                          </>
+                        )}
                       </button>
                     </div>
                   )}

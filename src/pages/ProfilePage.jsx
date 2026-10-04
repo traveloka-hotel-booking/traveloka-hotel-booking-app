@@ -21,6 +21,7 @@ export default function ProfilePage() {
   // State các Modal popup
   const [modalType, setModalType] = useState(null); // 'edit_profile', 'change_password', 'edit_email', 'edit_phone', 'devices', 'history'
   const [toastMessage, setToastMessage] = useState(null);
+  const [toastType, setToastType] = useState('success');
 
   // Thông tin profile lấy từ backend
   const [profile, setProfile] = useState(null);
@@ -71,6 +72,8 @@ export default function ProfilePage() {
     newPassword: '',
     confirmPassword: ''
   });
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const changingPasswordRef = useRef(false);
 
   // Trạng thái hiển thị/ẩn từng ô mật khẩu
   const [showPasswords, setShowPasswords] = useState({
@@ -143,7 +146,8 @@ export default function ProfilePage() {
   };
 
   // Hiển thị toast thông báo
-  const showToast = (msg) => {
+  const showToast = (msg, type = 'success') => {
+    setToastType(type);
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };
@@ -183,19 +187,73 @@ export default function ProfilePage() {
     setModalType('edit_profile');
   };
 
-  // Xử lý lưu hồ sơ cá nhân
+// Xử lý lưu hồ sơ cá nhân
+const handleSaveProfile = async (e) => {
+  e.preventDefault();
+
+  // Ngăn gửi nhiều request liên tiếp
+  if (isSavingProfile) return;
+
+  setIsSavingProfile(true);
+  setErrorMessage('');
+
+  try {
+    const response = await apiFetch('/customer/profile', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(profileForm)
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      setErrorMessage(
+        typeof result.result?.errors === 'string'
+          ? result.result.errors
+          : result.message || 'Cập nhật thông tin thất bại'
+      );
+      return;
+    }
+
+    // Cập nhật profile mới sau khi lưu thành công
+    setProfile(result.result);
+    setErrorMessage('');
+    setModalType(null);
+    showToast('Cập nhật thông tin hồ sơ thành công!');
+  } catch (error) {
+    console.error('Update profile error:', error);
+    showToast(error.message || 'Cập nhật thông tin thất bại', 'error');
+  } finally {
+    setIsSavingProfile(false);
+  }
+};
+
+  // Xử lý đổi mật khẩu
   const handleChangePassword = async (e) => {
     e.preventDefault();
 
+    // Ngăn gửi nhiều request liên tiếp
+    if (changingPasswordRef.current) return;
+
     if (passwordForm.newPassword.length < 6) {
-      alert('Mật khẩu mới phải có ít nhất 6 ký tự!');
+      showToast('Mật khẩu mới phải có ít nhất 6 ký tự!', 'error');
+      return;
+    }
+
+    if (!/[A-Z]/.test(passwordForm.newPassword) || !/\d/.test(passwordForm.newPassword)) {
+      showToast('Mật khẩu mới phải có ít nhất một chữ hoa và một chữ số!', 'error');
       return;
     }
 
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      alert('Mật khẩu xác nhận không trùng khớp!');
+      showToast('Mật khẩu xác nhận không trùng khớp!', 'error');
       return;
     }
+
+    changingPasswordRef.current = true;
+    setIsChangingPassword(true);
 
     try {
       const accessToken = localStorage.getItem('accessToken');
@@ -233,7 +291,10 @@ export default function ProfilePage() {
       }, 2000);
     } catch (error) {
       console.error('Change password error:', error);
-      showToast(error.message || 'Đổi mật khẩu thất bại');
+      showToast(error.message || 'Đổi mật khẩu thất bại', 'error');
+    } finally {
+      changingPasswordRef.current = false;
+      setIsChangingPassword(false);
     }
   };
 
@@ -293,8 +354,10 @@ export default function ProfilePage() {
             className="position-fixed top-0 start-50 translate-middle-x mt-4"
             style={{ zIndex: 99999, maxWidth: 'calc(100vw - 32px)' }}
           >
-            <div className="alert alert-success shadow-lg border-0 rounded-pill px-4 py-2 d-flex align-items-center gap-2 mb-0">
-              <CheckCircle size={18} className="text-success" />
+            <div className={`alert ${toastType === 'error' ? 'alert-danger' : 'alert-success'} shadow-lg border-0 rounded-pill px-4 py-2 d-flex align-items-center gap-2 mb-0`}>
+              {toastType === 'error'
+                ? <AlertCircle size={18} className="text-danger" />
+                : <CheckCircle size={18} className="text-success" />}
               <span className="fw-semibold small">{toastMessage}</span>
             </div>
           </div>
@@ -614,6 +677,7 @@ export default function ProfilePage() {
                   type="button"
                   className="btn-close"
                   onClick={() => setModalType(null)}
+                  disabled={isSavingProfile}
                 ></button>
               </div>
 
@@ -729,6 +793,7 @@ export default function ProfilePage() {
                     type="button"
                     className="btn btn-secondary rounded-pill px-3"
                     onClick={() => setModalType(null)}
+                    disabled={isSavingProfile}
                   >
                     Hủy bỏ
                   </button>
@@ -736,8 +801,19 @@ export default function ProfilePage() {
                   <button
                     type="submit"
                     className="btn btn-primary rounded-pill px-4 fw-bold"
+                    disabled={isSavingProfile}
                   >
-                    Lưu Thay Đổi
+                    {isSavingProfile ? (
+                      <>
+                        <Loader2
+                          size={16}
+                          className="me-2 spinner-border spinner-border-sm"
+                        />
+                        Đang lưu...
+                      </>
+                    ) : (
+                      'Lưu Thay Đổi'
+                    )}
                   </button>
                 </div>
               </form>
@@ -753,7 +829,7 @@ export default function ProfilePage() {
             <div className="modal-content rounded-4 border-0 shadow">
               <div className="modal-header border-bottom">
                 <h5 className="modal-title fw-bold text-dark">Đổi Mật Khẩu Tài Khoản</h5>
-                <button type="button" className="btn-close" onClick={() => setModalType(null)}></button>
+                <button type="button" className="btn-close" onClick={() => setModalType(null)} disabled={isChangingPassword}></button>
               </div>
               <form onSubmit={handleChangePassword}>
                 <div className="modal-body p-4">
@@ -825,11 +901,27 @@ export default function ProfilePage() {
                   </div>
                 </div>
                 <div className="modal-footer border-top">
-                  <button type="button" className="btn btn-secondary rounded-pill px-3" onClick={() => setModalType(null)}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary rounded-pill px-3"
+                    onClick={() => setModalType(null)}
+                    disabled={isChangingPassword}
+                  >
                     Hủy bỏ
                   </button>
-                  <button type="submit" className="btn btn-primary rounded-pill px-4 fw-bold">
-                    Xác Nhận Đổi
+                  <button
+                    type="submit"
+                    className="btn btn-primary rounded-pill px-4 fw-bold"
+                    disabled={isChangingPassword}
+                  >
+                    {isChangingPassword ? (
+                      <>
+                        <Loader2 size={16} className="me-2 spinner-border spinner-border-sm" />
+                        Đang đổi mật khẩu...
+                      </>
+                    ) : (
+                      'Xác Nhận Đổi'
+                    )}
                   </button>
                 </div>
               </form>
