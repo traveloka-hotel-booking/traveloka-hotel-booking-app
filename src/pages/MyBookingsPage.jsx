@@ -16,13 +16,25 @@ export default function MyBookingsPage() {
   const normalizeBooking = (b) => {
     const rawId = b.id;
     const bookingCode = b.bookingCode || (typeof rawId === 'number' ? `BK-${String(rawId).padStart(4, '0')}` : (b.bookingCode || rawId));
-    const rawStatus = (b.status || 'PENDING').toUpperCase();
+    let rawStatus = (b.status || 'PENDING').toUpperCase();
     const nights = b.nights || 1;
     const totalAmount = b.totalPrice != null ? Number(b.totalPrice) : (b.totalAmount || 0);
     const checkInDate = b.checkIn || b.checkInDate || '—';
     const checkOutDate = b.checkOut || b.checkOutDate || '—';
+    const paymentMethod = (b.paymentMethod === 'VNPAY' || b.paymentMethod === 'vnpay') ? 'vnpay' : 'pay_at_hotel';
+    let paymentStatus = (b.paymentStatus === 'PAID' || b.paymentStatus === 'paid' || b.paymentStatus === 'SUCCESS') ? 'paid' : 'pending';
 
-    // Xác định xem đơn có bị quá hạn nhận phòng hay không
+    // 1. Khi đơn đã COMPLETED (trả phòng hoàn tất lưu trú) và là tiền mặt -> Bắt buộc thanh toán là 'paid'
+    if (rawStatus === 'COMPLETED' && paymentMethod === 'pay_at_hotel') {
+      paymentStatus = 'paid';
+    }
+
+    // 2. Chuyển khoản VNPay khi đã thanh toán thành công -> TỰ ĐỘNG DUYỆT ĐƠN (CONFIRMED), không cần admin duyệt
+    if (paymentMethod === 'vnpay' && paymentStatus === 'paid' && rawStatus === 'PENDING') {
+      rawStatus = 'CONFIRMED';
+    }
+
+    // 3. Xác định xem đơn có bị quá hạn nhận phòng hay không
     const todayStr = new Date().toISOString().split('T')[0];
     let isPastCheckIn = false;
     if (checkInDate && checkInDate !== '—') {
@@ -34,7 +46,37 @@ export default function MyBookingsPage() {
       }
     }
     const isExpired = (rawStatus === 'PENDING' || rawStatus === 'EXPIRED') && isPastCheckIn;
-    const finalRawStatus = isExpired ? 'EXPIRED' : rawStatus;
+
+    // 4. Giới hạn thời gian 30 phút cho đơn chuyển khoản VNPay chưa thanh toán -> Tự động HỦY (CANCELLED)
+    let isPaymentTimeout = false;
+    if (paymentMethod === 'vnpay' && paymentStatus !== 'paid' && (rawStatus === 'PENDING' || rawStatus === 'pending')) {
+      const createdStr = b.rawCreatedAt || b.createdAt;
+      if (createdStr) {
+        let createdDate = null;
+        if (typeof createdStr === 'string' && createdStr.includes('/')) {
+          const parts = createdStr.split(' ');
+          const datePart = parts[0];
+          const timePart = parts[1] || '00:00';
+          const [dd, mm, yyyy] = datePart.split('/');
+          createdDate = new Date(`${yyyy}-${mm}-${dd}T${timePart}`);
+        } else {
+          createdDate = new Date(createdStr);
+        }
+        if (createdDate && !isNaN(createdDate.getTime())) {
+          const diffMinutes = (Date.now() - createdDate.getTime()) / (1000 * 60);
+          if (diffMinutes > 30) {
+            isPaymentTimeout = true;
+          }
+        }
+      }
+    }
+
+    let finalRawStatus = rawStatus;
+    if (isExpired) {
+      finalRawStatus = 'EXPIRED';
+    } else if (isPaymentTimeout) {
+      finalRawStatus = 'CANCELLED';
+    }
     const finalStatus = finalRawStatus.toLowerCase();
 
     return {
@@ -60,12 +102,13 @@ export default function MyBookingsPage() {
       contactEmail: b.userEmail || b.contactEmail || '',
       contactPhone: b.userPhone || b.contactPhone || '',
       specialRequests: Array.isArray(b.specialRequests) ? b.specialRequests : (b.specialRequests ? [b.specialRequests] : []),
-      paymentMethod: (b.paymentMethod === 'VNPAY' || b.paymentMethod === 'vnpay') ? 'vnpay' : 'pay_at_hotel',
-      paymentStatus: (b.paymentStatus === 'PAID' || b.paymentStatus === 'paid' || b.paymentStatus === 'SUCCESS') ? 'paid' : 'pending',
+      paymentMethod,
+      paymentStatus,
       totalAmount,
       status: finalStatus,
       rawStatus: finalRawStatus,
       isExpired,
+      isPaymentTimeout,
       isGuest: b.isGuest || false,
       raw: b
     };
@@ -352,7 +395,7 @@ export default function MyBookingsPage() {
 
                     {b.status === 'pending' && (
                       <span className="badge bg-warning-subtle text-warning-emphasis px-3 py-2 rounded-pill fw-semibold d-inline-flex align-items-center gap-1 border border-warning-subtle">
-                        <Clock size={14} /> Chờ Duyệt
+                        <Clock size={14} /> {b.paymentMethod === 'vnpay' ? 'Chờ Chuyển Khoản (30p)' : 'Chờ Duyệt'}
                       </span>
                     )}
                     {b.status === 'expired' && (
@@ -377,7 +420,7 @@ export default function MyBookingsPage() {
                     )}
                     {b.status === 'cancelled' && (
                       <span className="badge bg-danger-subtle text-danger px-3 py-2 rounded-pill fw-semibold d-inline-flex align-items-center gap-1 border border-danger-subtle">
-                        <XCircle size={14} /> Đã Hủy
+                        <XCircle size={14} /> {b.isPaymentTimeout ? 'Đã Hủy (Hết hạn TT 30p)' : 'Đã Hủy'}
                       </span>
                     )}
                   </div>

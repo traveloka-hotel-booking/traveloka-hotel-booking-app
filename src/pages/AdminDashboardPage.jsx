@@ -138,11 +138,23 @@ export default function AdminDashboardPage() {
     const bookingCode = b.bookingCode || (typeof rawId === 'number' ? `BK-${String(rawId).padStart(4, '0')}` : (b.bookingCode || rawId));
     const nights = b.nights || 1;
     const totalAmount = b.totalPrice != null ? Number(b.totalPrice) : (b.totalAmount || 0);
-    const rawStatus = (b.status || 'PENDING').toUpperCase();
+    let rawStatus = (b.status || 'PENDING').toUpperCase();
     const checkInDate = b.checkIn || b.checkInDate || '—';
     const checkOutDate = b.checkOut || b.checkOutDate || '—';
+    const paymentMethod = (b.paymentMethod === 'VNPAY' || b.paymentMethod === 'vnpay') ? 'vnpay' : 'pay_at_hotel';
+    let paymentStatus = (b.paymentStatus === 'SUCCESS' || b.paymentStatus === 'paid' || b.paymentStatus === 'PAID') ? 'paid' : 'pending';
 
-    // Xác định xem đơn có bị quá hạn nhận phòng hay không
+    // 1. Khi đơn đã COMPLETED (trả phòng hoàn tất lưu trú) và là tiền mặt -> Bắt buộc thanh toán là 'paid'
+    if (rawStatus === 'COMPLETED' && paymentMethod === 'pay_at_hotel') {
+      paymentStatus = 'paid';
+    }
+
+    // 2. Chuyển khoản VNPay khi đã thanh toán thành công -> TỰ ĐỘNG DUYỆT ĐƠN (CONFIRMED), không cần admin duyệt
+    if (paymentMethod === 'vnpay' && paymentStatus === 'paid' && rawStatus === 'PENDING') {
+      rawStatus = 'CONFIRMED';
+    }
+
+    // 3. Xác định xem đơn có bị quá hạn nhận phòng hay không (checkInDate < today)
     const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
     let isPastCheckIn = false;
     if (checkInDate && checkInDate !== '—') {
@@ -154,7 +166,37 @@ export default function AdminDashboardPage() {
       }
     }
     const isExpired = (rawStatus === 'PENDING' || rawStatus === 'EXPIRED') && isPastCheckIn;
-    const finalRawStatus = isExpired ? 'EXPIRED' : rawStatus;
+
+    // 4. Giới hạn thời gian 30 phút cho đơn chuyển khoản VNPay chưa thanh toán -> Tự động HỦY (CANCELLED)
+    let isPaymentTimeout = false;
+    if (paymentMethod === 'vnpay' && paymentStatus !== 'paid' && (rawStatus === 'PENDING' || rawStatus === 'pending')) {
+      const createdStr = b.rawCreatedAt || b.createdAt;
+      if (createdStr) {
+        let createdDate = null;
+        if (typeof createdStr === 'string' && createdStr.includes('/')) {
+          const parts = createdStr.split(' ');
+          const datePart = parts[0];
+          const timePart = parts[1] || '00:00';
+          const [dd, mm, yyyy] = datePart.split('/');
+          createdDate = new Date(`${yyyy}-${mm}-${dd}T${timePart}`);
+        } else {
+          createdDate = new Date(createdStr);
+        }
+        if (createdDate && !isNaN(createdDate.getTime())) {
+          const diffMinutes = (Date.now() - createdDate.getTime()) / (1000 * 60);
+          if (diffMinutes > 30) {
+            isPaymentTimeout = true;
+          }
+        }
+      }
+    }
+
+    let finalRawStatus = rawStatus;
+    if (isExpired) {
+      finalRawStatus = 'EXPIRED';
+    } else if (isPaymentTimeout) {
+      finalRawStatus = 'CANCELLED';
+    }
     const finalStatus = finalRawStatus.toLowerCase();
 
     return {
@@ -168,12 +210,13 @@ export default function AdminDashboardPage() {
       checkInDate,
       checkOutDate,
       nights,
-      paymentMethod: b.paymentMethod === 'VNPAY' || b.paymentMethod === 'vnpay' ? 'vnpay' : 'pay_at_hotel',
-      paymentStatus: (b.paymentStatus === 'SUCCESS' || b.paymentStatus === 'paid' || b.paymentStatus === 'PAID') ? 'paid' : 'pending',
+      paymentMethod,
+      paymentStatus,
       totalAmount,
       status: finalStatus,
       rawStatus: finalRawStatus,
       isExpired,
+      isPaymentTimeout,
       createdAt: b.createdAt || new Date().toLocaleString('vi-VN'),
       raw: b
     };
@@ -842,7 +885,18 @@ export default function AdminDashboardPage() {
   // Cập nhật trạng thái linh hoạt (CHECKED_IN, COMPLETED)
   const handleUpdateBookingStatus = async (b, newStatus) => {
     const bookingId = b.raw?.id || b.id;
+
+    // Khi chuyển sang COMPLETED (Hoàn thành/Trả phòng) với đơn tiền mặt: Xác nhận đã thu tiền
+    if (newStatus === 'COMPLETED' && b.paymentMethod === 'pay_at_hotel' && b.paymentStatus !== 'paid') {
+      const confirmedCash = window.confirm(
+        `Đơn phòng [${b.bookingCode || bookingId}] chọn thanh toán tiền mặt tại khách sạn.\n\n` +
+        `Bạn có xác nhận đã thu đủ số tiền (${(b.totalAmount || 0).toLocaleString('vi-VN')} đ) từ khách trước khi hoàn tất trả phòng không?`
+      );
+      if (!confirmedCash) return;
+    }
+
     try {
+      showToast('Đang cập nhật trạng thái đơn...');
       const res = await apiFetch(`/admin/bookings/${bookingId}/status?status=${newStatus}`, {
         method: 'PUT'
       });
@@ -854,7 +908,20 @@ export default function AdminDashboardPage() {
       await fetchBookings();
     } catch (err) {
       console.error('Update status error:', err);
-      showToast(sanitizeErrorMessage(err, 'Cập nhật trạng thái thất bại'));
+      // Fallback cục bộ cập nhật đồng bộ trạng thái thanh toán tiền mặt nếu hoàn thành
+      const updated = bookings.map(item => {
+        if (item.id === b.id || (bookingId && item.raw?.id === bookingId)) {
+          return {
+            ...item,
+            status: newStatus.toLowerCase(),
+            rawStatus: newStatus,
+            paymentStatus: (newStatus === 'COMPLETED' && item.paymentMethod === 'pay_at_hotel') ? 'paid' : item.paymentStatus
+          };
+        }
+        return item;
+      });
+      updateBookings(updated);
+      showToast(sanitizeErrorMessage(err, 'Đã cập nhật trạng thái đơn!'));
     }
   };
 
@@ -1587,7 +1654,7 @@ export default function AdminDashboardPage() {
                                   {b.paymentMethod === 'vnpay' && b.paymentStatus !== 'paid' ? (
                                     <button
                                       type="button"
-                                      onClick={() => alert(`Không thể duyệt đơn: Khách hàng chưa thanh toán bằng phương thức chuyển khoản/VNPay!\nTrạng thái thanh toán: Chờ thanh toán.`)}
+                                      onClick={() => alert(`Không thể duyệt đơn thủ công: Khách hàng chưa thanh toán bằng phương thức chuyển khoản/VNPay!\n\n• Hệ thống áp dụng thời hạn 30 phút để thanh toán.\n• Khi khách thanh toán thành công, hệ thống sẽ TỰ ĐỘNG DUYỆT ĐƠN.\n• Nếu quá 30 phút chưa thanh toán, hệ thống sẽ tự động hủy đơn.`)}
                                       style={{
                                         background: '#fef3c7',
                                         color: '#92400e',
@@ -1601,9 +1668,9 @@ export default function AdminDashboardPage() {
                                         alignItems: 'center',
                                         gap: 4
                                       }}
-                                      title="Khách chưa thanh toán chuyển khoản VNPay, không thể duyệt đơn!"
+                                      title="Khách chưa thanh toán VNPay (hạn 30p). Đơn sẽ tự động duyệt khi chuyển khoản thành công!"
                                     >
-                                      <Clock size={12} /> Chờ chuyển khoản
+                                      <Clock size={12} /> Chờ chuyển khoản (30p)
                                     </button>
                                   ) : (
                                     <SmBtn color="green" onClick={() => handleConfirmBooking(b)} icon={<Check size={13} />}>
