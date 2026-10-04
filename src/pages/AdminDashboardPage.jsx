@@ -132,11 +132,45 @@ export default function AdminDashboardPage() {
     return flat;
   });
 
+  // ── Helper chuẩn hóa đơn đặt phòng ──
+  const normalizeBooking = (b) => {
+    const rawId = b.id;
+    const bookingCode = b.bookingCode || (typeof rawId === 'number' ? `BK-${String(rawId).padStart(4, '0')}` : (b.bookingCode || rawId));
+    const nights = b.nights || 1;
+    const totalAmount = b.totalPrice != null ? Number(b.totalPrice) : (b.totalAmount || 0);
+    const rawStatus = (b.status || 'PENDING').toUpperCase();
+    const status = rawStatus.toLowerCase();
+
+    return {
+      id: rawId,
+      bookingCode,
+      contactName: b.customerName || b.contactName || b.guestName || 'Khách hàng',
+      contactPhone: b.customerPhone || b.contactPhone || '—',
+      contactEmail: b.customerEmail || b.contactEmail || '—',
+      hotelName: b.hotelName || 'Khách sạn',
+      roomName: b.roomName || 'Phòng nghỉ',
+      checkInDate: b.checkIn || b.checkInDate || '—',
+      checkOutDate: b.checkOut || b.checkOutDate || '—',
+      nights,
+      paymentMethod: b.paymentMethod === 'VNPAY' || b.paymentMethod === 'vnpay' ? 'vnpay' : 'pay_at_hotel',
+      paymentStatus: b.paymentStatus === 'SUCCESS' || b.paymentStatus === 'paid' ? 'paid' : 'pending',
+      totalAmount,
+      status,
+      rawStatus,
+      createdAt: b.createdAt || new Date().toLocaleString('vi-VN'),
+      raw: b
+    };
+  };
+
   // ── Bookings state ──
   const [bookings, setBookings] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('traveloka_bookings') || '[]'); }
+    try {
+      const saved = JSON.parse(localStorage.getItem('traveloka_bookings') || '[]');
+      return Array.isArray(saved) ? saved.map(normalizeBooking) : [];
+    }
     catch { return []; }
   });
+  const [isLoadingBookings, setIsLoadingBookings] = useState(false);
 
   const updateHotels = (next) => { setHotels(next); localStorage.setItem('traveloka_custom_hotels', JSON.stringify(next)); };
   const updateBookings = (next) => { setBookings(next); localStorage.setItem('traveloka_bookings', JSON.stringify(next)); };
@@ -227,6 +261,13 @@ export default function AdminDashboardPage() {
         }
       } catch (e) {
         console.warn('API rooms fetch fallback:', e);
+      }
+
+      // Tải danh sách đơn đặt phòng từ Backend
+      try {
+        await fetchBookings();
+      } catch (e) {
+        console.warn('API bookings fetch fallback:', e);
       }
     };
 
@@ -646,16 +687,134 @@ export default function AdminDashboardPage() {
     showToast('Đã xóa loại phòng khỏi hệ thống');
   };
 
-  // ── Bookings logic ──
+  // ── Bookings logic (FR-15) ──
   const [bookingSearch, setBookingSearch] = useState('');
+  const [bookingStatusFilter, setBookingStatusFilter] = useState('ALL');
   const [selectedInvoice, setSelectedInvoice] = useState(null);
-  const toggleBookingStatus = (id, status) => updateBookings(bookings.map(b => b.id === id ? { ...b, status } : b));
-  const markAsPaid = (id) => { const next = bookings.map(b => b.id === id ? { ...b, paymentStatus: 'paid', status: 'confirmed', paidAt: new Date().toLocaleString('vi-VN') } : b); updateBookings(next); setSelectedInvoice(next.find(b => b.id === id)); };
+
+  // Tải danh sách đơn đặt phòng từ Backend
+  const fetchBookings = async () => {
+    try {
+      setIsLoadingBookings(true);
+      const res = await apiFetch('/admin/bookings');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.result && Array.isArray(data.result)) {
+          const mapped = data.result.map(normalizeBooking);
+          setBookings(mapped);
+          localStorage.setItem('traveloka_bookings', JSON.stringify(mapped));
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('API /admin/bookings fallback:', e);
+    } finally {
+      setIsLoadingBookings(false);
+    }
+  };
+
+  // Duyệt đơn đặt phòng (Sơ đồ tuần tự 3.3)
+  const handleConfirmBooking = async (b) => {
+    const bookingId = b.raw?.id || b.id;
+    try {
+      showToast('Đang duyệt đơn đặt phòng...');
+      const res = await apiFetch(`/admin/bookings/${bookingId}/confirm`, {
+        method: 'PUT'
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(getFriendlyErrorMessage(data, 'Duyệt đơn đặt phòng thất bại'));
+      }
+      showToast('Duyệt đơn đặt phòng thành công!');
+      await fetchBookings();
+    } catch (err) {
+      console.error('Confirm booking error:', err);
+      showToast(sanitizeErrorMessage(err, 'Duyệt đơn đặt phòng thất bại'));
+    }
+  };
+
+  // Hủy đơn đặt phòng bởi Admin
+  const handleCancelBooking = async (b, reason = 'Admin hủy đơn') => {
+    const bookingId = b.raw?.id || b.id;
+    if (!window.confirm(`Bạn có chắc chắn muốn hủy đơn đặt phòng [${b.bookingCode || bookingId}] không?`)) return;
+    try {
+      showToast('Đang xử lý hủy đơn đặt phòng...');
+      const res = await apiFetch(`/admin/bookings/${bookingId}/cancel?reason=${encodeURIComponent(reason)}`, {
+        method: 'PUT'
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(getFriendlyErrorMessage(data, 'Hủy đơn đặt phòng thất bại'));
+      }
+      showToast('Đã hủy đơn đặt phòng thành công!');
+      await fetchBookings();
+    } catch (err) {
+      console.error('Cancel booking error:', err);
+      showToast(sanitizeErrorMessage(err, 'Hủy đơn thất bại'));
+    }
+  };
+
+  // Cập nhật trạng thái linh hoạt (CHECKED_IN, COMPLETED)
+  const handleUpdateBookingStatus = async (b, newStatus) => {
+    const bookingId = b.raw?.id || b.id;
+    try {
+      const res = await apiFetch(`/admin/bookings/${bookingId}/status?status=${newStatus}`, {
+        method: 'PUT'
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(getFriendlyErrorMessage(data, 'Cập nhật trạng thái thất bại'));
+      }
+      showToast('Cập nhật trạng thái đơn thành công!');
+      await fetchBookings();
+    } catch (err) {
+      console.error('Update status error:', err);
+      showToast(sanitizeErrorMessage(err, 'Cập nhật trạng thái thất bại'));
+    }
+  };
+
+  const toggleBookingStatus = (id, status) => {
+    const target = bookings.find(b => b.id === id);
+    if (status === 'confirmed') {
+      handleConfirmBooking(target || { id });
+    } else if (status === 'cancelled') {
+      handleCancelBooking(target || { id });
+    } else {
+      updateBookings(bookings.map(b => b.id === id ? { ...b, status } : b));
+    }
+  };
+
+  const markAsPaid = async (id) => {
+    const target = bookings.find(b => b.id === id);
+    if (target?.rawStatus === 'PENDING') {
+      await handleConfirmBooking(target);
+    }
+    const next = bookings.map(b => b.id === id ? { ...b, paymentStatus: 'paid', status: 'confirmed', paidAt: new Date().toLocaleString('vi-VN') } : b);
+    updateBookings(next);
+    setSelectedInvoice(next.find(b => b.id === id));
+    showToast('Đã xác nhận thu tiền mặt cho đơn!');
+  };
+
   const filteredBookings = useMemo(() => {
-    if (!bookingSearch.trim()) return bookings;
-    const q = bookingSearch.toLowerCase();
-    return bookings.filter(b => b.id?.toLowerCase().includes(q) || b.contactName?.toLowerCase().includes(q) || b.guestName?.toLowerCase().includes(q) || b.contactPhone?.toLowerCase().includes(q) || b.hotelName?.toLowerCase().includes(q));
-  }, [bookings, bookingSearch]);
+    return bookings.filter(b => {
+      if (bookingStatusFilter !== 'ALL') {
+        const rawS = (b.rawStatus || b.status || '').toUpperCase();
+        if (rawS !== bookingStatusFilter) return false;
+      }
+      if (!bookingSearch.trim()) return true;
+      const q = bookingSearch.toLowerCase();
+      return (
+        String(b.id)?.toLowerCase().includes(q) ||
+        b.bookingCode?.toLowerCase().includes(q) ||
+        b.contactName?.toLowerCase().includes(q) ||
+        b.guestName?.toLowerCase().includes(q) ||
+        b.contactPhone?.toLowerCase().includes(q) ||
+        b.contactEmail?.toLowerCase().includes(q) ||
+        b.hotelName?.toLowerCase().includes(q) ||
+        b.roomName?.toLowerCase().includes(q)
+      );
+    });
+  }, [bookings, bookingSearch, bookingStatusFilter]);
 
   // ── Coupons state ──
   const [coupons] = useState(COUPONS_DATA);
@@ -1188,11 +1347,76 @@ export default function AdminDashboardPage() {
           )}
 
           {/* ══ TAB: ĐẶT PHÒNG ══ */}
+          {/* ══ TAB: ĐẶT PHÒNG (FR-15) ══ */}
           {activeTab === 'bookings' && (
-            <SectionCard title="Quản Lý Đơn Đặt Phòng & Nghiệp Vụ Lễ Tân" sub="Tra cứu đặt phòng, thu tiền mặt tại quầy và xuất hóa đơn">
+            <SectionCard title="Quản Lý Đơn Đặt Phòng & Nghiệp Vụ Lễ Tân" sub="Tra cứu đặt phòng, duyệt đơn theo Sơ đồ 3.3, thu tiền mặt tại quầy và xuất hóa đơn">
+              {/* Thanh lọc trạng thái đặt phòng */}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+                {[
+                  { key: 'ALL', label: 'Tất cả đơn', count: bookings.length },
+                  { key: 'PENDING', label: 'Chờ duyệt', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'PENDING').length },
+                  { key: 'CONFIRMED', label: 'Đã xác nhận', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CONFIRMED').length },
+                  { key: 'CHECKED_IN', label: 'Đã nhận phòng', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CHECKED_IN').length },
+                  { key: 'COMPLETED', label: 'Hoàn thành', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'COMPLETED').length },
+                  { key: 'CANCELLED', label: 'Đã hủy', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CANCELLED').length },
+                ].map(tab => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setBookingStatusFilter(tab.key)}
+                    style={{
+                      background: bookingStatusFilter === tab.key ? '#3b82f6' : '#f1f5f9',
+                      color: bookingStatusFilter === tab.key ? '#fff' : '#475569',
+                      border: 'none',
+                      borderRadius: 20,
+                      padding: '6px 14px',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6
+                    }}
+                  >
+                    <span>{tab.label}</span>
+                    <span style={{
+                      background: bookingStatusFilter === tab.key ? 'rgba(255,255,255,0.25)' : '#e2e8f0',
+                      color: bookingStatusFilter === tab.key ? '#fff' : '#64748b',
+                      padding: '1px 7px',
+                      borderRadius: 10,
+                      fontSize: 11
+                    }}>
+                      {tab.count}
+                    </span>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={fetchBookings}
+                  style={{
+                    background: '#fff',
+                    border: '1px solid #cbd5e1',
+                    color: '#334155',
+                    borderRadius: 20,
+                    padding: '6px 14px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    marginLeft: 'auto'
+                  }}
+                  title="Tải lại danh sách từ server"
+                >
+                  <RotateCcw size={13} className={isLoadingBookings ? 'spinner-border spinner-border-sm' : ''} />
+                  <span>Tải lại</span>
+                </button>
+              </div>
+
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 16px', marginBottom: 20 }}>
                 <Search size={16} color="#94a3b8" />
-                <input type="text" placeholder="Tìm theo mã đơn, tên khách, số điện thoại, tên khách sạn..." value={bookingSearch} onChange={e => setBookingSearch(e.target.value)} style={{ border: 'none', background: 'transparent', outline: 'none', flex: 1, fontSize: 13, color: '#1e293b' }} />
+                <input type="text" placeholder="Tìm theo mã đơn (BK-...), tên khách, số điện thoại, tên khách sạn, tên phòng..." value={bookingSearch} onChange={e => setBookingSearch(e.target.value)} style={{ border: 'none', background: 'transparent', outline: 'none', flex: 1, fontSize: 13, color: '#1e293b' }} />
                 {bookingSearch && <button onClick={() => setBookingSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}><X size={16} /></button>}
                 <span style={{ fontSize: 12, color: '#94a3b8', flexShrink: 0 }}>Hiển thị {filteredBookings.length}/{bookings.length} đơn</span>
               </div>
@@ -1200,22 +1424,86 @@ export default function AdminDashboardPage() {
                 <div className="table-responsive">
                   <table className="table table-hover align-middle mb-0" style={{ fontSize: 12.5 }}>
                     <thead style={{ background: '#f8fafc' }}><tr>{['Mã Đơn', 'Khách Hàng', 'Khách Sạn & Phòng', 'Lưu Trú', 'Thanh Toán', 'Tổng Tiền', 'Trạng Thái', 'Thao Tác Lễ Tân'].map(h => <Th key={h}>{h}</Th>)}</tr></thead>
-                    <tbody>{filteredBookings.map(b => (
-                      <tr key={b.id}>
-                        <td className="font-monospace fw-bold text-primary" style={{ fontSize: 11.5 }}>{b.id}</td>
-                        <td><div style={{ fontWeight: 600, color: '#1e293b' }}>{b.contactName || b.guestName}</div><div style={{ fontSize: 11, color: '#94a3b8' }}>{b.contactPhone}</div><span style={{ background: b.isGuest ? '#f1f5f9' : '#eff6ff', color: b.isGuest ? '#64748b' : '#3b82f6', padding: '2px 7px', borderRadius: 6, fontSize: 10, fontWeight: 600 }}>{b.isGuest ? 'Vãng lai' : 'Thành viên'}</span></td>
-                        <td><div style={{ fontWeight: 600, color: '#1e293b', maxWidth: 160 }}>{b.hotelName}</div><div style={{ fontSize: 11, color: '#94a3b8' }}>{b.roomName}</div></td>
-                        <td><div style={{ fontSize: 11.5, color: '#374151' }}>{b.checkInDate} → {b.checkOutDate}</div><span style={{ background: '#f1f5f9', color: '#64748b', padding: '2px 7px', borderRadius: 6, fontSize: 10 }}>{b.nights} đêm</span></td>
-                        <td>{b.paymentMethod === 'pay_at_hotel' ? (b.paymentStatus === 'paid' ? <Badge bg="#dcfce7" color="#16a34a">✓ Đã thu tiền mặt</Badge> : <Badge bg="#fef9c3" color="#92400e">⏳ Chờ thu tiền mặt</Badge>) : <Badge bg="#eff6ff" color="#3b82f6">✓ {b.paymentMethod === 'vnpay' ? 'VNPAY' : 'Thẻ/Ví'}</Badge>}</td>
-                        <td style={{ fontWeight: 700, color: '#dc2626' }}>{b.totalAmount?.toLocaleString('vi-VN')} đ</td>
-                        <td><StatusBadge status={b.status} /></td>
-                        <td><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                          {b.paymentMethod === 'pay_at_hotel' && b.paymentStatus !== 'paid' && b.status === 'confirmed' && <SmBtn color="green" onClick={() => markAsPaid(b.id)} icon={<Banknote size={12} />}>Thu tiền</SmBtn>}
-                          <SmBtn color="blue" onClick={() => setSelectedInvoice(b)} icon={<Printer size={12} />}>Hóa đơn</SmBtn>
-                          {b.status === 'confirmed' ? <SmBtn color="red" onClick={() => toggleBookingStatus(b.id, 'cancelled')}>Hủy</SmBtn> : <SmBtn color="green" onClick={() => toggleBookingStatus(b.id, 'confirmed')}>Khôi phục</SmBtn>}
-                        </div></td>
-                      </tr>
-                    ))}</tbody>
+                    <tbody>{filteredBookings.map(b => {
+                      const rawS = (b.rawStatus || b.status || '').toUpperCase();
+                      return (
+                        <tr key={b.id}>
+                          <td className="font-monospace fw-bold text-primary" style={{ fontSize: 12 }}>{b.bookingCode || b.id}</td>
+                          <td>
+                            <div style={{ fontWeight: 600, color: '#1e293b' }}>{b.contactName || b.guestName}</div>
+                            <div style={{ fontSize: 11, color: '#94a3b8' }}>{b.contactPhone}</div>
+                            {b.contactEmail && b.contactEmail !== '—' && <div style={{ fontSize: 10.5, color: '#64748b' }}>{b.contactEmail}</div>}
+                          </td>
+                          <td>
+                            <div style={{ fontWeight: 600, color: '#1e293b', maxWidth: 170 }}>{b.hotelName}</div>
+                            <div style={{ fontSize: 11, color: '#64748b' }}>{b.roomName}</div>
+                          </td>
+                          <td>
+                            <div style={{ fontSize: 11.5, color: '#374151', whiteSpace: 'nowrap' }}>{b.checkInDate} → {b.checkOutDate}</div>
+                            <span style={{ background: '#f1f5f9', color: '#64748b', padding: '2px 7px', borderRadius: 6, fontSize: 10 }}>{b.nights} đêm</span>
+                          </td>
+                          <td>
+                            {b.paymentMethod === 'vnpay' ? (
+                              <Badge bg="#eff6ff" color="#3b82f6">✓ VNPAY ({b.paymentStatus === 'paid' ? 'Đã TT' : 'Chờ TT'})</Badge>
+                            ) : (
+                              b.paymentStatus === 'paid' 
+                                ? <Badge bg="#dcfce7" color="#16a34a">✓ Tiền mặt (Đã thu)</Badge> 
+                                : <Badge bg="#fef9c3" color="#92400e">⏳ Tiền mặt (Chưa thu)</Badge>
+                            )}
+                          </td>
+                          <td style={{ fontWeight: 700, color: '#dc2626', whiteSpace: 'nowrap' }}>{b.totalAmount?.toLocaleString('vi-VN')} đ</td>
+                          <td><StatusBadge status={rawS} /></td>
+                          <td>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              {/* Nếu đang PENDING: Nút DUYỆT ĐƠN (Luồng 3.3) */}
+                              {rawS === 'PENDING' && (
+                                <SmBtn color="green" onClick={() => handleConfirmBooking(b)} icon={<Check size={13} />}>
+                                  Duyệt đơn
+                                </SmBtn>
+                              )}
+
+                              {/* Nếu là tiền mặt và chưa thanh toán */}
+                              {b.paymentMethod === 'pay_at_hotel' && b.paymentStatus !== 'paid' && rawS === 'CONFIRMED' && (
+                                <SmBtn color="green" onClick={() => markAsPaid(b.id)} icon={<Banknote size={12} />}>
+                                  Thu tiền
+                                </SmBtn>
+                              )}
+
+                              {/* Nếu đã xác nhận: Nhận phòng */}
+                              {rawS === 'CONFIRMED' && (
+                                <SmBtn color="blue" onClick={() => handleUpdateBookingStatus(b, 'CHECKED_IN')} icon={<LogIn size={12} />}>
+                                  Nhận phòng
+                                </SmBtn>
+                              )}
+
+                              {/* Nếu đã nhận phòng: Trả phòng/Hoàn thành */}
+                              {rawS === 'CHECKED_IN' && (
+                                <SmBtn color="purple" onClick={() => handleUpdateBookingStatus(b, 'COMPLETED')} icon={<CheckCircle2 size={12} />}>
+                                  Trả phòng
+                                </SmBtn>
+                              )}
+
+                              {/* Nút Hóa đơn / Chi tiết */}
+                              <SmBtn color="blue" onClick={() => setSelectedInvoice(b)} icon={<Printer size={12} />}>
+                                Hóa đơn
+                              </SmBtn>
+
+                              {/* Nút Hủy / Khôi phục */}
+                              {(rawS === 'PENDING' || rawS === 'CONFIRMED') && (
+                                <SmBtn color="red" onClick={() => handleCancelBooking(b)}>
+                                  Hủy
+                                </SmBtn>
+                              )}
+                              {rawS === 'CANCELLED' && (
+                                <SmBtn color="green" onClick={() => handleConfirmBooking(b)} icon={<RotateCcw size={12} />}>
+                                  Duyệt lại
+                                </SmBtn>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}</tbody>
                   </table>
                 </div>
               )}
@@ -1754,9 +2042,16 @@ function Modal({ title, children, onClose, dark, action }) {
   );
 }
 function Th({ children }) { return <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none', paddingBottom: 12, whiteSpace: 'nowrap' }}>{children}</th>; }
-function Badge({ bg, color, children }) { return <span style={{ background: bg, color, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>{children}</span>; }
-function StatusBadge({ status }) { return status === 'confirmed' ? <Badge bg="#dcfce7" color="#16a34a">✓ Xác nhận</Badge> : <Badge bg="#fee2e2" color="#dc2626">✕ Đã hủy</Badge>; }
+function StatusBadge({ status }) {
+  const s = String(status || '').toUpperCase();
+  if (s === 'CONFIRMED') return <Badge bg="#dcfce7" color="#16a34a">✓ Đã xác nhận</Badge>;
+  if (s === 'PENDING') return <Badge bg="#fef9c3" color="#92400e">⏳ Chờ duyệt</Badge>;
+  if (s === 'CHECKED_IN') return <Badge bg="#dbeafe" color="#1d4ed8">🏨 Đã nhận phòng</Badge>;
+  if (s === 'COMPLETED') return <Badge bg="#ede9fe" color="#6d28d9">✓ Hoàn thành</Badge>;
+  if (s === 'CANCELLED') return <Badge bg="#fee2e2" color="#dc2626">✕ Đã hủy</Badge>;
+  return <Badge bg="#f1f5f9" color="#64748b">{status || 'Chưa rõ'}</Badge>;
+}
 function ActionBtn({ onClick, icon, children }) { return <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 20px', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>{icon}{children}</button>; }
-function SmBtn({ color, onClick, icon, children }) { const colors = { blue: ['#eff6ff', '#3b82f6'], red: ['#fee2e2', '#dc2626'], green: ['#dcfce7', '#16a34a'] }; const [bg, fg] = colors[color] || colors.blue; return <button onClick={onClick} style={{ background: bg, color: fg, border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>{icon}{children}</button>; }
+function SmBtn({ color, onClick, icon, children }) { const colors = { blue: ['#eff6ff', '#3b82f6'], red: ['#fee2e2', '#dc2626'], green: ['#dcfce7', '#16a34a'], purple: ['#f5f3ff', '#7c3aed'] }; const [bg, fg] = colors[color] || colors.blue; return <button onClick={onClick} style={{ background: bg, color: fg, border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>{icon}{children}</button>; }
 function FL({ children }) { return <label style={{ display: 'block', marginBottom: 6, fontSize: 13, fontWeight: 600, color: '#374151' }}>{children}</label>; }
 function Empty({ text }) { return <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8', fontSize: 14 }}><BarChart2 size={40} style={{ opacity: 0.2, marginBottom: 12 }} /><br />{text}</div>; }
