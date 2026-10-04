@@ -17,9 +17,25 @@ export default function MyBookingsPage() {
     const rawId = b.id;
     const bookingCode = b.bookingCode || (typeof rawId === 'number' ? `BK-${String(rawId).padStart(4, '0')}` : (b.bookingCode || rawId));
     const rawStatus = (b.status || 'PENDING').toUpperCase();
-    const status = rawStatus.toLowerCase();
     const nights = b.nights || 1;
     const totalAmount = b.totalPrice != null ? Number(b.totalPrice) : (b.totalAmount || 0);
+    const checkInDate = b.checkIn || b.checkInDate || '—';
+    const checkOutDate = b.checkOut || b.checkOutDate || '—';
+
+    // Xác định xem đơn có bị quá hạn nhận phòng hay không
+    const todayStr = new Date().toISOString().split('T')[0];
+    let isPastCheckIn = false;
+    if (checkInDate && checkInDate !== '—') {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(checkInDate)) {
+        isPastCheckIn = checkInDate < todayStr;
+      } else if (/^\d{2}\/\d{2}\/\d{4}$/.test(checkInDate)) {
+        const [dd, mm, yyyy] = checkInDate.split('/');
+        isPastCheckIn = `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}` < todayStr;
+      }
+    }
+    const isExpired = (rawStatus === 'PENDING' || rawStatus === 'EXPIRED') && isPastCheckIn;
+    const finalRawStatus = isExpired ? 'EXPIRED' : rawStatus;
+    const finalStatus = finalRawStatus.toLowerCase();
 
     return {
       id: bookingCode,
@@ -35,8 +51,8 @@ export default function MyBookingsPage() {
       roomName: b.roomName || 'Phòng nghỉ cao cấp',
       roomImage: b.roomImage || b.hotelImage || 'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=800&auto=format&fit=crop&q=60',
       roomBed: b.roomBedType || b.roomBed || '1 Giường King lớn',
-      checkInDate: b.checkInDate || '—',
-      checkOutDate: b.checkOutDate || '—',
+      checkInDate,
+      checkOutDate,
       nights,
       guestCount: b.guestCount || 2,
       contactName: b.userFullName || b.contactName || b.guestName || 'Khách hàng',
@@ -47,8 +63,9 @@ export default function MyBookingsPage() {
       paymentMethod: (b.paymentMethod === 'VNPAY' || b.paymentMethod === 'vnpay') ? 'vnpay' : 'pay_at_hotel',
       paymentStatus: (b.paymentStatus === 'PAID' || b.paymentStatus === 'paid' || b.paymentStatus === 'SUCCESS') ? 'paid' : 'pending',
       totalAmount,
-      status, // 'pending', 'confirmed', 'checked_in', 'completed', 'cancelled'
-      rawStatus, // 'PENDING', 'CONFIRMED', 'CHECKED_IN', 'COMPLETED', 'CANCELLED'
+      status: finalStatus,
+      rawStatus: finalRawStatus,
+      isExpired,
       isGuest: b.isGuest || false,
       raw: b
     };
@@ -267,6 +284,7 @@ export default function MyBookingsPage() {
               {[
                 { key: 'all', label: 'Tất cả', count: bookings.length },
                 { key: 'pending', label: '⏳ Chờ duyệt', count: bookings.filter(b => b.status === 'pending').length },
+                { key: 'expired', label: '⚠️ Đã quá hạn', count: bookings.filter(b => b.status === 'expired').length },
                 { key: 'confirmed', label: '✓ Đã xác nhận', count: bookings.filter(b => b.status === 'confirmed').length },
                 { key: 'checked_in', label: '🏨 Đã nhận phòng', count: bookings.filter(b => b.status === 'checked_in').length },
                 { key: 'completed', label: '✓ Hoàn thành', count: bookings.filter(b => b.status === 'completed').length },
@@ -335,6 +353,11 @@ export default function MyBookingsPage() {
                     {b.status === 'pending' && (
                       <span className="badge bg-warning-subtle text-warning-emphasis px-3 py-2 rounded-pill fw-semibold d-inline-flex align-items-center gap-1 border border-warning-subtle">
                         <Clock size={14} /> Chờ Duyệt
+                      </span>
+                    )}
+                    {b.status === 'expired' && (
+                      <span className="badge bg-warning-subtle text-warning-emphasis px-3 py-2 rounded-pill fw-semibold d-inline-flex align-items-center gap-1 border border-warning-subtle">
+                        <AlertTriangle size={14} /> Đã Quá Hạn
                       </span>
                     )}
                     {b.status === 'confirmed' && (
@@ -412,8 +435,8 @@ export default function MyBookingsPage() {
                           <Eye size={15} /> Xem vé điện tử
                         </button>
 
-                        {/* Nút hủy phòng (chỉ cho phép khi đang chờ duyệt hoặc đã xác nhận) */}
-                        {(b.status === 'confirmed' || b.status === 'pending') && (
+                        {/* Nút hủy phòng (chỉ cho phép khi đang chờ duyệt hoặc đã xác nhận và chưa quá hạn) */}
+                        {!b.isExpired && (b.status === 'confirmed' || b.status === 'pending') && (
                           <button 
                             onClick={() => setCancellingBookingId(b.id)} 
                             className="btn btn-link text-danger text-decoration-none btn-sm"

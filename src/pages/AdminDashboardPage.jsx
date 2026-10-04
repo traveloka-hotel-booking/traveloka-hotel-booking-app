@@ -139,7 +139,23 @@ export default function AdminDashboardPage() {
     const nights = b.nights || 1;
     const totalAmount = b.totalPrice != null ? Number(b.totalPrice) : (b.totalAmount || 0);
     const rawStatus = (b.status || 'PENDING').toUpperCase();
-    const status = rawStatus.toLowerCase();
+    const checkInDate = b.checkIn || b.checkInDate || '—';
+    const checkOutDate = b.checkOut || b.checkOutDate || '—';
+
+    // Xác định xem đơn có bị quá hạn nhận phòng hay không
+    const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    let isPastCheckIn = false;
+    if (checkInDate && checkInDate !== '—') {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(checkInDate)) {
+        isPastCheckIn = checkInDate < todayStr;
+      } else if (/^\d{2}\/\d{2}\/\d{4}$/.test(checkInDate)) {
+        const [dd, mm, yyyy] = checkInDate.split('/');
+        isPastCheckIn = `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}` < todayStr;
+      }
+    }
+    const isExpired = (rawStatus === 'PENDING' || rawStatus === 'EXPIRED') && isPastCheckIn;
+    const finalRawStatus = isExpired ? 'EXPIRED' : rawStatus;
+    const finalStatus = finalRawStatus.toLowerCase();
 
     return {
       id: rawId,
@@ -149,14 +165,15 @@ export default function AdminDashboardPage() {
       contactEmail: b.customerEmail || b.contactEmail || '—',
       hotelName: b.hotelName || 'Khách sạn',
       roomName: b.roomName || 'Phòng nghỉ',
-      checkInDate: b.checkIn || b.checkInDate || '—',
-      checkOutDate: b.checkOut || b.checkOutDate || '—',
+      checkInDate,
+      checkOutDate,
       nights,
       paymentMethod: b.paymentMethod === 'VNPAY' || b.paymentMethod === 'vnpay' ? 'vnpay' : 'pay_at_hotel',
-      paymentStatus: b.paymentStatus === 'SUCCESS' || b.paymentStatus === 'paid' ? 'paid' : 'pending',
+      paymentStatus: (b.paymentStatus === 'SUCCESS' || b.paymentStatus === 'paid' || b.paymentStatus === 'PAID') ? 'paid' : 'pending',
       totalAmount,
-      status,
-      rawStatus,
+      status: finalStatus,
+      rawStatus: finalRawStatus,
+      isExpired,
       createdAt: b.createdAt || new Date().toLocaleString('vi-VN'),
       raw: b
     };
@@ -715,21 +732,89 @@ export default function AdminDashboardPage() {
 
   // Duyệt đơn đặt phòng (Sơ đồ tuần tự 3.3)
   const handleConfirmBooking = async (b) => {
-    const bookingId = b.raw?.id || b.id;
+    // 1. Chặn duyệt đơn quá hạn
+    if (b.isExpired || (b.rawStatus || b.status || '').toUpperCase() === 'EXPIRED') {
+      alert(`Không thể duyệt đơn: Đơn đặt phòng [${b.bookingCode || b.id}] đã quá ngày nhận phòng (${b.checkInDate})!\nBạn có thể nhấn nút "Xóa đơn" để dọn dẹp hệ thống.`);
+      return;
+    }
+
+    // 2. Chặn duyệt đơn nếu khách chọn chuyển khoản mà chưa thanh toán
+    if (b.paymentMethod === 'vnpay' && b.paymentStatus !== 'paid') {
+      alert(`Không thể duyệt đơn: Khách hàng chưa thanh toán bằng phương thức chuyển khoản/VNPay!\nVui lòng đợi khách thanh toán hoàn tất trước khi duyệt.`);
+      return;
+    }
+
+    const bookingId = b.raw?.id || (typeof b.id === 'number' ? b.id : null);
     try {
       showToast('Đang duyệt đơn đặt phòng...');
-      const res = await apiFetch(`/admin/bookings/${bookingId}/confirm`, {
-        method: 'PUT'
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(getFriendlyErrorMessage(data, 'Duyệt đơn đặt phòng thất bại'));
+      if (bookingId) {
+        const res = await apiFetch(`/admin/bookings/${bookingId}/confirm`, {
+          method: 'PUT'
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(getFriendlyErrorMessage(data, 'Duyệt đơn đặt phòng thất bại'));
+        }
       }
       showToast('Duyệt đơn đặt phòng thành công!');
       await fetchBookings();
     } catch (err) {
       console.error('Confirm booking error:', err);
       showToast(sanitizeErrorMessage(err, 'Duyệt đơn đặt phòng thất bại'));
+    }
+  };
+
+  // Xóa đơn đặt phòng khỏi hệ thống
+  const handleDeleteBooking = async (b) => {
+    const code = b.bookingCode || b.id;
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa vĩnh viễn đơn đặt phòng [${code}] khỏi hệ thống không?`)) {
+      return;
+    }
+    const bookingId = b.raw?.id || (typeof b.id === 'number' ? b.id : null);
+    try {
+      showToast('Đang xóa đơn đặt phòng...');
+      if (bookingId) {
+        const res = await apiFetch(`/admin/bookings/${bookingId}`, {
+          method: 'DELETE'
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(getFriendlyErrorMessage(data, 'Xóa đơn đặt phòng thất bại'));
+        }
+      }
+      const updated = bookings.filter(item => item.id !== b.id && item.bookingCode !== code);
+      updateBookings(updated);
+      showToast(`Đã xóa đơn đặt phòng [${code}] thành công!`);
+    } catch (err) {
+      console.error('Delete booking error:', err);
+      showToast(sanitizeErrorMessage(err, 'Xóa đơn đặt phòng thất bại'));
+    }
+  };
+
+  // Dọn dẹp tất cả các đơn đặt phòng quá hạn
+  const handleCleanupExpiredBookings = async () => {
+    const expiredBookings = bookings.filter(b => b.isExpired || (b.rawStatus || b.status || '').toUpperCase() === 'EXPIRED');
+    if (expiredBookings.length === 0) {
+      alert('Hiện tại không có đơn đặt phòng nào bị quá hạn!');
+      return;
+    }
+    if (!window.confirm(`Tìm thấy ${expiredBookings.length} đơn đặt phòng đã quá ngày nhận phòng.\nBạn có chắc chắn muốn dọn dẹp và xóa các đơn này khỏi hệ thống không?`)) {
+      return;
+    }
+    try {
+      showToast('Đang dọn dẹp các đơn đặt phòng quá hạn...');
+      const res = await apiFetch('/admin/bookings/cleanup-expired', {
+        method: 'DELETE'
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(getFriendlyErrorMessage(data, 'Dọn dẹp đơn quá hạn thất bại'));
+      }
+      showToast(data.message || `Đã dọn dẹp thành công các đơn quá hạn!`);
+      await fetchBookings();
+    } catch (err) {
+      console.error('Cleanup expired bookings error:', err);
+      showToast(sanitizeErrorMessage(err, 'Dọn dẹp đơn quá hạn thất bại'));
     }
   };
 
@@ -1351,14 +1436,15 @@ export default function AdminDashboardPage() {
           {activeTab === 'bookings' && (
             <SectionCard title="Quản Lý Đơn Đặt Phòng & Nghiệp Vụ Lễ Tân" sub="Tra cứu đặt phòng, duyệt đơn theo Sơ đồ 3.3, thu tiền mặt tại quầy và xuất hóa đơn">
               {/* Thanh lọc trạng thái đặt phòng */}
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
                 {[
                   { key: 'ALL', label: 'Tất cả đơn', count: bookings.length },
-                  { key: 'PENDING', label: 'Chờ duyệt', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'PENDING').length },
-                  { key: 'CONFIRMED', label: 'Đã xác nhận', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CONFIRMED').length },
-                  { key: 'CHECKED_IN', label: 'Đã nhận phòng', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CHECKED_IN').length },
-                  { key: 'COMPLETED', label: 'Hoàn thành', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'COMPLETED').length },
-                  { key: 'CANCELLED', label: 'Đã hủy', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CANCELLED').length },
+                  { key: 'PENDING', label: '⏳ Chờ duyệt', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'PENDING').length },
+                  { key: 'EXPIRED', label: '⚠️ Đã quá hạn', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'EXPIRED').length },
+                  { key: 'CONFIRMED', label: '✓ Đã xác nhận', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CONFIRMED').length },
+                  { key: 'CHECKED_IN', label: '🏨 Đã nhận phòng', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CHECKED_IN').length },
+                  { key: 'COMPLETED', label: '✓ Hoàn thành', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'COMPLETED').length },
+                  { key: 'CANCELLED', label: '✕ Đã hủy', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CANCELLED').length },
                 ].map(tab => (
                   <button
                     key={tab.key}
@@ -1390,6 +1476,39 @@ export default function AdminDashboardPage() {
                     </span>
                   </button>
                 ))}
+
+                <button
+                  type="button"
+                  onClick={handleCleanupExpiredBookings}
+                  style={{
+                    background: '#fef3c7',
+                    border: '1px solid #fde68a',
+                    color: '#92400e',
+                    borderRadius: 20,
+                    padding: '6px 14px',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                  title="Xóa nhanh tất cả các đơn chưa duyệt mà đã quá ngày nhận phòng"
+                >
+                  <span>🧹 Dọn dẹp đơn quá hạn</span>
+                  {bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'EXPIRED').length > 0 && (
+                    <span style={{
+                      background: '#dc2626',
+                      color: '#fff',
+                      padding: '1px 7px',
+                      borderRadius: 10,
+                      fontSize: 11
+                    }}>
+                      {bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'EXPIRED').length}
+                    </span>
+                  )}
+                </button>
+
                 <button
                   type="button"
                   onClick={fetchBookings}
@@ -1455,14 +1574,49 @@ export default function AdminDashboardPage() {
                           <td><StatusBadge status={rawS} /></td>
                           <td>
                             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                              {/* Nếu đang PENDING: Nút DUYỆT ĐƠN (Luồng 3.3) */}
-                              {rawS === 'PENDING' && (
-                                <SmBtn color="green" onClick={() => handleConfirmBooking(b)} icon={<Check size={13} />}>
-                                  Duyệt đơn
+                              {/* Đơn QUÁ HẠN: Nút Xóa đơn quá hạn */}
+                              {rawS === 'EXPIRED' && (
+                                <SmBtn color="red" onClick={() => handleDeleteBooking(b)} icon={<Trash2 size={12} />}>
+                                  Xóa đơn
                                 </SmBtn>
                               )}
 
-                              {/* Nếu là tiền mặt và chưa thanh toán */}
+                              {/* Đơn PENDING: Chặn duyệt nếu chưa thanh toán chuyển khoản */}
+                              {rawS === 'PENDING' && (
+                                <>
+                                  {b.paymentMethod === 'vnpay' && b.paymentStatus !== 'paid' ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => alert(`Không thể duyệt đơn: Khách hàng chưa thanh toán bằng phương thức chuyển khoản/VNPay!\nTrạng thái thanh toán: Chờ thanh toán.`)}
+                                      style={{
+                                        background: '#fef3c7',
+                                        color: '#92400e',
+                                        border: '1px solid #fde68a',
+                                        borderRadius: 8,
+                                        padding: '6px 10px',
+                                        fontSize: 12,
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 4
+                                      }}
+                                      title="Khách chưa thanh toán chuyển khoản VNPay, không thể duyệt đơn!"
+                                    >
+                                      <Clock size={12} /> Chờ chuyển khoản
+                                    </button>
+                                  ) : (
+                                    <SmBtn color="green" onClick={() => handleConfirmBooking(b)} icon={<Check size={13} />}>
+                                      Duyệt đơn
+                                    </SmBtn>
+                                  )}
+                                  <SmBtn color="red" onClick={() => handleCancelBooking(b)}>
+                                    Hủy
+                                  </SmBtn>
+                                </>
+                              )}
+
+                              {/* Nếu là tiền mặt và chưa thanh toán khi CONFIRMED */}
                               {b.paymentMethod === 'pay_at_hotel' && b.paymentStatus !== 'paid' && rawS === 'CONFIRMED' && (
                                 <SmBtn color="green" onClick={() => markAsPaid(b.id)} icon={<Banknote size={12} />}>
                                   Thu tiền
@@ -1488,16 +1642,23 @@ export default function AdminDashboardPage() {
                                 Hóa đơn
                               </SmBtn>
 
-                              {/* Nút Hủy / Khôi phục */}
-                              {(rawS === 'PENDING' || rawS === 'CONFIRMED') && (
+                              {/* Nút Hủy đối với CONFIRMED */}
+                              {rawS === 'CONFIRMED' && (
                                 <SmBtn color="red" onClick={() => handleCancelBooking(b)}>
                                   Hủy
                                 </SmBtn>
                               )}
+
+                              {/* Đơn CANCELLED: Cho phép Xóa vĩnh viễn hoặc Duyệt lại */}
                               {rawS === 'CANCELLED' && (
-                                <SmBtn color="green" onClick={() => handleConfirmBooking(b)} icon={<RotateCcw size={12} />}>
-                                  Duyệt lại
-                                </SmBtn>
+                                <>
+                                  <SmBtn color="red" onClick={() => handleDeleteBooking(b)} icon={<Trash2 size={12} />}>
+                                    Xóa
+                                  </SmBtn>
+                                  <SmBtn color="green" onClick={() => handleConfirmBooking(b)} icon={<RotateCcw size={12} />}>
+                                    Duyệt lại
+                                  </SmBtn>
+                                </>
                               )}
                             </div>
                           </td>
@@ -2047,6 +2208,7 @@ function StatusBadge({ status }) {
   const s = String(status || '').toUpperCase();
   if (s === 'CONFIRMED') return <Badge bg="#dcfce7" color="#16a34a">✓ Đã xác nhận</Badge>;
   if (s === 'PENDING') return <Badge bg="#fef9c3" color="#92400e">⏳ Chờ duyệt</Badge>;
+  if (s === 'EXPIRED') return <Badge bg="#fffbeb" color="#b45309">⚠️ Đã quá hạn</Badge>;
   if (s === 'CHECKED_IN') return <Badge bg="#dbeafe" color="#1d4ed8">🏨 Đã nhận phòng</Badge>;
   if (s === 'COMPLETED') return <Badge bg="#ede9fe" color="#6d28d9">✓ Hoàn thành</Badge>;
   if (s === 'CANCELLED') return <Badge bg="#fee2e2" color="#dc2626">✕ Đã hủy</Badge>;
