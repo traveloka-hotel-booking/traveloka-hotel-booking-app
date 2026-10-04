@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../services/api';
 import { getFriendlyErrorMessage, sanitizeErrorMessage } from '../utils/errorHandler';
+import AdminUserManagement from '../components/AdminUserManagement';
 import { MOCK_HOTELS } from '../data/mockData';
 
 
@@ -81,6 +82,7 @@ const SIDEBAR_MENU = [
     items: [
       { key: 'bookings', label: 'Đặt Phòng', icon: <BookOpen size={17} /> },
       { key: 'customers', label: 'Khách Hàng', icon: <Users size={17} /> },
+      { key: 'users', label: 'Người Dùng', icon: <Shield size={17} /> },
       { key: 'payments', label: 'Thanh Toán', icon: <CreditCard size={17} /> },
       { key: 'coupons', label: 'Khuyến Mãi', icon: <Tag size={17} /> },
       { key: 'reviews', label: 'Đánh Giá', icon: <MessageSquare size={17} /> },
@@ -788,7 +790,7 @@ export default function AdminDashboardPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <button onClick={() => setSidebarOpen(!sidebarOpen)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex' }}><Menu size={22} /></button>
             <span style={{ color: '#1e293b', fontWeight: 700, fontSize: 16 }}>
-              {{ dashboard: 'Tổng Quan', hotels: 'Quản Lý Khách Sạn (FR-13)', rooms: 'Quản Lý Loại Phòng (FR-14)', amenities: 'Tiện Nghi Khách Sạn', bookings: 'Quản Lý Đặt Phòng & Lễ Tân', customers: 'Quản Lý Khách Hàng', payments: 'Quản Lý Thanh Toán', coupons: 'Quản Lý Khuyến Mãi', reviews: 'Đánh Giá Từ Khách Lưu Trú', reports: 'Báo Cáo & Thống Kê' }[activeTab]}
+              {{ dashboard: 'Tổng Quan', hotels: 'Quản Lý Khách Sạn (FR-13)', rooms: 'Quản Lý Loại Phòng (FR-14)', amenities: 'Tiện Nghi Khách Sạn', bookings: 'Quản Lý Đặt Phòng & Lễ Tân', customers: 'Quản Lý Khách Hàng', users: 'Quản Lý Người Dùng', payments: 'Quản Lý Thanh Toán', coupons: 'Quản Lý Khuyến Mãi', reviews: 'Đánh Giá Từ Khách Lưu Trú', reports: 'Báo Cáo & Thống Kê' }[activeTab]}
             </span>
           </div>
 
@@ -1254,6 +1256,9 @@ export default function AdminDashboardPage() {
               </SectionCard>
             </div>
           )}
+
+          {/* ══ TAB: QUẢN LÝ NGƯỜI DÙNG ══ */}
+          {activeTab === 'users' && <AdminUserManagement />}
 
           {/* ══ TAB: THANH TOÁN ══ */}
           {activeTab === 'payments' && (
