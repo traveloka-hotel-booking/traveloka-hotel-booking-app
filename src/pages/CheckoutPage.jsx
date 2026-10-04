@@ -2,7 +2,9 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../services/api';
+import { getFriendlyErrorMessage, sanitizeErrorMessage } from '../utils/errorHandler';
 import { MOCK_HOTELS } from '../data/mockData';
+
 import { 
   ArrowLeft, ShieldCheck, CreditCard, QrCode, Wallet, Building2, 
   CheckCircle2, Info, Calendar, Users, BedDouble, Tag, Sparkles, Clock, AlertCircle, User
@@ -156,7 +158,7 @@ export default function CheckoutPage() {
           realBookingId = data.bookingId;
         } else {
           const errData = await response.json().catch(() => ({}));
-          const errMsg = errData.message || (typeof errData.errors === 'string' ? errData.errors : 'Không thể tạo đơn đặt phòng.');
+          const errMsg = getFriendlyErrorMessage(errData, 'Không thể tạo đơn đặt phòng.');
           alert(`Đặt phòng thất bại: ${errMsg}\n(Vui lòng thử chọn ngày khác hoặc phòng khác nếu phòng đã bị trùng lịch)`);
           setIsSubmitting(false);
           return;
@@ -235,7 +237,7 @@ export default function CheckoutPage() {
           }
         } else {
           const payErr = await payResponse.json().catch(() => ({}));
-          const payMsg = payErr.message || (typeof payErr.errors === 'string' ? payErr.errors : 'Lỗi khởi tạo thanh toán.');
+          const payMsg = getFriendlyErrorMessage(payErr, 'Lỗi khởi tạo thanh toán.');
           alert(`Không thể kết nối cổng VNPay: ${payMsg}`);
           setIsSubmitting(false);
           return;
@@ -251,6 +253,7 @@ export default function CheckoutPage() {
 
     } catch (err) {
       console.error('Lỗi quá trình đặt phòng:', err);
+      alert('Có lỗi xảy ra trong quá trình đặt phòng: ' + sanitizeErrorMessage(err));
       setIsSubmitting(false);
     }
   };

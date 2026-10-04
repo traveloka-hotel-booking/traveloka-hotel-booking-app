@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Hotel, Eye, EyeOff, ShieldCheck, UserCheck, AlertCircle } from 'lucide-react';
+import { sanitizeErrorMessage } from '../utils/errorHandler';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -39,15 +40,14 @@ export default function LoginPage() {
       const savedUser = localStorage.getItem('traveloka_auth_user');
       const user = savedUser ? JSON.parse(savedUser) : null;
 
-      if (user?.role === 'ROLE_ADMIN') {
-        navigate('/admin');
-      } else {
-        navigate(from, { replace: true });
-      }
+        if (user?.role === 'ROLE_ADMIN') {
+            navigate('/admin');
+        } else {
+            navigate(from, { replace: true });
+        }
+
     } catch (error) {
-      setErrorMsg(error?.message || 'Đăng nhập thất bại. Vui lòng thử lại.');
-    } finally {
-      setIsLoggingIn(false);
+      setErrorMsg(sanitizeErrorMessage(error, 'Email hoặc mật khẩu không đúng!'));
     }
   };
 
@@ -69,7 +69,7 @@ export default function LoginPage() {
       await login('admin@traveloka.vn', 'admin123');
       navigate('/admin');
     } catch (err) {
-      setErrorMsg('Không thể đăng nhập Admin: ' + err.message);
+      setErrorMsg(sanitizeErrorMessage(err, 'Đăng nhập Admin không thành công!'));
     }
   };
 
@@ -79,7 +79,7 @@ export default function LoginPage() {
       await login('customer@traveloka.vn', '123456');
       navigate(from, { replace: true });
     } catch (err) {
-      setErrorMsg('Không thể đăng nhập Khách Hàng: ' + err.message);
+      setErrorMsg(sanitizeErrorMessage(err, 'Đăng nhập Khách Hàng không thành công!'));
     }
   };
 
@@ -116,7 +116,7 @@ export default function LoginPage() {
                 {/* Email */}
                 <div className="mb-3">
                   <label className="form-label small fw-semibold text-dark mb-1">
-                    Email hoặc Tên đăng nhập <span className="text-danger">*</span>
+                    Email <span className="text-danger">*</span>
                   </label>
                   <input 
                     type="text" 

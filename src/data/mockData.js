@@ -343,16 +343,43 @@ export const normalizeHotel = (hotel) => {
 
 // Hàm tiện ích lấy danh sách khách sạn (đồng bộ với dữ liệu CRUD của Admin trong localStorage)
 export const getHotelsData = () => {
+  let hotelsList = MOCK_HOTELS;
   try {
     const saved = localStorage.getItem('traveloka_custom_hotels');
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map(normalizeHotel);
+        hotelsList = parsed;
       }
     }
   } catch (e) {
     console.error(e);
   }
-  return MOCK_HOTELS.map(normalizeHotel);
+
+  // Đồng bộ với traveloka_custom_rooms nếu có dữ liệu phòng quản lý riêng (FR-14)
+  try {
+    const savedRooms = localStorage.getItem('traveloka_custom_rooms');
+    if (savedRooms) {
+      const customRooms = JSON.parse(savedRooms);
+      if (Array.isArray(customRooms) && customRooms.length > 0) {
+        hotelsList = hotelsList.map(h => {
+          const hotelRooms = customRooms.filter(r => String(r.hotelId) === String(h.id));
+          if (hotelRooms.length > 0) {
+            const minPrice = Math.min(...hotelRooms.map(r => Number(r.pricePerNight) || 1000000));
+            return {
+              ...h,
+              rooms: hotelRooms,
+              minPrice: isFinite(minPrice) ? minPrice : h.minPrice,
+              totalRooms: hotelRooms.length
+            };
+          }
+          return h;
+        });
+      }
+    }
+  } catch (e) {
+    console.error(e);
+  }
+
+  return hotelsList.map(normalizeHotel);
 };

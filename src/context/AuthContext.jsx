@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { apiFetch } from '../services/api';
+import { getFriendlyErrorMessage, sanitizeErrorMessage } from '../utils/errorHandler';
 
 const AuthContext = createContext(null);
 
@@ -27,25 +28,22 @@ export const AuthProvider = ({ children }) => {
   // Hàm đăng nhập thông thường
   const login = async (email, password) => {
     try {
-    const response = await apiFetch('/auth/login', {
-      method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    email,
-                    password,
-                }),
-    });
+      const response = await apiFetch('/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    // Login thất bại
+      // Login thất bại
       if (!response.ok) {
-          throw new Error(
-              data?.result?.message ||
-              'Email hoặc mật khẩu không đúng'
-          );
+        throw new Error(getFriendlyErrorMessage(data, 'Email hoặc mật khẩu không đúng!'));
       }
 
       // Lấy result từ LoginResponse
@@ -53,32 +51,32 @@ export const AuthProvider = ({ children }) => {
 
       // Lưu Access Token
       localStorage.setItem(
-          'accessToken',
-          result.accessToken
+        'accessToken',
+        result.accessToken
       );
 
       // Lưu Refresh Token
       localStorage.setItem(
-          'refreshToken',
-          result.refreshToken
+        'refreshToken',
+        result.refreshToken
       );
 
       // Lưu thông tin user
       localStorage.setItem(
-          'traveloka_auth_user',
-          JSON.stringify(result.user)
+        'traveloka_auth_user',
+        JSON.stringify(result.user)
       );
 
       // Cập nhật user trong React
-        setUser(result.user);
+      setUser(result.user);
 
-        return true;
+      return true;
     } catch (error) {
-            console.error('Login error:', error);
-            throw error;
-        }
-    
+      console.error('Login error:', error);
+      throw new Error(sanitizeErrorMessage(error, 'Đăng nhập không thành công, vui lòng thử lại!'));
+    }
   };
+
 
   const loginWithGoogle = () => {
     const googleUser = {

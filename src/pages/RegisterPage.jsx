@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Hotel, Eye, EyeOff, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { apiFetch } from '../services/api';
+import { getFriendlyErrorMessage, sanitizeErrorMessage } from '../utils/errorHandler';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
@@ -104,6 +105,7 @@ export default function RegisterPage() {
       clearTimeout(timeoutId);
       setIsSubmitting(false);
     }
+
   };
 
   // Đăng nhập nhanh qua Google
