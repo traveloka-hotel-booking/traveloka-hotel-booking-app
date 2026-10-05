@@ -1782,96 +1782,122 @@ export default function AdminDashboardPage() {
                 </button>
               </div>
 
-              {/* Bộ lọc Dropdown: Trạng thái, Khách sạn, Thanh toán */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 16px', marginBottom: 14 }}>
-                {/* 1. Dropdown Trạng thái */}
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: 4, display: 'block' }}>
-                    Trạng Thái Đơn
-                  </label>
-                  <select
-                    className="form-select form-select-sm"
-                    value={bookingStatusFilter}
-                    onChange={(e) => setBookingStatusFilter(e.target.value)}
-                    style={{ fontSize: 12.5, borderRadius: 8, borderColor: '#cbd5e1' }}
-                  >
-                    <option value="ALL">Tất cả trạng thái ({bookings.length})</option>
-                    <option value="PENDING">⏳ Chờ duyệt ({bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'PENDING').length})</option>
-                    <option value="CONFIRMED">✓ Đã xác nhận ({bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CONFIRMED').length})</option>
-                    <option value="CHECKED_IN">🏨 Đang ở / Nhận phòng ({bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CHECKED_IN').length})</option>
-                    <option value="COMPLETED">🏁 Hoàn thành ({bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'COMPLETED').length})</option>
-                    <option value="EXPIRED">⚠️ Đã quá hạn ({bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'EXPIRED').length})</option>
-                    <option value="CANCELLED">✕ Đã hủy ({bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CANCELLED').length})</option>
-                  </select>
-                </div>
-
-                {/* 2. Dropdown Khách sạn */}
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: 4, display: 'block' }}>
-                    Khách Sạn
-                  </label>
-                  <select
-                    className="form-select form-select-sm"
-                    value={bookingHotelFilter}
-                    onChange={(e) => setBookingHotelFilter(e.target.value)}
-                    style={{ fontSize: 12.5, borderRadius: 8, borderColor: '#cbd5e1' }}
-                  >
-                    <option value="ALL">Tất cả khách sạn ({uniqueHotels.length})</option>
-                    {uniqueHotels.map(hName => (
-                      <option key={hName} value={hName}>{hName}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* 3. Dropdown Thanh toán */}
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: 4, display: 'block' }}>
-                    Thanh Toán
-                  </label>
-                  <select
-                    className="form-select form-select-sm"
-                    value={bookingPaymentFilter}
-                    onChange={(e) => setBookingPaymentFilter(e.target.value)}
-                    style={{ fontSize: 12.5, borderRadius: 8, borderColor: '#cbd5e1' }}
-                  >
-                    <option value="ALL">Tất cả thanh toán</option>
-                    <option value="paid">✅ Đã thanh toán (paid)</option>
-                    <option value="pending">⏳ Chờ thanh toán (pending)</option>
-                    <option value="pay_at_hotel">💵 Tiền mặt tại khách sạn</option>
-                    <option value="vnpay">💳 Chuyển khoản VNPay</option>
-                  </select>
-                </div>
-
-                {/* Nút đặt lại bộ lọc */}
-                {(bookingStatusFilter !== 'ALL' || bookingHotelFilter !== 'ALL' || bookingPaymentFilter !== 'ALL' || bookingSearch) && (
-                  <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setBookingStatusFilter('ALL');
-                        setBookingHotelFilter('ALL');
-                        setBookingPaymentFilter('ALL');
-                        setBookingSearch('');
-                      }}
-                      className="btn btn-outline-secondary btn-sm"
-                      style={{ fontSize: 12, borderRadius: 8, height: 31, display: 'flex', alignItems: 'center', gap: 4, width: '100%', justifyContent: 'center' }}
-                    >
-                      <RotateCcw size={12} /> Đặt lại bộ lọc
-                    </button>
-                  </div>
-                )}
-              </div>
-
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 16px', marginBottom: 20 }}>
                 <Search size={16} color="#94a3b8" />
                 <input type="text" placeholder="Tìm theo mã đơn (BK-...), tên khách, số điện thoại, tên khách sạn, tên phòng..." value={bookingSearch} onChange={e => setBookingSearch(e.target.value)} style={{ border: 'none', background: 'transparent', outline: 'none', flex: 1, fontSize: 13, color: '#1e293b' }} />
                 {bookingSearch && <button onClick={() => setBookingSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}><X size={16} /></button>}
+                {(bookingStatusFilter !== 'ALL' || bookingHotelFilter !== 'ALL' || bookingPaymentFilter !== 'ALL') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBookingStatusFilter('ALL');
+                      setBookingHotelFilter('ALL');
+                      setBookingPaymentFilter('ALL');
+                    }}
+                    className="btn btn-sm btn-outline-secondary"
+                    style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 4 }}
+                    title="Xóa tất cả bộ lọc trên cột"
+                  >
+                    <RotateCcw size={11} /> Đặt lại lọc cột
+                  </button>
+                )}
                 <span style={{ fontSize: 12, color: '#94a3b8', flexShrink: 0 }}>Hiển thị {filteredBookings.length}/{bookings.length} đơn</span>
               </div>
               {filteredBookings.length === 0 ? <Empty text={bookingSearch ? `Không tìm thấy đơn khớp với "${bookingSearch}"` : 'Chưa có đơn đặt phòng nào'} /> : (
                 <div className="table-responsive">
                   <table className="table table-hover align-middle mb-0" style={{ fontSize: 12.5 }}>
-                    <thead style={{ background: '#f8fafc' }}><tr>{['Mã Đơn', 'Khách Hàng', 'Khách Sạn & Phòng', 'Lưu Trú', 'Thanh Toán', 'Tổng Tiền', 'Trạng Thái', 'Thao Tác Lễ Tân'].map(h => <Th key={h}>{h}</Th>)}</tr></thead>
+                    <thead style={{ background: '#f8fafc' }}>
+                      <tr>
+                        <Th>Mã Đơn</Th>
+                        <Th>Khách Hàng</Th>
+                        <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none', paddingBottom: 12, whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span>Khách Sạn & Phòng</span>
+                            <select
+                              value={bookingHotelFilter}
+                              onChange={(e) => setBookingHotelFilter(e.target.value)}
+                              style={{
+                                fontSize: 11,
+                                padding: '2px 4px',
+                                borderRadius: 6,
+                                border: bookingHotelFilter !== 'ALL' ? '1.5px solid #3b82f6' : '1px solid #cbd5e1',
+                                background: bookingHotelFilter !== 'ALL' ? '#eff6ff' : '#fff',
+                                color: bookingHotelFilter !== 'ALL' ? '#1d4ed8' : '#64748b',
+                                fontWeight: bookingHotelFilter !== 'ALL' ? 700 : 500,
+                                cursor: 'pointer',
+                                maxWidth: 130,
+                                textTransform: 'none'
+                              }}
+                              title="Lọc nhanh theo Khách sạn"
+                            >
+                              <option value="ALL">Tất cả ({uniqueHotels.length})</option>
+                              {uniqueHotels.map(hName => (
+                                <option key={hName} value={hName}>{hName}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </th>
+                        <Th>Lưu Trú</Th>
+                        <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none', paddingBottom: 12, whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span>Thanh Toán</span>
+                            <select
+                              value={bookingPaymentFilter}
+                              onChange={(e) => setBookingPaymentFilter(e.target.value)}
+                              style={{
+                                fontSize: 11,
+                                padding: '2px 4px',
+                                borderRadius: 6,
+                                border: bookingPaymentFilter !== 'ALL' ? '1.5px solid #3b82f6' : '1px solid #cbd5e1',
+                                background: bookingPaymentFilter !== 'ALL' ? '#eff6ff' : '#fff',
+                                color: bookingPaymentFilter !== 'ALL' ? '#1d4ed8' : '#64748b',
+                                fontWeight: bookingPaymentFilter !== 'ALL' ? 700 : 500,
+                                cursor: 'pointer',
+                                textTransform: 'none'
+                              }}
+                              title="Lọc nhanh theo Thanh toán"
+                            >
+                              <option value="ALL">Tất cả</option>
+                              <option value="paid">✅ Đã TT</option>
+                              <option value="pending">⏳ Chờ TT</option>
+                              <option value="pay_at_hotel">💵 Tiền mặt</option>
+                              <option value="vnpay">💳 VNPay</option>
+                            </select>
+                          </div>
+                        </th>
+                        <Th>Tổng Tiền</Th>
+                        <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none', paddingBottom: 12, whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span>Trạng Thái</span>
+                            <select
+                              value={bookingStatusFilter}
+                              onChange={(e) => setBookingStatusFilter(e.target.value)}
+                              style={{
+                                fontSize: 11,
+                                padding: '2px 4px',
+                                borderRadius: 6,
+                                border: bookingStatusFilter !== 'ALL' ? '1.5px solid #3b82f6' : '1px solid #cbd5e1',
+                                background: bookingStatusFilter !== 'ALL' ? '#eff6ff' : '#fff',
+                                color: bookingStatusFilter !== 'ALL' ? '#1d4ed8' : '#64748b',
+                                fontWeight: bookingStatusFilter !== 'ALL' ? 700 : 500,
+                                cursor: 'pointer',
+                                textTransform: 'none'
+                              }}
+                              title="Lọc nhanh theo Trạng thái"
+                            >
+                              <option value="ALL">Tất cả ({bookings.length})</option>
+                              <option value="PENDING">⏳ Chờ duyệt</option>
+                              <option value="CONFIRMED">✓ Đã xác nhận</option>
+                              <option value="CHECKED_IN">🏨 Đã nhận phòng</option>
+                              <option value="COMPLETED">🏁 Hoàn thành</option>
+                              <option value="EXPIRED">⚠️ Quá hạn</option>
+                              <option value="CANCELLED">✕ Đã hủy</option>
+                            </select>
+                          </div>
+                        </th>
+                        <Th>Thao Tác Lễ Tân</Th>
+                      </tr>
+                    </thead>
                     <tbody>{filteredBookings.map(b => {
                       const rawS = (b.rawStatus || b.status || '').toUpperCase();
                       return (
