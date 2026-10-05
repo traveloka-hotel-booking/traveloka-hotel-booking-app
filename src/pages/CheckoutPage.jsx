@@ -19,6 +19,7 @@ export default function CheckoutPage() {
   const passedData = location.state || {};
   const hotel = passedData.hotel || MOCK_HOTELS[0];
   const room = passedData.room || hotel.rooms[0];
+  const isAdminUser = Boolean(isAuthenticated && user && (user.role === 'ROLE_ADMIN' || user.role === 'admin'));
 
   // State thông tin khách hàng: Tự động điền nếu đã đăng nhập, hoặc để trống nếu là khách vãng lai
   const [fullName, setFullName] = useState(user?.name || '');
@@ -126,6 +127,13 @@ export default function CheckoutPage() {
     }
 
     const isOnlinePayment = (paymentMethod === 'vnpay' || paymentMethod === 'card');
+    const isAdminUser = Boolean(isAuthenticated && user && (user.role === 'ROLE_ADMIN' || user.role === 'admin'));
+
+    // Chặn tài khoản Quản trị viên (Admin) không được phép đặt phòng
+    if (isAdminUser) {
+      alert('Tài khoản Quản trị viên (Admin) không được phép thực hiện đặt phòng!\nVui lòng đăng xuất và sử dụng tài khoản Khách hàng (Customer) để đặt phòng.');
+      return;
+    }
 
     // Nếu chọn thanh toán trực tuyến qua VNPAY nhưng chưa đăng nhập tài khoản
     if (isOnlinePayment && !isAuthenticated) {
@@ -664,11 +672,22 @@ export default function CheckoutPage() {
                   </div>
                 </div>
 
+                {/* Cảnh báo nếu đang đăng nhập tài khoản ADMIN */}
+                {isAdminUser && (
+                  <div className="alert alert-warning d-flex align-items-center gap-2 mb-3">
+                    <AlertCircle size={20} className="flex-shrink-0 text-danger" />
+                    <div className="small">
+                      <strong>Tài khoản Quản trị viên (Admin):</strong> Bạn đang đăng nhập bằng tài khoản Quản trị viên. Tài khoản Admin chỉ dùng để quản lý hệ thống và không được phép đặt phòng. Vui lòng đăng xuất và sử dụng tài khoản Khách hàng để thực hiện đặt phòng.
+                    </div>
+                  </div>
+                )}
+
                 {/* Nút hành động thanh toán */}
                 <button 
                   type="submit" 
-                  disabled={isSubmitting} 
-                  className="btn btn-primary btn-lg w-100 fw-bold py-3 shadow-sm d-flex align-items-center justify-content-center gap-2"
+                  disabled={isSubmitting || isAdminUser} 
+                  className={`btn ${isAdminUser ? 'btn-secondary' : 'btn-primary'} btn-lg w-100 fw-bold py-3 shadow-sm d-flex align-items-center justify-content-center gap-2`}
+                  title={isAdminUser ? 'Tài khoản Admin không thể đặt phòng' : ''}
                 >
                   {isSubmitting ? (
                     <>

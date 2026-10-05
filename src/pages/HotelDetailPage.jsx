@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { MOCK_HOTELS, getHotelsData } from '../data/mockData';
+import { apiFetch } from '../services/api';
 import { 
   MapPin, Star, Wifi, Waves, Coffee, Car, Dumbbell, 
   Sparkles, CheckCircle2, ShieldAlert, Clock, ArrowLeft,
@@ -23,12 +24,99 @@ export default function HotelDetailPage() {
   const searchState = { ...savedSearch, ...(location.state || {}) };
 
   // Tìm khách sạn theo ID từ danh sách tổng hợp (bao gồm cả khách sạn mới do Admin tạo)
-  const allHotels = getHotelsData();
-  const hotel = allHotels.find(h => h.id === Number(id)) || allHotels[0];
+  const [hotel, setHotel] = useState(() => {
+    const allHotels = getHotelsData();
+    return allHotels.find(h => String(h.id) === String(id)) || allHotels[0];
+  });
 
   // State ảnh chính đang được hiển thị trong Gallery
-  const [activeImage, setActiveImage] = useState(hotel.images?.[0] || hotel.thumbnailUrl);
+  const [activeImage, setActiveImage] = useState(hotel?.images?.[0] || hotel?.thumbnailUrl);
   const [bookingSuccessNotice, setBookingSuccessNotice] = useState(null);
+
+  // Tải & đồng bộ chi tiết khách sạn và danh sách phòng từ Backend và LocalStorage
+  const loadHotelDetails = async () => {
+    // 1. Đồng bộ tức thì từ localStorage/MockData
+    const all = getHotelsData();
+    const localHotel = all.find(h => String(h.id) === String(id)) || all[0];
+    if (localHotel) {
+      setHotel(localHotel);
+      setActiveImage(prev => prev || localHotel.images?.[0] || localHotel.thumbnailUrl);
+    }
+
+    // 2. Fetch API Backend đồng bộ từ cơ sở dữ liệu thực tế (Cloudinary image, giá, trạng thái...)
+    try {
+      const [hRes, rRes] = await Promise.all([
+        apiFetch(`/hotels/${id}`),
+        apiFetch(`/hotels/${id}/rooms`)
+      ]);
+
+      let backendHotel = null;
+      let backendRooms = null;
+
+      if (hRes.ok) {
+        const hData = await hRes.json();
+        if (hData.result) backendHotel = hData.result;
+      }
+      if (rRes.ok) {
+        const rData = await rRes.json();
+        if (rData.result && Array.isArray(rData.result)) backendRooms = rData.result;
+      }
+
+      if (backendHotel || (backendRooms && backendRooms.length > 0)) {
+        setHotel(prev => {
+          const currentBase = backendHotel ? { ...prev, ...backendHotel } : prev;
+          let mergedRooms = currentBase.rooms || [];
+
+          if (backendRooms && backendRooms.length > 0) {
+            mergedRooms = backendRooms.map(br => {
+              const existingRoom = (prev?.rooms || []).find(r => r.id === br.id || r.name === br.name);
+              return {
+                ...existingRoom,
+                ...br,
+                imageUrl: br.imageUrl || existingRoom?.imageUrl || currentBase.thumbnailUrl || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60'
+              };
+            });
+          }
+
+          const updated = {
+            ...currentBase,
+            rooms: mergedRooms
+          };
+
+          // Đồng bộ lại vào localStorage traveloka_custom_rooms
+          try {
+            const savedRooms = JSON.parse(localStorage.getItem('traveloka_custom_rooms') || '[]');
+            const otherRooms = savedRooms.filter(r => String(r.hotelId) !== String(id));
+            const newSavedRooms = [...otherRooms, ...(mergedRooms || [])];
+            localStorage.setItem('traveloka_custom_rooms', JSON.stringify(newSavedRooms));
+          } catch {}
+
+          return updated;
+        });
+      }
+    } catch (err) {
+      console.warn('API hotel details fallback:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadHotelDetails();
+
+    // Lắng nghe sự kiện khi Admin cập nhật ảnh phòng hoặc thông tin phòng ở tab/cửa sổ khác
+    const handleSync = () => {
+      loadHotelDetails();
+    };
+
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('traveloka_rooms_updated', handleSync);
+    window.addEventListener('traveloka_hotels_updated', handleSync);
+
+    return () => {
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('traveloka_rooms_updated', handleSync);
+      window.removeEventListener('traveloka_hotels_updated', handleSync);
+    };
+  }, [id]);
 
   // Icon tiện ích tương ứng theo tên
   const getAmenityIcon = (name) => {
@@ -249,20 +337,24 @@ export default function HotelDetailPage() {
               <span className="badge bg-primary px-3 py-1 rounded-pill mb-2">Lựa chọn phòng ngủ</span>
               <h3 className="fw-bold text-dark mb-0">Các Loại Phòng Còn Trống</h3>
             </div>
-            <span className="text-secondary small">Hiện có {hotel.rooms.length} loại phòng sẵn sàng đón tiếp</span>
+            <span className="text-secondary small">Hiện có {hotel?.rooms?.length || 0} loại phòng sẵn sàng đón tiếp</span>
           </div>
 
           <div className="d-flex flex-column gap-4">
-            {hotel.rooms.map((room) => (
+            {(hotel?.rooms || []).map((room) => (
               <div key={room.id} className="card border-0 shadow-sm rounded-4 overflow-hidden bg-white hover-shadow">
                 <div className="row g-0">
                   {/* Ảnh phòng */}
                   <div className="col-lg-4 col-md-5">
                     <img 
-                      src={room.imageUrl} 
+                      src={room.imageUrl || hotel?.thumbnailUrl || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60'} 
                       alt={room.name} 
                       className="w-100 h-100 object-fit-cover"
                       style={{ minHeight: '260px' }}
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60';
+                      }}
                     />
                   </div>
 
