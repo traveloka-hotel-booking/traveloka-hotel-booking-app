@@ -25,7 +25,12 @@ export const apiFetch = async (endpoint, options = {}) => {
         }
     );
 // Xử lý khi logout hoặc Access Token hết hạn phải trả đúng mã lỗi 401
-    if (response.status === 401) {
+    // Đăng nhập sai cũng có thể trả về 401. Không refresh token hoặc
+    // chuyển hướng trong trường hợp này để LoginPage giữ nguyên dữ liệu và lỗi.
+    const isLoginRequest =
+        endpoint.includes('/auth/login') || endpoint === '/login';
+
+    if (response.status === 401 && !isLoginRequest) {
 
         const refreshToken = localStorage.getItem('refreshToken');
         // Không có Refresh Token

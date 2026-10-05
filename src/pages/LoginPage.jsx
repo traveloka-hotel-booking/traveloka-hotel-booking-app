@@ -13,6 +13,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   // Lấy đường dẫn trước đó nếu có để redirect sau khi đăng nhập
   const from = location.state?.from?.pathname || '/';
@@ -20,10 +21,17 @@ export default function LoginPage() {
   // Xử lý đăng nhập thông thường
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Tránh gửi nhiều yêu cầu đăng nhập liên tiếp
+    if (isLoggingIn) return;
+
     if (!email || !password) {
       setErrorMsg('Vui lòng nhập đầy đủ Email và Mật khẩu!');
       return;
     }
+
+    setIsLoggingIn(true);
+    setErrorMsg('');
 
     try {
       await login(email, password);
@@ -32,11 +40,11 @@ export default function LoginPage() {
       const savedUser = localStorage.getItem('traveloka_auth_user');
       const user = savedUser ? JSON.parse(savedUser) : null;
 
-      if (user?.role === 'ROLE_ADMIN') {
-        navigate('/admin');
-      } else {
-        navigate(from, { replace: true });
-      }
+        if (user?.role === 'ROLE_ADMIN') {
+            navigate('/admin');
+        } else {
+            navigate(from, { replace: true });
+        }
 
     } catch (error) {
       setErrorMsg(sanitizeErrorMessage(error, 'Email hoặc mật khẩu không đúng!'));
@@ -156,8 +164,23 @@ export default function LoginPage() {
                 </div>
 
                 {/* Nút Đăng nhập */}
-                <button type="submit" className="btn btn-primary btn-lg w-100 fw-bold mt-2 shadow-sm">
-                  Đăng Nhập
+                <button
+                  type="submit"
+                  className="btn btn-primary btn-lg w-100 fw-bold mt-2 shadow-sm"
+                  disabled={isLoggingIn}
+                >
+                  {isLoggingIn ? (
+                    <>
+                      <span
+                        className="spinner-border spinner-border-sm me-2"
+                        role="status"
+                        aria-hidden="true"
+                      ></span>
+                      Đang đăng nhập...
+                    </>
+                  ) : (
+                    'Đăng Nhập'
+                  )}
                 </button>
               </form>
 
