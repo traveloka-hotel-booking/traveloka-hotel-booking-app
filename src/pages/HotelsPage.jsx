@@ -1,14 +1,19 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { MOCK_HOTELS, getHotelsData } from '../data/mockData';
+import { filterHotelsApi, searchHotelsApi } from '../services/hotelApi';
 import { 
   Search, MapPin, Star, Filter, RotateCcw, 
-  Wifi, Waves, Coffee, Car, Dumbbell, Sparkles, CheckSquare, Square
+  Wifi, Waves, Coffee, Car, Dumbbell, Sparkles, CheckSquare, Square,
+  Loader2, ChevronLeft, ChevronRight
 } from 'lucide-react';
 
 export default function HotelsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const cityParam = searchParams.get('city') || '';
+  const checkInParam = searchParams.get('checkIn') || '';
+  const checkOutParam = searchParams.get('checkOut') || '';
+  const guestsParam = searchParams.get('guests') || '';
 
   // State các bộ lọc
   const [selectedCity, setSelectedCity] = useState(cityParam);
@@ -17,10 +22,63 @@ export default function HotelsPage() {
   const [selectedAmenities, setSelectedAmenities] = useState([]);
   const [sortBy, setSortBy] = useState('popular'); // popular, priceAsc, priceDesc, ratingDesc
 
+  // State dữ liệu từ Backend API (FR-06 & FR-07)
+  const [backendHotels, setBackendHotels] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(0);
+  const [size, setSize] = useState(10);
+  const [totalElements, setTotalElements] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+
   // Cập nhật city khi URL thay đổi
   useEffect(() => {
     setSelectedCity(cityParam);
   }, [cityParam]);
+
+  // Gọi API FR-06 / FR-07 từ backend
+  const loadHotels = useCallback(async () => {
+    setLoading(true);
+    try {
+      let data;
+      // Nếu có checkIn và checkOut -> gọi FR-06 Search
+      if (checkInParam && checkOutParam) {
+        data = await searchHotelsApi({
+          city: selectedCity && selectedCity !== 'Tất cả' ? selectedCity : '',
+          checkIn: checkInParam,
+          checkOut: checkOutParam,
+          guests: guestsParam ? Number(guestsParam) : 2,
+          page,
+          size
+        });
+      } else {
+        // Ngược lại gọi FR-07 Filter
+        const minStar = selectedStars.length > 0 ? Math.min(...selectedStars) : null;
+        const maxStar = selectedStars.length > 0 ? Math.max(...selectedStars) : null;
+        data = await filterHotelsApi({
+          city: selectedCity && selectedCity !== 'Tất cả' ? selectedCity : '',
+          minStar,
+          maxStar,
+          amenities: selectedAmenities,
+          page,
+          size
+        });
+      }
+
+      const list = Array.isArray(data?.content) ? data.content : (Array.isArray(data) ? data : []);
+      setBackendHotels(list);
+      setTotalElements(Number(data?.totalElements ?? list.length));
+      setTotalPages(Number(data?.totalPages ?? 1));
+    } catch (err) {
+      console.warn('FR-06/FR-07 API call error, falling back to local data:', err);
+      setBackendHotels(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedCity, selectedStars, selectedAmenities, checkInParam, checkOutParam, guestsParam, page, size]);
+
+  useEffect(() => {
+    loadHotels();
+  }, [loadHotels]);
 
   // Danh sách các thành phố có trong dữ liệu
   const cities = ["Tất cả", "Hà Nội", "Đà Nẵng", "Hồ Chí Minh", "Nha Trang", "Đà Lạt", "Phú Quốc"];
@@ -40,16 +98,20 @@ export default function HotelsPage() {
 
   // Xử lý bật/tắt chọn sao
   const toggleStar = (star) => {
-    setSelectedStars(prev => 
-      prev.includes(star) ? prev.filter(s => s !== star) : [...prev, star]
-    );
+    setSelectedStars(prev => {
+      const next = prev.includes(star) ? prev.filter(s => s !== star) : [...prev, star];
+      setPage(0);
+      return next;
+    });
   };
 
   // Xử lý bật/tắt tiện ích
   const toggleAmenity = (amenity) => {
-    setSelectedAmenities(prev => 
-      prev.includes(amenity) ? prev.filter(a => a !== amenity) : [...prev, amenity]
-    );
+    setSelectedAmenities(prev => {
+      const next = prev.includes(amenity) ? prev.filter(a => a !== amenity) : [...prev, amenity];
+      setPage(0);
+      return next;
+    });
   };
 
   // Xóa toàn bộ bộ lọc
@@ -59,32 +121,36 @@ export default function HotelsPage() {
     setMaxPrice(5000000);
     setSelectedAmenities([]);
     setSortBy('popular');
+    setPage(0);
     setSearchParams({});
   };
 
-  // Lọc và sắp xếp dữ liệu (đồng bộ với dữ liệu CRUD của Admin)
+  // Lọc và sắp xếp dữ liệu (Ưu tiên dữ liệu từ Backend API, fallback sang MockData khi API offline)
   const filteredHotels = useMemo(() => {
-    return getHotelsData().filter(hotel => {
-      // 1. Lọc theo thành phố
-      if (selectedCity && selectedCity !== "Tất cả") {
-        if (!hotel.city.toLowerCase().includes(selectedCity.toLowerCase())) {
+    const isUsingBackend = backendHotels !== null && Array.isArray(backendHotels);
+    const sourceHotels = isUsingBackend ? backendHotels : getHotelsData();
+
+    return sourceHotels.filter(hotel => {
+      // 1. Lọc theo thành phố (nếu dùng mock fallback)
+      if (!isUsingBackend && selectedCity && selectedCity !== "Tất cả") {
+        if (!hotel.city?.toLowerCase().includes(selectedCity.toLowerCase())) {
           return false;
         }
       }
 
-      // 2. Lọc theo số sao
-      if (selectedStars.length > 0 && !selectedStars.includes(hotel.starRating)) {
+      // 2. Lọc theo số sao (nếu dùng mock fallback)
+      if (!isUsingBackend && selectedStars.length > 0 && !selectedStars.includes(hotel.starRating)) {
         return false;
       }
 
       // 3. Lọc theo giá tối đa (lấy giá phòng thấp nhất của khách sạn)
-      const minHotelPrice = hotel.rooms[0]?.pricePerNight || 0;
+      const minHotelPrice = hotel.minPricePerNight ?? hotel.rooms?.[0]?.pricePerNight ?? 0;
       if (minHotelPrice > maxPrice) {
         return false;
       }
 
-      // 4. Lọc theo tiện ích (phải chứa ít nhất 1 tiện ích được chọn nếu có)
-      if (selectedAmenities.length > 0) {
+      // 4. Lọc theo tiện ích (nếu dùng mock fallback)
+      if (!isUsingBackend && selectedAmenities.length > 0) {
         const hotelAmenities = Array.isArray(hotel.amenities)
           ? hotel.amenities
           : (typeof hotel.amenities === 'string' ? hotel.amenities.split(',').map(s => s.trim()) : []);
@@ -96,15 +162,15 @@ export default function HotelsPage() {
 
       return true;
     }).sort((a, b) => {
-      const priceA = a.rooms[0]?.pricePerNight || 0;
-      const priceB = b.rooms[0]?.pricePerNight || 0;
+      const priceA = a.minPricePerNight ?? a.rooms?.[0]?.pricePerNight ?? 0;
+      const priceB = b.minPricePerNight ?? b.rooms?.[0]?.pricePerNight ?? 0;
 
       if (sortBy === 'priceAsc') return priceA - priceB;
       if (sortBy === 'priceDesc') return priceB - priceA;
-      if (sortBy === 'ratingDesc') return b.ratingScore - a.ratingScore;
+      if (sortBy === 'ratingDesc') return (b.ratingScore || 8.5) - (a.ratingScore || 8.5);
       return 0; // popular
     });
-  }, [selectedCity, selectedStars, maxPrice, selectedAmenities, sortBy]);
+  }, [backendHotels, selectedCity, selectedStars, maxPrice, selectedAmenities, sortBy]);
 
   return (
     <div className="bg-light pb-4 min-vh-100 page-top-spacing">
@@ -248,7 +314,14 @@ export default function HotelsPage() {
 
           {/* ================= CỘT PHẢI: DANH SÁCH KHÁCH SẠN ================= */}
           <div className="col-lg-9 col-md-8">
-            {filteredHotels.length === 0 ? (
+            {loading ? (
+              <div className="card border-0 shadow-sm rounded-4 p-5 text-center bg-white">
+                <div className="d-flex align-items-center justify-content-center gap-2 text-primary py-4">
+                  <div className="spinner-border spinner-border-sm" role="status"></div>
+                  <span className="fw-semibold">Đang cập nhật danh sách khách sạn từ hệ thống (FR-07/FR-06)...</span>
+                </div>
+              </div>
+            ) : filteredHotels.length === 0 ? (
               <div className="card border-0 shadow-sm rounded-4 p-5 text-center bg-white">
                 <div className="p-4">
                   <h4 className="fw-bold mb-2">Không tìm thấy khách sạn phù hợp!</h4>
@@ -337,10 +410,10 @@ export default function HotelsPage() {
                           <div>
                             <span className="badge bg-danger-subtle text-danger mb-1">Tiết kiệm 20% hôm nay</span>
                             <div className="text-secondary small">
-                              Giá gốc: <del>{hotel.rooms[0]?.originalPrice?.toLocaleString('vi-VN')} đ</del>
+                              Giá gốc: <del>{Math.round((hotel.minPricePerNight ?? hotel.rooms?.[0]?.originalPrice ?? 1500000) * 1.25).toLocaleString('vi-VN')} đ</del>
                             </div>
                             <div className="fs-4 fw-bold text-danger">
-                              {hotel.rooms[0]?.pricePerNight.toLocaleString('vi-VN')} đ
+                              {(hotel.minPricePerNight ?? hotel.rooms?.[0]?.pricePerNight ?? 1200000).toLocaleString('vi-VN')} đ
                               <span className="text-secondary fs-6 fw-normal"> / đêm</span>
                             </div>
                           </div>
@@ -363,6 +436,36 @@ export default function HotelsPage() {
                     </div>
                   </div>
                 ))}
+
+                {/* Thanh phân trang kết quả từ Backend API */}
+                {totalPages > 1 && (
+                  <div className="d-flex justify-content-between align-items-center mt-3 p-3 bg-white rounded-3 shadow-sm border flex-wrap gap-2">
+                    <span className="small text-secondary">
+                      Hiển thị <strong>{page * size + 1}</strong> – <strong>{Math.min((page + 1) * size, totalElements)}</strong> trên <strong>{totalElements}</strong> khách sạn
+                    </span>
+                    <div className="d-flex align-items-center gap-2">
+                      <button 
+                        type="button" 
+                        onClick={() => setPage(p => Math.max(0, p - 1))} 
+                        disabled={page <= 0 || loading} 
+                        className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
+                      >
+                        <ChevronLeft size={16} /> Trước
+                      </button>
+                      <span className="small px-2 text-dark fw-semibold">
+                        Trang {page + 1} / {totalPages}
+                      </span>
+                      <button 
+                        type="button" 
+                        onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} 
+                        disabled={page + 1 >= totalPages || loading} 
+                        className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
+                      >
+                        Sau <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

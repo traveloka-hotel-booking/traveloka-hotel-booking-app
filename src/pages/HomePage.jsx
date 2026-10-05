@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { MOCK_HOTELS, getHotelsData } from '../data/mockData';
+import { searchHotelsApi } from '../services/hotelApi';
 import { 
   Search, MapPin, Calendar, Users, Star, ArrowRight, ChevronDown, ChevronUp,
   Minus, Plus, ShieldCheck, Tag, Clock, Sparkles, Check, Info, ArrowUp, ThumbsUp,
-  Award, Shield, HelpCircle
+  Award, Shield, HelpCircle, Loader2
 } from 'lucide-react';
 
 // Danh sách gợi ý điểm đến phổ biến tại Việt Nam theo yêu cầu
@@ -104,6 +105,9 @@ export default function HomePage() {
   const [selectedStar, setSelectedStar] = useState(null);
   const [selectedRating, setSelectedRating] = useState(null);
   const [sortOption, setSortOption] = useState('popular'); // popular, priceAsc, distance
+  const [backendHotels, setBackendHotels] = useState(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchFeedback, setSearchFeedback] = useState('');
 
   // Cuộn mượt mà xuống phần danh sách khách sạn
   const scrollToHotelList = () => {
@@ -118,17 +122,51 @@ export default function HomePage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Gọi API FR-06 tìm kiếm phòng trống theo ngày và số khách
+  const performSearch = async () => {
+    setIsSearching(true);
+    setSearchFeedback('');
+    try {
+      const guests = Math.max(1, Number(adultsCount || 1) + Number(childrenCount || 0));
+      const res = await searchHotelsApi({
+        city: destination?.trim() || '',
+        checkIn: checkIn || today,
+        checkOut: checkOut || tomorrow,
+        guests,
+        page: 0,
+        size: 20
+      });
+      const list = Array.isArray(res?.content) ? res.content : (Array.isArray(res) ? res : []);
+      if (list.length > 0) {
+        setBackendHotels(list);
+        setSearchFeedback(`Tìm thấy ${list.length} khách sạn phù hợp từ hệ thống`);
+      } else {
+        setBackendHotels([]);
+        setSearchFeedback('Không tìm thấy khách sạn còn trống trong cơ sở dữ liệu cho tiêu chí này.');
+      }
+    } catch (err) {
+      console.warn('FR-06 search API offline or error, falling back to local data:', err);
+      setBackendHotels(null);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   // Xử lý tìm kiếm
   const handleSearch = (e) => {
     e.preventDefault();
+    performSearch();
     scrollToHotelList();
   };
 
   // Lọc danh sách khách sạn theo Điểm Đến, Số Sao, Đánh Giá và Sắp Xếp
   const displayedHotels = useMemo(() => {
-    return getHotelsData().filter(hotel => {
-      // 1. Lọc theo Điểm đến (khớp theo Thành phố, Tên khách sạn hoặc Địa chỉ)
-      if (destination && destination.trim() !== '') {
+    const isUsingBackend = backendHotels !== null && Array.isArray(backendHotels);
+    const sourceHotels = isUsingBackend ? backendHotels : getHotelsData();
+
+    return sourceHotels.filter(hotel => {
+      // 1. Lọc theo Điểm đến (khớp theo Thành phố, Tên khách sạn hoặc Địa chỉ khi dùng dữ liệu dự phòng)
+      if (!isUsingBackend && destination && destination.trim() !== '') {
         const term = destination.toLowerCase().trim();
         const matchCity = hotel.city?.toLowerCase().includes(term);
         const matchAddress = hotel.address?.toLowerCase().includes(term);
@@ -144,19 +182,20 @@ export default function HomePage() {
       }
 
       // 3. Lọc theo đánh giá
-      if (selectedRating && hotel.ratingScore < selectedRating) {
+      const rating = hotel.ratingScore || 8.5;
+      if (selectedRating && rating < selectedRating) {
         return false;
       }
 
       return true;
     }).sort((a, b) => {
-      const priceA = a.rooms[0]?.pricePerNight || 0;
-      const priceB = b.rooms[0]?.pricePerNight || 0;
+      const priceA = a.minPricePerNight || a.rooms?.[0]?.pricePerNight || 0;
+      const priceB = b.minPricePerNight || b.rooms?.[0]?.pricePerNight || 0;
       if (sortOption === 'priceAsc') return priceA - priceB;
-      if (sortOption === 'ratingDesc') return b.ratingScore - a.ratingScore;
+      if (sortOption === 'ratingDesc') return (b.ratingScore || 8.5) - (a.ratingScore || 8.5);
       return 0;
     });
-  }, [destination, selectedStar, selectedRating, sortOption]);
+  }, [backendHotels, destination, selectedStar, selectedRating, sortOption]);
 
   return (
     <div>
@@ -611,6 +650,22 @@ export default function HomePage() {
                 </div>
               </div>
 
+              {/* Trạng thái tra cứu API FR-06 */}
+              {isSearching && (
+                <div className="card border-0 shadow-sm rounded-3 p-4 bg-white text-center my-3">
+                  <div className="d-flex align-items-center justify-content-center gap-2 text-primary">
+                    <div className="spinner-border spinner-border-sm" role="status"></div>
+                    <span className="fw-semibold">Đang tìm kiếm phòng trống theo thời gian thực (FR-06)...</span>
+                  </div>
+                </div>
+              )}
+              {searchFeedback && !isSearching && (
+                <div className="alert alert-info py-2 px-3 small rounded-3 d-flex align-items-center gap-2 mb-3">
+                  <Info size={16} className="text-primary flex-shrink-0" />
+                  <span>{searchFeedback}</span>
+                </div>
+              )}
+
               {/* Thông báo nếu không tìm thấy khách sạn */}
               {displayedHotels.length === 0 ? (
                 <div className="card border-0 shadow-sm rounded-3 p-5 bg-white text-center my-3">
@@ -736,7 +791,7 @@ export default function HomePage() {
                         <div className="mt-3">
                           <span className="text-secondary small d-block" style={{ fontSize: '11px' }}>1 đêm</span>
                           <div className="fs-4 fw-bold text-dark mb-2">
-                            {hotel.rooms[0]?.pricePerNight.toLocaleString('vi-VN')} đ
+                            {(hotel.minPricePerNight ?? hotel.rooms?.[0]?.pricePerNight ?? 1200000).toLocaleString('vi-VN')} đ
                           </div>
 
                           <Link 
