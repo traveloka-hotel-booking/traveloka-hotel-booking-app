@@ -1743,6 +1743,32 @@ export default function AdminDashboardPage() {
           {/* ══ TAB: ĐẶT PHÒNG (FR-15) ══ */}
           {activeTab === 'bookings' && (
             <SectionCard title="Quản Lý Đơn Đặt Phòng & Nghiệp Vụ Lễ Tân" sub="Tra cứu đặt phòng, duyệt đơn theo Sơ đồ 3.3, thu tiền mặt tại quầy và xuất hóa đơn">
+              {/* Thanh hướng dẫn quy trình nghiệp vụ lễ tân */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: 10,
+                padding: '8px 14px',
+                marginBottom: 16,
+                fontSize: 12,
+                color: '#334155',
+                flexWrap: 'wrap'
+              }}>
+                <span style={{ fontWeight: 700, color: '#0f172a' }}>📋 Quy trình Lễ tân:</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ background: '#fef9c3', color: '#92400e', padding: '2px 8px', borderRadius: 6, fontWeight: 600 }}>1. Duyệt đơn (PENDING)</span>
+                  <span style={{ color: '#94a3b8' }}>➔</span>
+                  <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: 6, fontWeight: 600 }}>2. Thu tiền mặt (Quầy)</span>
+                  <span style={{ color: '#94a3b8' }}>➔</span>
+                  <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: 6, fontWeight: 600 }}>3. Nhận phòng (Linh hoạt ngày)</span>
+                  <span style={{ color: '#94a3b8' }}>➔</span>
+                  <span style={{ background: '#ede9fe', color: '#6d28d9', padding: '2px 8px', borderRadius: 6, fontWeight: 600 }}>4. Trả phòng & Xuất hóa đơn</span>
+                </span>
+              </div>
+
               {/* Thanh lọc trạng thái đặt phòng */}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
                 {[
@@ -1831,14 +1857,14 @@ export default function AdminDashboardPage() {
                 <span style={{ fontSize: 12, color: '#94a3b8', flexShrink: 0 }}>Hiển thị {filteredBookings.length}/{bookingStatusFilter === 'ALL' ? activeBookingsCount : bookings.length} đơn</span>
               </div>
               {filteredBookings.length === 0 ? <Empty text={bookingSearch ? `Không tìm thấy đơn khớp với "${bookingSearch}"` : 'Chưa có đơn đặt phòng nào'} /> : (
-                <div className="table-responsive">
-                  <table className="table table-hover align-middle mb-0" style={{ fontSize: 12.5 }}>
+                <div className="table-responsive" style={{ borderRadius: 10, border: '1px solid #e2e8f0', overflowX: 'auto' }}>
+                  <table className="table table-hover align-middle mb-0" style={{ fontSize: 12.5, width: '100%', minWidth: 920 }}>
                     <thead style={{ background: '#f8fafc' }}>
                       <tr>
-                        <Th>Mã Đơn</Th>
-                        <Th>Khách Hàng</Th>
-                        <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none', paddingBottom: 12, whiteSpace: 'nowrap' }}>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <Th style={{ width: 85, paddingLeft: 12 }}>Mã Đơn</Th>
+                        <Th style={{ minWidth: 130 }}>Khách Hàng</Th>
+                        <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none', paddingBottom: 8, whiteSpace: 'nowrap', minWidth: 140 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                             <span>Khách Sạn & Phòng</span>
                             <select
                               value={bookingHotelFilter}
@@ -1852,7 +1878,7 @@ export default function AdminDashboardPage() {
                                 color: bookingHotelFilter !== 'ALL' ? '#1d4ed8' : '#64748b',
                                 fontWeight: bookingHotelFilter !== 'ALL' ? 700 : 500,
                                 cursor: 'pointer',
-                                maxWidth: 130,
+                                maxWidth: 135,
                                 textTransform: 'none'
                               }}
                               title="Lọc nhanh theo Khách sạn"
@@ -1864,9 +1890,9 @@ export default function AdminDashboardPage() {
                             </select>
                           </div>
                         </th>
-                        <Th>Lưu Trú</Th>
-                        <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none', paddingBottom: 12, whiteSpace: 'nowrap' }}>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <Th style={{ minWidth: 120 }}>Lưu Trú</Th>
+                        <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none', paddingBottom: 8, whiteSpace: 'nowrap', minWidth: 125 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                             <span>Thanh Toán</span>
                             <select
                               value={bookingPaymentFilter}
@@ -1880,6 +1906,7 @@ export default function AdminDashboardPage() {
                                 color: bookingPaymentFilter !== 'ALL' ? '#1d4ed8' : '#64748b',
                                 fontWeight: bookingPaymentFilter !== 'ALL' ? 700 : 500,
                                 cursor: 'pointer',
+                                maxWidth: 120,
                                 textTransform: 'none'
                               }}
                               title="Lọc nhanh theo Thanh toán"
@@ -1892,9 +1919,9 @@ export default function AdminDashboardPage() {
                             </select>
                           </div>
                         </th>
-                        <Th>Tổng Tiền</Th>
-                        <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none', paddingBottom: 12, whiteSpace: 'nowrap' }}>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <Th style={{ minWidth: 95 }}>Tổng Tiền</Th>
+                        <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none', paddingBottom: 8, whiteSpace: 'nowrap', minWidth: 125 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                             <span>Trạng Thái</span>
                             <select
                               value={bookingStatusFilter}
@@ -1908,6 +1935,7 @@ export default function AdminDashboardPage() {
                                 color: bookingStatusFilter !== 'ALL' ? '#1d4ed8' : '#64748b',
                                 fontWeight: bookingStatusFilter !== 'ALL' ? 700 : 500,
                                 cursor: 'pointer',
+                                maxWidth: 120,
                                 textTransform: 'none'
                               }}
                               title="Lọc nhanh theo Trạng thái"
@@ -1922,28 +1950,50 @@ export default function AdminDashboardPage() {
                             </select>
                           </div>
                         </th>
-                        <Th>Thao Tác Lễ Tân</Th>
+                        <th style={{
+                          color: '#0f172a',
+                          fontWeight: 700,
+                          fontSize: 11,
+                          textTransform: 'uppercase',
+                          border: 'none',
+                          paddingBottom: 8,
+                          whiteSpace: 'nowrap',
+                          minWidth: 180,
+                          position: 'sticky',
+                          right: 0,
+                          background: '#f8fafc',
+                          zIndex: 5,
+                          boxShadow: '-4px 0 8px rgba(0, 0, 0, 0.06)',
+                          paddingLeft: 12,
+                          paddingRight: 12
+                        }}>
+                          ⚡ Thao Tác Lễ Tân
+                        </th>
                       </tr>
                     </thead>
                     <tbody>{filteredBookings.map(b => {
                       const rawS = (b.rawStatus || b.status || '').toUpperCase();
                       return (
                         <tr key={b.id}>
-                          <td className="font-monospace fw-bold text-primary" style={{ fontSize: 12 }}>{b.bookingCode || b.id}</td>
-                          <td>
-                            <div style={{ fontWeight: 600, color: '#1e293b' }}>{b.contactName || b.guestName}</div>
-                            <div style={{ fontSize: 11, color: '#94a3b8' }}>{b.contactPhone}</div>
-                            {b.contactEmail && b.contactEmail !== '—' && <div style={{ fontSize: 10.5, color: '#64748b' }}>{b.contactEmail}</div>}
+                          <td className="font-monospace fw-bold text-primary" style={{ fontSize: 12, paddingLeft: 12, whiteSpace: 'nowrap' }}>{b.bookingCode || b.id}</td>
+                          <td style={{ minWidth: 130 }}>
+                            <div style={{ fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap' }}>{b.contactName || b.guestName}</div>
+                            <div style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>{b.contactPhone}</div>
+                            {b.contactEmail && b.contactEmail !== '—' && (
+                              <div style={{ fontSize: 10.5, color: '#64748b', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={b.contactEmail}>
+                                {b.contactEmail}
+                              </div>
+                            )}
                           </td>
-                          <td>
-                            <div style={{ fontWeight: 600, color: '#1e293b', maxWidth: 170 }}>{b.hotelName}</div>
-                            <div style={{ fontSize: 11, color: '#64748b' }}>{b.roomName}</div>
+                          <td style={{ maxWidth: 160 }}>
+                            <div style={{ fontWeight: 600, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={b.hotelName}>{b.hotelName}</div>
+                            <div style={{ fontSize: 11, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={b.roomName}>{b.roomName}</div>
                           </td>
-                          <td>
-                            <div style={{ fontSize: 11.5, color: '#374151', whiteSpace: 'nowrap' }}>{b.checkInDate} → {b.checkOutDate}</div>
-                            <span style={{ background: '#f1f5f9', color: '#64748b', padding: '2px 7px', borderRadius: 6, fontSize: 10 }}>{b.nights} đêm</span>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <div style={{ fontSize: 11.5, color: '#374151' }}>{b.checkInDate} → {b.checkOutDate}</div>
+                            <span style={{ background: '#f1f5f9', color: '#64748b', padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 500 }}>{b.nights} đêm</span>
                           </td>
-                          <td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
                             {b.paymentMethod === 'vnpay' ? (
                               <Badge bg="#eff6ff" color="#3b82f6">✓ VNPAY ({b.paymentStatus === 'paid' ? 'Đã TT' : 'Chờ TT'})</Badge>
                             ) : (
@@ -1953,9 +2003,19 @@ export default function AdminDashboardPage() {
                             )}
                           </td>
                           <td style={{ fontWeight: 700, color: '#dc2626', whiteSpace: 'nowrap' }}>{b.totalAmount?.toLocaleString('vi-VN')} đ</td>
-                          <td><StatusBadge status={rawS} isOverdueCheckout={b.isOverdueCheckout} /></td>
-                          <td>
-                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          <td style={{ whiteSpace: 'nowrap' }}><StatusBadge status={rawS} isOverdueCheckout={b.isOverdueCheckout} /></td>
+                          <td style={{
+                            position: 'sticky',
+                            right: 0,
+                            background: '#ffffff',
+                            zIndex: 4,
+                            boxShadow: '-4px 0 8px rgba(0, 0, 0, 0.06)',
+                            minWidth: 180,
+                            paddingLeft: 12,
+                            paddingRight: 12,
+                            whiteSpace: 'nowrap'
+                          }}>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap', alignItems: 'center' }}>
                               {/* Đơn QUÁ HẠN: Nút Xóa đơn quá hạn */}
                               {rawS === 'EXPIRED' && (
                                 <SmBtn color="red" onClick={() => handleDeleteBooking(b)} icon={<Trash2 size={12} />}>
@@ -2840,7 +2900,7 @@ function Modal({ title, children, onClose, dark, action }) {
     </div>
   );
 }
-function Th({ children }) { return <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none', paddingBottom: 12, whiteSpace: 'nowrap' }}>{children}</th>; }
+function Th({ children, style }) { return <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none', paddingBottom: 12, whiteSpace: 'nowrap', ...style }}>{children}</th>; }
 function Badge({ bg, color, children }) { return <span style={{ background: bg, color, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>{children}</span>; }
 function StatusBadge({ status, isOverdueCheckout }) {
   if (isOverdueCheckout) return <Badge bg="#fee2e2" color="#b91c1c">⚠️ Quá hạn trả phòng</Badge>;
