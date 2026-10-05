@@ -1743,32 +1743,6 @@ export default function AdminDashboardPage() {
           {/* ══ TAB: ĐẶT PHÒNG (FR-15) ══ */}
           {activeTab === 'bookings' && (
             <SectionCard title="Quản Lý Đơn Đặt Phòng & Nghiệp Vụ Lễ Tân" sub="Tra cứu đặt phòng, duyệt đơn theo Sơ đồ 3.3, thu tiền mặt tại quầy và xuất hóa đơn">
-              {/* Thanh hướng dẫn quy trình nghiệp vụ lễ tân */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: 10,
-                padding: '8px 14px',
-                marginBottom: 16,
-                fontSize: 12,
-                color: '#334155',
-                flexWrap: 'wrap'
-              }}>
-                <span style={{ fontWeight: 700, color: '#0f172a' }}>📋 Quy trình Lễ tân:</span>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  <span style={{ background: '#fef9c3', color: '#92400e', padding: '2px 8px', borderRadius: 6, fontWeight: 600 }}>1. Duyệt đơn (PENDING)</span>
-                  <span style={{ color: '#94a3b8' }}>➔</span>
-                  <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: 6, fontWeight: 600 }}>2. Thu tiền mặt (Quầy)</span>
-                  <span style={{ color: '#94a3b8' }}>➔</span>
-                  <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: 6, fontWeight: 600 }}>3. Nhận phòng (Linh hoạt ngày)</span>
-                  <span style={{ color: '#94a3b8' }}>➔</span>
-                  <span style={{ background: '#ede9fe', color: '#6d28d9', padding: '2px 8px', borderRadius: 6, fontWeight: 600 }}>4. Trả phòng & Xuất hóa đơn</span>
-                </span>
-              </div>
-
               {/* Thanh lọc trạng thái đặt phòng */}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
                 {[
@@ -1857,14 +1831,14 @@ export default function AdminDashboardPage() {
                 <span style={{ fontSize: 12, color: '#94a3b8', flexShrink: 0 }}>Hiển thị {filteredBookings.length}/{bookingStatusFilter === 'ALL' ? activeBookingsCount : bookings.length} đơn</span>
               </div>
               {filteredBookings.length === 0 ? <Empty text={bookingSearch ? `Không tìm thấy đơn khớp với "${bookingSearch}"` : 'Chưa có đơn đặt phòng nào'} /> : (
-                <div className="table-responsive" style={{ borderRadius: 10, border: '1px solid #e2e8f0', overflowX: 'auto' }}>
-                  <table className="table table-hover align-middle mb-0" style={{ fontSize: 12.5, width: '100%', minWidth: 920 }}>
+                <div className="table-responsive">
+                  <table className="table table-hover align-middle mb-0" style={{ fontSize: 12.5 }}>
                     <thead style={{ background: '#f8fafc' }}>
                       <tr>
-                        <Th style={{ width: 85, paddingLeft: 12 }}>Mã Đơn</Th>
-                        <Th style={{ minWidth: 130 }}>Khách Hàng</Th>
-                        <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none', paddingBottom: 8, whiteSpace: 'nowrap', minWidth: 140 }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <Th>Mã Đơn</Th>
+                        <Th>Khách Hàng</Th>
+                        <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none', paddingBottom: 10 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                             <span>Khách Sạn & Phòng</span>
                             <select
                               value={bookingHotelFilter}
@@ -1878,7 +1852,7 @@ export default function AdminDashboardPage() {
                                 color: bookingHotelFilter !== 'ALL' ? '#1d4ed8' : '#64748b',
                                 fontWeight: bookingHotelFilter !== 'ALL' ? 700 : 500,
                                 cursor: 'pointer',
-                                maxWidth: 135,
+                                maxWidth: 130,
                                 textTransform: 'none'
                               }}
                               title="Lọc nhanh theo Khách sạn"
@@ -1890,9 +1864,9 @@ export default function AdminDashboardPage() {
                             </select>
                           </div>
                         </th>
-                        <Th style={{ minWidth: 120 }}>Lưu Trú</Th>
-                        <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none', paddingBottom: 8, whiteSpace: 'nowrap', minWidth: 125 }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <Th>Lưu Trú</Th>
+                        <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none', paddingBottom: 10 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                             <span>Thanh Toán</span>
                             <select
                               value={bookingPaymentFilter}
@@ -1906,7 +1880,7 @@ export default function AdminDashboardPage() {
                                 color: bookingPaymentFilter !== 'ALL' ? '#1d4ed8' : '#64748b',
                                 fontWeight: bookingPaymentFilter !== 'ALL' ? 700 : 500,
                                 cursor: 'pointer',
-                                maxWidth: 120,
+                                maxWidth: 110,
                                 textTransform: 'none'
                               }}
                               title="Lọc nhanh theo Thanh toán"
@@ -1919,9 +1893,9 @@ export default function AdminDashboardPage() {
                             </select>
                           </div>
                         </th>
-                        <Th style={{ minWidth: 95 }}>Tổng Tiền</Th>
-                        <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none', paddingBottom: 8, whiteSpace: 'nowrap', minWidth: 125 }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <Th>Tổng Tiền</Th>
+                        <th style={{ color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', border: 'none', paddingBottom: 10 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                             <span>Trạng Thái</span>
                             <select
                               value={bookingStatusFilter}
@@ -1935,7 +1909,7 @@ export default function AdminDashboardPage() {
                                 color: bookingStatusFilter !== 'ALL' ? '#1d4ed8' : '#64748b',
                                 fontWeight: bookingStatusFilter !== 'ALL' ? 700 : 500,
                                 cursor: 'pointer',
-                                maxWidth: 120,
+                                maxWidth: 110,
                                 textTransform: 'none'
                               }}
                               title="Lọc nhanh theo Trạng thái"
@@ -1950,52 +1924,29 @@ export default function AdminDashboardPage() {
                             </select>
                           </div>
                         </th>
-                        <th style={{
-                          color: '#0f172a',
-                          fontWeight: 700,
-                          fontSize: 11,
-                          textTransform: 'uppercase',
-                          border: 'none',
-                          paddingBottom: 8,
-                          whiteSpace: 'nowrap',
-                          minWidth: 180,
-                          position: 'sticky',
-                          right: 0,
-                          background: '#f8fafc',
-                          zIndex: 5,
-                          boxShadow: '-4px 0 8px rgba(0, 0, 0, 0.06)',
-                          paddingLeft: 12,
-                          paddingRight: 12
-                        }}>
-                          ⚡ Thao Tác Lễ Tân
-                        </th>
+                        <Th>Lễ Tân</Th>
                       </tr>
                     </thead>
                     <tbody>{filteredBookings.map(b => {
                       const rawS = (b.rawStatus || b.status || '').toUpperCase();
                       return (
                         <tr key={b.id}>
-                          <td className="font-monospace fw-bold text-primary" style={{ fontSize: 12, paddingLeft: 12, whiteSpace: 'nowrap' }}>{b.bookingCode || b.id}</td>
-                          <td style={{ minWidth: 130 }}>
-                            <div style={{ fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap' }}>{b.contactName || b.guestName}</div>
-                            <div style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>{b.contactPhone}</div>
-                            {b.contactEmail && b.contactEmail !== '—' && (
-                              <div style={{ fontSize: 10.5, color: '#64748b', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={b.contactEmail}>
-                                {b.contactEmail}
-                              </div>
-                            )}
+                          <td className="font-monospace fw-bold text-primary" style={{ fontSize: 12 }}>{b.bookingCode || b.id}</td>
+                          <td>
+                            <div style={{ fontWeight: 600, color: '#1e293b' }}>{b.contactName || b.guestName}</div>
+                            <div style={{ fontSize: 11, color: '#94a3b8' }}>{b.contactPhone}</div>
                           </td>
-                          <td style={{ maxWidth: 160 }}>
-                            <div style={{ fontWeight: 600, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={b.hotelName}>{b.hotelName}</div>
-                            <div style={{ fontSize: 11, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={b.roomName}>{b.roomName}</div>
+                          <td>
+                            <div style={{ fontWeight: 600, color: '#1e293b', maxWidth: 140 }} className="text-truncate" title={b.hotelName}>{b.hotelName}</div>
+                            <div style={{ fontSize: 11, color: '#64748b', maxWidth: 140 }} className="text-truncate" title={b.roomName}>{b.roomName}</div>
                           </td>
-                          <td style={{ whiteSpace: 'nowrap' }}>
-                            <div style={{ fontSize: 11.5, color: '#374151' }}>{b.checkInDate} → {b.checkOutDate}</div>
+                          <td>
+                            <div style={{ fontSize: 11.5, color: '#374151', whiteSpace: 'nowrap' }}>{b.checkInDate} → {b.checkOutDate}</div>
                             <span style={{ background: '#f1f5f9', color: '#64748b', padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 500 }}>{b.nights} đêm</span>
                           </td>
-                          <td style={{ whiteSpace: 'nowrap' }}>
+                          <td>
                             {b.paymentMethod === 'vnpay' ? (
-                              <Badge bg="#eff6ff" color="#3b82f6">✓ VNPAY ({b.paymentStatus === 'paid' ? 'Đã TT' : 'Chờ TT'})</Badge>
+                              <Badge bg="#eff6ff" color="#3b82f6">✓ VNPay ({b.paymentStatus === 'paid' ? 'Đã TT' : 'Chờ TT'})</Badge>
                             ) : (
                               b.paymentStatus === 'paid' 
                                 ? <Badge bg="#dcfce7" color="#16a34a">✓ Tiền mặt (Đã thu)</Badge> 
@@ -2003,19 +1954,9 @@ export default function AdminDashboardPage() {
                             )}
                           </td>
                           <td style={{ fontWeight: 700, color: '#dc2626', whiteSpace: 'nowrap' }}>{b.totalAmount?.toLocaleString('vi-VN')} đ</td>
-                          <td style={{ whiteSpace: 'nowrap' }}><StatusBadge status={rawS} isOverdueCheckout={b.isOverdueCheckout} /></td>
-                          <td style={{
-                            position: 'sticky',
-                            right: 0,
-                            background: '#ffffff',
-                            zIndex: 4,
-                            boxShadow: '-4px 0 8px rgba(0, 0, 0, 0.06)',
-                            minWidth: 180,
-                            paddingLeft: 12,
-                            paddingRight: 12,
-                            whiteSpace: 'nowrap'
-                          }}>
-                            <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap', alignItems: 'center' }}>
+                          <td><StatusBadge status={rawS} isOverdueCheckout={b.isOverdueCheckout} /></td>
+                          <td>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                               {/* Đơn QUÁ HẠN: Nút Xóa đơn quá hạn */}
                               {rawS === 'EXPIRED' && (
                                 <SmBtn color="red" onClick={() => handleDeleteBooking(b)} icon={<Trash2 size={12} />}>
@@ -2045,7 +1986,7 @@ export default function AdminDashboardPage() {
                                       }}
                                       title="Khách chưa thanh toán VNPay (hạn 30p). Đơn sẽ tự động duyệt khi chuyển khoản thành công!"
                                     >
-                                      <Clock size={12} /> Chờ chuyển khoản (30p)
+                                      <Clock size={12} /> Chờ TT (30p)
                                     </button>
                                   ) : (
                                     <SmBtn color="green" onClick={() => handleConfirmBooking(b)} icon={<Check size={13} />}>
@@ -2062,31 +2003,9 @@ export default function AdminDashboardPage() {
                               {rawS === 'CONFIRMED' && (
                                 <>
                                   {b.paymentMethod === 'pay_at_hotel' && b.paymentStatus !== 'paid' ? (
-                                    <>
-                                      <SmBtn color="green" onClick={() => markAsPaid(b.id)} icon={<Banknote size={12} />}>
-                                        Thu tiền
-                                      </SmBtn>
-                                      <button
-                                        type="button"
-                                        onClick={() => alert(`Chặn nhận phòng: Đơn phòng này chọn thanh toán tiền mặt tại khách sạn (${(b.totalAmount || 0).toLocaleString('vi-VN')} đ) nhưng chưa được ghi nhận thu tiền.\n\nTheo quy định nghiệp vụ, Lễ tân phải bấm nút "Thu tiền" trước khi bàn giao phòng cho khách!`)}
-                                        style={{
-                                          background: '#f1f5f9',
-                                          color: '#94a3b8',
-                                          border: '1px dashed #cbd5e1',
-                                          borderRadius: 8,
-                                          padding: '6px 10px',
-                                          fontSize: 12,
-                                          fontWeight: 600,
-                                          cursor: 'not-allowed',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: 4
-                                        }}
-                                        title="Bắt buộc thu tiền mặt trước khi làm thủ tục nhận phòng!"
-                                      >
-                                        <LogIn size={12} /> Chưa thu tiền
-                                      </button>
-                                    </>
+                                    <SmBtn color="green" onClick={() => markAsPaid(b.id)} icon={<Banknote size={12} />}>
+                                      Thu tiền
+                                    </SmBtn>
                                   ) : (
                                     <SmBtn color="blue" onClick={() => openCheckinModal(b)} icon={<LogIn size={12} />}>
                                       Nhận phòng
