@@ -1742,7 +1742,7 @@ export default function AdminDashboardPage() {
           {/* ══ TAB: ĐẶT PHÒNG ══ */}
           {/* ══ TAB: ĐẶT PHÒNG (FR-15) ══ */}
           {activeTab === 'bookings' && (
-            <SectionCard title="Quản Lý Đơn Đặt Phòng & Nghiệp Vụ Lễ Tân" sub="Tra cứu đặt phòng, duyệt đơn theo Sơ đồ 3.3, thu tiền mặt tại quầy và xuất hóa đơn">
+            <SectionCard>
               {/* Thanh lọc trạng thái đặt phòng */}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
                 {[
