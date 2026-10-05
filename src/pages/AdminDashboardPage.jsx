@@ -776,6 +776,8 @@ export default function AdminDashboardPage() {
   // ── Bookings logic (FR-15) ──
   const [bookingSearch, setBookingSearch] = useState('');
   const [bookingStatusFilter, setBookingStatusFilter] = useState('ALL');
+  const [bookingHotelFilter, setBookingHotelFilter] = useState('ALL');
+  const [bookingPaymentFilter, setBookingPaymentFilter] = useState('ALL');
   const [selectedInvoice, setSelectedInvoice] = useState(null);
 
   // Tải danh sách đơn đặt phòng từ Backend
@@ -983,6 +985,76 @@ export default function AdminDashboardPage() {
     showToast('Đã xác nhận thu tiền mặt cho đơn!');
   };
 
+  // ── Flexible Check-in Modal state & handlers ──
+  const [checkinModalBooking, setCheckinModalBooking] = useState(null);
+  const [actualCheckInDate, setActualCheckInDate] = useState('');
+  const [isSubmittingCheckin, setIsSubmittingCheckin] = useState(false);
+
+  const openCheckinModal = (b) => {
+    setCheckinModalBooking(b);
+    const todayStr = new Date().toISOString().split('T')[0];
+    const defaultDate = (b.checkInDate && /^\d{4}-\d{2}-\d{2}$/.test(b.checkInDate))
+      ? b.checkInDate
+      : todayStr;
+    setActualCheckInDate(defaultDate);
+  };
+
+  const handleConfirmCheckin = async () => {
+    if (!checkinModalBooking || !actualCheckInDate) return;
+    const b = checkinModalBooking;
+    const bookingId = b.raw?.id || (typeof b.id === 'number' ? b.id : null);
+
+    if (b.checkOutDate && /^\d{4}-\d{2}-\d{2}$/.test(b.checkOutDate) && actualCheckInDate > b.checkOutDate) {
+      alert(`Ngày nhận phòng thực tế (${actualCheckInDate}) không thể sau ngày trả phòng (${b.checkOutDate})!`);
+      return;
+    }
+
+    try {
+      setIsSubmittingCheckin(true);
+      showToast('Đang xử lý nhận phòng và cập nhật lịch lưu trú...');
+      if (bookingId) {
+        const res = await apiFetch(`/admin/bookings/${bookingId}/checkin?actualCheckInDate=${actualCheckInDate}`, {
+          method: 'PUT'
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(getFriendlyErrorMessage(data, 'Nhận phòng thất bại'));
+        }
+      }
+      showToast('Đã hoàn tất nhận phòng và cập nhật lịch lưu trú thành công!');
+      setCheckinModalBooking(null);
+      await fetchBookings();
+    } catch (err) {
+      console.error('Checkin error:', err);
+      // Fallback tính toán cục bộ
+      let nights = 1;
+      if (b.checkOutDate && /^\d{4}-\d{2}-\d{2}$/.test(b.checkOutDate)) {
+        nights = Math.max(1, Math.round((new Date(b.checkOutDate) - new Date(actualCheckInDate)) / (1000 * 60 * 60 * 24)));
+      }
+      const pricePerNight = Math.round((b.totalAmount || 0) / (b.nights || 1));
+      const newTotal = pricePerNight * nights;
+
+      const updated = bookings.map(item => {
+        if (item.id === b.id || (bookingId && item.raw?.id === bookingId)) {
+          return {
+            ...item,
+            status: 'checked_in',
+            rawStatus: 'CHECKED_IN',
+            checkInDate: actualCheckInDate,
+            nights,
+            totalAmount: newTotal
+          };
+        }
+        return item;
+      });
+      updateBookings(updated);
+      setCheckinModalBooking(null);
+      showToast(sanitizeErrorMessage(err, 'Đã hoàn tất nhận phòng và cập nhật lịch lưu trú!'));
+    } finally {
+      setIsSubmittingCheckin(false);
+    }
+  };
+
   // ── Flexible Checkout Modal state & handlers ──
   const [checkoutModalBooking, setCheckoutModalBooking] = useState(null);
   const [actualCheckOutDate, setActualCheckOutDate] = useState('');
@@ -1055,8 +1127,17 @@ export default function AdminDashboardPage() {
     }
   };
 
+  // Danh sách tên khách sạn duy nhất để đưa vào Dropdown lọc Khách sạn
+  const uniqueHotels = useMemo(() => {
+    const set = new Set();
+    hotels.forEach(h => { if (h.name) set.add(h.name); });
+    bookings.forEach(b => { if (b.hotelName) set.add(b.hotelName); });
+    return Array.from(set).sort();
+  }, [hotels, bookings]);
+
   const filteredBookings = useMemo(() => {
     return bookings.filter(b => {
+      // 1. Lọc theo Trạng thái (Dropdown hoặc Tab)
       if (bookingStatusFilter !== 'ALL') {
         const rawS = (b.rawStatus || b.status || '').toUpperCase();
         if (bookingStatusFilter === 'EXPIRED') {
@@ -1065,6 +1146,27 @@ export default function AdminDashboardPage() {
           if (rawS !== bookingStatusFilter) return false;
         }
       }
+
+      // 2. Lọc theo Khách sạn
+      if (bookingHotelFilter !== 'ALL') {
+        const hName = (b.hotelName || '').toLowerCase().trim();
+        if (!hName.includes(bookingHotelFilter.toLowerCase().trim())) return false;
+      }
+
+      // 3. Lọc theo Thanh toán
+      if (bookingPaymentFilter !== 'ALL') {
+        if (bookingPaymentFilter === 'paid') {
+          if (b.paymentStatus !== 'paid') return false;
+        } else if (bookingPaymentFilter === 'pending') {
+          if (b.paymentStatus === 'paid') return false;
+        } else if (bookingPaymentFilter === 'pay_at_hotel') {
+          if (b.paymentMethod !== 'pay_at_hotel' && b.paymentMethod !== 'cash') return false;
+        } else if (bookingPaymentFilter === 'vnpay') {
+          if (b.paymentMethod !== 'vnpay') return false;
+        }
+      }
+
+      // 4. Lọc theo Ô tìm kiếm
       if (!bookingSearch.trim()) return true;
       const q = bookingSearch.toLowerCase();
       return (
@@ -1078,7 +1180,7 @@ export default function AdminDashboardPage() {
         b.roomName?.toLowerCase().includes(q)
       );
     });
-  }, [bookings, bookingSearch, bookingStatusFilter]);
+  }, [bookings, bookingSearch, bookingStatusFilter, bookingHotelFilter, bookingPaymentFilter]);
 
   // ── Coupons state ──
   const [coupons] = useState(COUPONS_DATA);
@@ -1658,38 +1760,6 @@ export default function AdminDashboardPage() {
 
                 <button
                   type="button"
-                  onClick={handleCleanupExpiredBookings}
-                  style={{
-                    background: '#fef3c7',
-                    border: '1px solid #fde68a',
-                    color: '#92400e',
-                    borderRadius: 20,
-                    padding: '6px 14px',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6
-                  }}
-                  title="Xóa nhanh tất cả các đơn chưa duyệt mà đã quá ngày nhận phòng"
-                >
-                  <span>🧹 Dọn dẹp đơn quá hạn</span>
-                  {bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'EXPIRED').length > 0 && (
-                    <span style={{
-                      background: '#dc2626',
-                      color: '#fff',
-                      padding: '1px 7px',
-                      borderRadius: 10,
-                      fontSize: 11
-                    }}>
-                      {bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'EXPIRED').length}
-                    </span>
-                  )}
-                </button>
-
-                <button
-                  type="button"
                   onClick={fetchBookings}
                   style={{
                     background: '#fff',
@@ -1710,6 +1780,86 @@ export default function AdminDashboardPage() {
                   <RotateCcw size={13} className={isLoadingBookings ? 'spinner-border spinner-border-sm' : ''} />
                   <span>Tải lại</span>
                 </button>
+              </div>
+
+              {/* Bộ lọc Dropdown: Trạng thái, Khách sạn, Thanh toán */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 16px', marginBottom: 14 }}>
+                {/* 1. Dropdown Trạng thái */}
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: 4, display: 'block' }}>
+                    Trạng Thái Đơn
+                  </label>
+                  <select
+                    className="form-select form-select-sm"
+                    value={bookingStatusFilter}
+                    onChange={(e) => setBookingStatusFilter(e.target.value)}
+                    style={{ fontSize: 12.5, borderRadius: 8, borderColor: '#cbd5e1' }}
+                  >
+                    <option value="ALL">Tất cả trạng thái ({bookings.length})</option>
+                    <option value="PENDING">⏳ Chờ duyệt ({bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'PENDING').length})</option>
+                    <option value="CONFIRMED">✓ Đã xác nhận ({bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CONFIRMED').length})</option>
+                    <option value="CHECKED_IN">🏨 Đang ở / Nhận phòng ({bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CHECKED_IN').length})</option>
+                    <option value="COMPLETED">🏁 Hoàn thành ({bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'COMPLETED').length})</option>
+                    <option value="EXPIRED">⚠️ Đã quá hạn ({bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'EXPIRED').length})</option>
+                    <option value="CANCELLED">✕ Đã hủy ({bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CANCELLED').length})</option>
+                  </select>
+                </div>
+
+                {/* 2. Dropdown Khách sạn */}
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: 4, display: 'block' }}>
+                    Khách Sạn
+                  </label>
+                  <select
+                    className="form-select form-select-sm"
+                    value={bookingHotelFilter}
+                    onChange={(e) => setBookingHotelFilter(e.target.value)}
+                    style={{ fontSize: 12.5, borderRadius: 8, borderColor: '#cbd5e1' }}
+                  >
+                    <option value="ALL">Tất cả khách sạn ({uniqueHotels.length})</option>
+                    {uniqueHotels.map(hName => (
+                      <option key={hName} value={hName}>{hName}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 3. Dropdown Thanh toán */}
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: 4, display: 'block' }}>
+                    Thanh Toán
+                  </label>
+                  <select
+                    className="form-select form-select-sm"
+                    value={bookingPaymentFilter}
+                    onChange={(e) => setBookingPaymentFilter(e.target.value)}
+                    style={{ fontSize: 12.5, borderRadius: 8, borderColor: '#cbd5e1' }}
+                  >
+                    <option value="ALL">Tất cả thanh toán</option>
+                    <option value="paid">✅ Đã thanh toán (paid)</option>
+                    <option value="pending">⏳ Chờ thanh toán (pending)</option>
+                    <option value="pay_at_hotel">💵 Tiền mặt tại khách sạn</option>
+                    <option value="vnpay">💳 Chuyển khoản VNPay</option>
+                  </select>
+                </div>
+
+                {/* Nút đặt lại bộ lọc */}
+                {(bookingStatusFilter !== 'ALL' || bookingHotelFilter !== 'ALL' || bookingPaymentFilter !== 'ALL' || bookingSearch) && (
+                  <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBookingStatusFilter('ALL');
+                        setBookingHotelFilter('ALL');
+                        setBookingPaymentFilter('ALL');
+                        setBookingSearch('');
+                      }}
+                      className="btn btn-outline-secondary btn-sm"
+                      style={{ fontSize: 12, borderRadius: 8, height: 31, display: 'flex', alignItems: 'center', gap: 4, width: '100%', justifyContent: 'center' }}
+                    >
+                      <RotateCcw size={12} /> Đặt lại bộ lọc
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 16px', marginBottom: 20 }}>
@@ -1825,7 +1975,7 @@ export default function AdminDashboardPage() {
                                       </button>
                                     </>
                                   ) : (
-                                    <SmBtn color="blue" onClick={() => handleUpdateBookingStatus(b, 'CHECKED_IN')} icon={<LogIn size={12} />}>
+                                    <SmBtn color="blue" onClick={() => openCheckinModal(b)} icon={<LogIn size={12} />}>
                                       Nhận phòng
                                     </SmBtn>
                                   )}
@@ -2344,6 +2494,120 @@ export default function AdminDashboardPage() {
           <div style={{ padding: '14px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
             <button onClick={() => setSelectedInvoice(null)} style={{ background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: 10, padding: '10px 24px', fontWeight: 600, cursor: 'pointer' }}>Đóng</button>
             <button onClick={() => window.print()} style={{ background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 24px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}><Printer size={15} /> In Phiếu Thu</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* ════ MODAL NHẬN PHÒNG LINH HOẠT & CẬP NHẬT LỊCH LƯU TRÚ ════ */}
+      {checkinModalBooking && (
+        <Modal onClose={() => setCheckinModalBooking(null)} title="Thủ Tục Nhận Phòng & Cập Nhật Lịch Lưu Trú">
+          <div style={{ padding: '24px 28px' }}>
+            <div style={{ background: '#f8fafc', borderRadius: 12, padding: 16, border: '1px solid #e2e8f0', marginBottom: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 13 }}>
+                <div><span style={{ color: '#64748b' }}>Mã đặt phòng: </span><strong>{checkinModalBooking.bookingCode || checkinModalBooking.id}</strong></div>
+                <div><span style={{ color: '#64748b' }}>Khách hàng: </span><strong>{checkinModalBooking.contactName}</strong> ({checkinModalBooking.contactPhone})</div>
+                <div><span style={{ color: '#64748b' }}>Khách sạn & Phòng: </span><strong>{checkinModalBooking.hotelName}</strong> - {checkinModalBooking.roomName}</div>
+                <div><span style={{ color: '#64748b' }}>Phương thức: </span><strong>{checkinModalBooking.paymentMethod === 'pay_at_hotel' ? 'Tiền mặt tại quầy' : 'VNPAY'}</strong></div>
+                <div><span style={{ color: '#64748b' }}>Ngày nhận phòng ban đầu: </span><strong>{checkinModalBooking.checkInDate}</strong></div>
+                <div><span style={{ color: '#64748b' }}>Ngày trả dự kiến: </span><strong>{checkinModalBooking.checkOutDate}</strong> ({checkinModalBooking.nights} đêm)</div>
+              </div>
+            </div>
+
+            {/* Input chọn ngày nhận phòng thực tế */}
+            <div style={{ marginBottom: 20 }}>
+              <FL>Lựa chọn ngày nhận phòng thực tế của khách hàng</FL>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                <input
+                  type="date"
+                  className="form-control"
+                  style={{ maxWidth: 260, fontSize: 14, fontWeight: 600 }}
+                  value={actualCheckInDate}
+                  max={checkinModalBooking.checkOutDate}
+                  onChange={(e) => setActualCheckInDate(e.target.value)}
+                  required
+                />
+                <span style={{ fontSize: 12.5, color: '#64748b' }}>
+                  (Áp dụng khi khách đến nhận phòng sớm hơn hoặc muộn hơn lịch đặt)
+                </span>
+              </div>
+            </div>
+
+            {/* Bảng tính toán lại số đêm & tổng tiền */}
+            {(() => {
+              const checkOutDate = checkinModalBooking.checkOutDate;
+              let calcNights = checkinModalBooking.nights || 1;
+              if (actualCheckInDate && checkOutDate && /^\d{4}-\d{2}-\d{2}$/.test(actualCheckInDate) && /^\d{4}-\d{2}-\d{2}$/.test(checkOutDate)) {
+                const diffTime = new Date(checkOutDate).getTime() - new Date(actualCheckInDate).getTime();
+                calcNights = Math.max(1, Math.round(diffTime / (1000 * 60 * 60 * 24)));
+              }
+              const origNights = checkinModalBooking.nights || 1;
+              const pricePerNight = Math.round((checkinModalBooking.totalAmount || 0) / origNights);
+              const newTotal = pricePerNight * calcNights;
+              const diffAmount = newTotal - (checkinModalBooking.totalAmount || 0);
+
+              return (
+                <div style={{ background: '#eff6ff', borderRadius: 12, padding: 18, border: '1px solid #bfdbfe', marginBottom: 20 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#1e40af', marginBottom: 10 }}>
+                    📊 Bảng Quyết Toán Tiền Phòng Theo Ngày Nhận Thực Tế
+                  </div>
+                  <table className="table table-sm table-bordered bg-white mb-2" style={{ fontSize: 13 }}>
+                    <tbody>
+                      <tr>
+                        <td style={{ color: '#64748b', width: '40%' }}>Số đêm lưu trú thực tế:</td>
+                        <td><strong>{calcNights} đêm</strong> {calcNights !== origNights && <span style={{ fontSize: 11.5, color: '#b45309' }}>(Ban đầu: {origNights} đêm)</span>}</td>
+                      </tr>
+                      <tr>
+                        <td style={{ color: '#64748b' }}>Đơn giá mỗi đêm:</td>
+                        <td><strong>{pricePerNight.toLocaleString('vi-VN')} đ</strong> / đêm</td>
+                      </tr>
+                      <tr>
+                        <td style={{ color: '#64748b' }}>Tổng tiền ban đầu:</td>
+                        <td style={{ color: '#64748b' }}>{checkinModalBooking.totalAmount?.toLocaleString('vi-VN')} đ</td>
+                      </tr>
+                      <tr style={{ background: '#f8fafc' }}>
+                        <td style={{ fontWeight: 700, color: '#1e293b' }}>Tổng tiền hóa đơn mới:</td>
+                        <td style={{ fontWeight: 800, fontSize: 15, color: '#2563eb' }}>{newTotal.toLocaleString('vi-VN')} đ</td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  {diffAmount > 0 && (
+                    <div style={{ fontSize: 12.5, color: '#92400e', background: '#fef3c7', padding: '8px 12px', borderRadius: 8, border: '1px solid #fde68a' }}>
+                      ⚠️ Khách nhận phòng sớm hơn dự kiến ({calcNights - origNights} đêm thêm). Phụ thu lưu trú: <strong>+{diffAmount.toLocaleString('vi-VN')} đ</strong>.
+                    </div>
+                  )}
+                  {diffAmount < 0 && (
+                    <div style={{ fontSize: 12.5, color: '#1e40af', background: '#dbeafe', padding: '8px 12px', borderRadius: 8, border: '1px solid #bfdbfe' }}>
+                      ℹ️ Khách nhận phòng trễ hơn dự kiến (giảm {origNights - calcNights} đêm). Số tiền giảm trừ: <strong>{diffAmount.toLocaleString('vi-VN')} đ</strong>.
+                    </div>
+                  )}
+                  {diffAmount === 0 && (
+                    <div style={{ fontSize: 12.5, color: '#166534' }}>
+                      ✓ Khách nhận phòng đúng ngày dự kiến. Số tiền hóa đơn giữ nguyên.
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setCheckinModalBooking(null)}
+                style={{ background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: 10, padding: '10px 22px', fontWeight: 600, cursor: 'pointer' }}
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                type="button"
+                disabled={isSubmittingCheckin}
+                onClick={handleConfirmCheckin}
+                style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 24px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <LogIn size={16} />
+                {isSubmittingCheckin ? 'Đang Xử Lý...' : 'Xác Nhận Nhận Phòng & Cập Nhật Lịch Lưu Trú'}
+              </button>
+            </div>
           </div>
         </Modal>
       )}
