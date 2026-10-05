@@ -932,7 +932,7 @@ export default function AdminDashboardPage() {
       if (!res.ok) {
         throw new Error(getFriendlyErrorMessage(data, 'Cập nhật trạng thái thất bại'));
       }
-      showToast('Cập nhật trạng thái đơn thành công!');
+      showToast(newStatus === 'COMPLETED' ? 'Đã hoàn tất đơn! Đơn đã chuyển sang mục Hoàn thành.' : 'Cập nhật trạng thái đơn thành công!');
       await fetchBookings();
     } catch (err) {
       console.error('Update status error:', err);
@@ -949,7 +949,7 @@ export default function AdminDashboardPage() {
         return item;
       });
       updateBookings(updated);
-      showToast(sanitizeErrorMessage(err, 'Đã cập nhật trạng thái đơn!'));
+      showToast(newStatus === 'COMPLETED' ? 'Đã hoàn tất đơn! Đơn đã chuyển sang mục Hoàn thành.' : sanitizeErrorMessage(err, 'Đã cập nhật trạng thái đơn!'));
     }
   };
 
@@ -1091,7 +1091,7 @@ export default function AdminDashboardPage() {
           throw new Error(getFriendlyErrorMessage(data, 'Trả phòng thất bại'));
         }
       }
-      showToast('Đã hoàn tất trả phòng và quyết toán hóa đơn thành công!');
+      showToast('Đã hoàn tất trả phòng và quyết toán hóa đơn! Đơn đã được chuyển qua mục Hoàn thành.');
       setCheckoutModalBooking(null);
       await fetchBookings();
     } catch (err) {
@@ -1121,7 +1121,7 @@ export default function AdminDashboardPage() {
       });
       updateBookings(updated);
       setCheckoutModalBooking(null);
-      showToast('Đã hoàn tất trả phòng và cập nhật hóa đơn!');
+      showToast('Đã hoàn tất trả phòng và quyết toán hóa đơn! Đơn đã được chuyển qua mục Hoàn thành.');
     } finally {
       setIsSubmittingCheckout(false);
     }
@@ -1135,16 +1135,27 @@ export default function AdminDashboardPage() {
     return Array.from(set).sort();
   }, [hotels, bookings]);
 
+  // Số lượng đơn đang xử lý (không tính đơn đã hoàn thành) và đơn hoàn thành
+  const activeBookingsCount = useMemo(() => {
+    return bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() !== 'COMPLETED').length;
+  }, [bookings]);
+
+  const completedBookingsCount = useMemo(() => {
+    return bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'COMPLETED').length;
+  }, [bookings]);
+
   const filteredBookings = useMemo(() => {
     return bookings.filter(b => {
+      const rawS = (b.rawStatus || b.status || '').toUpperCase();
+
       // 1. Lọc theo Trạng thái (Dropdown hoặc Tab)
-      if (bookingStatusFilter !== 'ALL') {
-        const rawS = (b.rawStatus || b.status || '').toUpperCase();
-        if (bookingStatusFilter === 'EXPIRED') {
-          if (!b.isExpired && rawS !== 'EXPIRED') return false;
-        } else {
-          if (rawS !== bookingStatusFilter) return false;
-        }
+      // Khi chọn "Tất cả đơn" (ALL): Đơn đã hoàn thành (COMPLETED) tự động chuyển qua mục "Hoàn thành" và biến mất khỏi danh mục "Tất cả đơn"
+      if (bookingStatusFilter === 'ALL') {
+        if (rawS === 'COMPLETED') return false;
+      } else if (bookingStatusFilter === 'EXPIRED') {
+        if (!b.isExpired && rawS !== 'EXPIRED') return false;
+      } else {
+        if (rawS !== bookingStatusFilter) return false;
       }
 
       // 2. Lọc theo Khách sạn
@@ -1719,12 +1730,12 @@ export default function AdminDashboardPage() {
               {/* Thanh lọc trạng thái đặt phòng */}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
                 {[
-                  { key: 'ALL', label: 'Tất cả đơn', count: bookings.length },
+                  { key: 'ALL', label: 'Tất cả đơn', count: activeBookingsCount },
                   { key: 'PENDING', label: '⏳ Chờ duyệt', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'PENDING').length },
                   { key: 'EXPIRED', label: '⚠️ Đã quá hạn', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'EXPIRED').length },
                   { key: 'CONFIRMED', label: '✓ Đã xác nhận', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CONFIRMED').length },
                   { key: 'CHECKED_IN', label: '🏨 Đã nhận phòng', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CHECKED_IN').length },
-                  { key: 'COMPLETED', label: '✓ Hoàn thành', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'COMPLETED').length },
+                  { key: 'COMPLETED', label: '✓ Hoàn thành', count: completedBookingsCount },
                   { key: 'CANCELLED', label: '✕ Đã hủy', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CANCELLED').length },
                 ].map(tab => (
                   <button
@@ -1801,7 +1812,7 @@ export default function AdminDashboardPage() {
                     <RotateCcw size={11} /> Đặt lại lọc cột
                   </button>
                 )}
-                <span style={{ fontSize: 12, color: '#94a3b8', flexShrink: 0 }}>Hiển thị {filteredBookings.length}/{bookings.length} đơn</span>
+                <span style={{ fontSize: 12, color: '#94a3b8', flexShrink: 0 }}>Hiển thị {filteredBookings.length}/{bookingStatusFilter === 'ALL' ? activeBookingsCount : bookings.length} đơn</span>
               </div>
               {filteredBookings.length === 0 ? <Empty text={bookingSearch ? `Không tìm thấy đơn khớp với "${bookingSearch}"` : 'Chưa có đơn đặt phòng nào'} /> : (
                 <div className="table-responsive">
@@ -1885,11 +1896,11 @@ export default function AdminDashboardPage() {
                               }}
                               title="Lọc nhanh theo Trạng thái"
                             >
-                              <option value="ALL">Tất cả ({bookings.length})</option>
+                              <option value="ALL">Tất cả ({activeBookingsCount})</option>
                               <option value="PENDING">⏳ Chờ duyệt</option>
                               <option value="CONFIRMED">✓ Đã xác nhận</option>
                               <option value="CHECKED_IN">🏨 Đã nhận phòng</option>
-                              <option value="COMPLETED">🏁 Hoàn thành</option>
+                              <option value="COMPLETED">🏁 Hoàn thành ({completedBookingsCount})</option>
                               <option value="EXPIRED">⚠️ Quá hạn</option>
                               <option value="CANCELLED">✕ Đã hủy</option>
                             </select>
@@ -2023,6 +2034,13 @@ export default function AdminDashboardPage() {
                                     </SmBtn>
                                   )}
                                 </>
+                              )}
+
+                              {/* Đơn COMPLETED: Xuất hóa đơn / Xem phiếu thu */}
+                              {rawS === 'COMPLETED' && (
+                                <SmBtn color="blue" onClick={() => setSelectedInvoice(b)} icon={<Receipt size={12} />}>
+                                  Hóa đơn
+                                </SmBtn>
                               )}
 
                               {/* Đơn CANCELLED: Cho phép Xóa vĩnh viễn hoặc Duyệt lại */}

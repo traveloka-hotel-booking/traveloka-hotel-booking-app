@@ -262,9 +262,12 @@ export default function MyBookingsPage() {
     }
   };
 
-  // Lọc theo Tab
+  // Lọc theo Tab: Đơn đã hoàn thành tự động biến mất khỏi danh mục "Tất cả" và chuyển qua mục "Hoàn thành"
   const filteredBookings = bookings.filter(b => {
-    if (activeTab === 'all') return true;
+    const rawS = (b.rawStatus || b.status || '').toUpperCase();
+    if (activeTab === 'all') {
+      return rawS !== 'COMPLETED';
+    }
     return b.status === activeTab;
   });
 
@@ -348,12 +351,12 @@ export default function MyBookingsPage() {
           <div className="card border-0 shadow-sm rounded-4 p-2 bg-white mb-4">
             <div className="d-flex gap-2 flex-wrap">
               {[
-                { key: 'all', label: 'Tất cả', count: bookings.length },
+                { key: 'all', label: 'Tất cả chuyến đi', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() !== 'COMPLETED').length },
                 { key: 'pending', label: '⏳ Chờ duyệt', count: bookings.filter(b => b.status === 'pending').length },
                 { key: 'expired', label: '⚠️ Đã quá hạn', count: bookings.filter(b => b.status === 'expired').length },
                 { key: 'confirmed', label: '✓ Đã xác nhận', count: bookings.filter(b => b.status === 'confirmed').length },
                 { key: 'checked_in', label: '🏨 Đã nhận phòng', count: bookings.filter(b => b.status === 'checked_in').length },
-                { key: 'completed', label: '✓ Hoàn thành', count: bookings.filter(b => b.status === 'completed').length },
+                { key: 'completed', label: '✓ Hoàn thành', count: bookings.filter(b => b.status === 'completed' || (b.rawStatus || '').toUpperCase() === 'COMPLETED').length },
                 { key: 'cancelled', label: '✕ Đã hủy', count: bookings.filter(b => b.status === 'cancelled').length },
               ].map(tab => (
                 <button 
