@@ -366,9 +366,17 @@ export const getHotelsData = () => {
           const hotelRooms = customRooms.filter(r => String(r.hotelId) === String(h.id));
           if (hotelRooms.length > 0) {
             const minPrice = Math.min(...hotelRooms.map(r => Number(r.pricePerNight) || 1000000));
+            const mockHotelRooms = (MOCK_HOTELS.find(mh => String(mh.id) === String(h.id)) || {}).rooms || [];
             return {
               ...h,
-              rooms: hotelRooms,
+              rooms: hotelRooms.map((r, idx) => {
+                const mockRoomMatch = mockHotelRooms.find(mr => mr.id === r.id || mr.name === r.name) || mockHotelRooms[idx % mockHotelRooms.length];
+                const fallbackImg = mockRoomMatch?.imageUrl || h.thumbnailUrl || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60';
+                return {
+                  ...r,
+                  imageUrl: (r.imageUrl && typeof r.imageUrl === 'string' && r.imageUrl.trim()) ? r.imageUrl : fallbackImg
+                };
+              }),
               minPrice: isFinite(minPrice) ? minPrice : h.minPrice,
               totalRooms: hotelRooms.length
             };

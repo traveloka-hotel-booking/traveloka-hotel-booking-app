@@ -258,9 +258,21 @@ export default function AdminDashboardPage() {
   });
   const [isLoadingBookings, setIsLoadingBookings] = useState(false);
 
-  const updateHotels = (next) => { setHotels(next); localStorage.setItem('traveloka_custom_hotels', JSON.stringify(next)); };
-  const updateBookings = (next) => { setBookings(next); localStorage.setItem('traveloka_bookings', JSON.stringify(next)); };
-  const updateRooms = (next) => { setRoomsList(next); localStorage.setItem('traveloka_custom_rooms', JSON.stringify(next)); };
+  const updateHotels = (next) => {
+    setHotels(next);
+    localStorage.setItem('traveloka_custom_hotels', JSON.stringify(next));
+    window.dispatchEvent(new Event('traveloka_hotels_updated'));
+  };
+  const updateBookings = (next) => {
+    setBookings(next);
+    localStorage.setItem('traveloka_bookings', JSON.stringify(next));
+    window.dispatchEvent(new Event('traveloka_bookings_updated'));
+  };
+  const updateRooms = (next) => {
+    setRoomsList(next);
+    localStorage.setItem('traveloka_custom_rooms', JSON.stringify(next));
+    window.dispatchEvent(new Event('traveloka_rooms_updated'));
+  };
 
   // Đồng bộ thông tin khách sạn khi danh sách phòng thay đổi (minPrice, totalRooms, rooms)
   const syncHotelWithRooms = (hotelId, currentRooms) => {
@@ -558,6 +570,10 @@ export default function AdminDashboardPage() {
         // Đồng bộ cập nhật ngay vào danh sách loại phòng
         const updated = roomsList.map(r => r.id === editingRoom.id ? { ...r, imageUrl: uploadedUrl } : r);
         updateRooms(updated);
+        const targetHotelId = editingRoom?.hotelId || roomForm.hotelId;
+        if (targetHotelId) {
+          syncHotelWithRooms(targetHotelId, updated);
+        }
       } else {
         // Tạo mới: tải ảnh qua Backend lấy link Cloudinary an toàn
         const res = await apiFetch('/admin/rooms/upload-image', {
