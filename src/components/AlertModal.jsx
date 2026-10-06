@@ -8,13 +8,25 @@ export default function AlertModal({
   title = 'Thông báo',
   message = '',
   confirmText = 'Đã hiểu',
-  onConfirm
+  cancelText = 'Hủy',
+  showCancel = false,
+  onConfirm,
+  onCancel
 }) {
   if (!isOpen) return null;
 
   const handleConfirm = () => {
     if (onConfirm) {
       onConfirm();
+    }
+    if (onClose) {
+      onClose();
+    }
+  };
+
+  const handleCancel = () => {
+    if (onCancel) {
+      onCancel();
     }
     if (onClose) {
       onClose();
@@ -113,19 +125,43 @@ export default function AlertModal({
         </p>
 
         {/* Nút bấm xác nhận thân thiện */}
-        <div>
-          <button
-            type="button"
-            className="btn w-100 py-2 fw-semibold rounded-3 text-white shadow-sm"
-            style={{
-              ...config.btnStyle,
-              fontSize: '15px'
-            }}
-            onClick={handleConfirm}
-          >
-            {confirmText}
-          </button>
-        </div>
+        {showCancel ? (
+          <div className="d-flex gap-2">
+            <button
+              type="button"
+              className="btn btn-light border py-2 fw-semibold rounded-3 flex-fill text-secondary"
+              style={{ fontSize: '15px' }}
+              onClick={handleCancel}
+            >
+              {cancelText}
+            </button>
+            <button
+              type="button"
+              className="btn py-2 fw-semibold rounded-3 text-white shadow-sm flex-fill"
+              style={{
+                ...config.btnStyle,
+                fontSize: '15px'
+              }}
+              onClick={handleConfirm}
+            >
+              {confirmText}
+            </button>
+          </div>
+        ) : (
+          <div>
+            <button
+              type="button"
+              className="btn w-100 py-2 fw-semibold rounded-3 text-white shadow-sm"
+              style={{
+                ...config.btnStyle,
+                fontSize: '15px'
+              }}
+              onClick={handleConfirm}
+            >
+              {confirmText}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
