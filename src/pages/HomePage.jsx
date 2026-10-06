@@ -621,7 +621,7 @@ export default function HomePage() {
               {/* Tiêu đề danh sách */}
               <div className="mb-3">
                 <h3 className="fw-bold text-dark mb-1">
-                  Khách sạn tại {destination || "Việt Nam"} {displayedHotels.length > 0 && `(${displayedHotels.length} kết quả)`}
+                  Khách sạn tại {destination || "Việt Nam"}
                 </h3>
                 <p className="text-secondary small mb-3">
                   Lưu trú từ {checkIn} đến {checkOut} ({adultsCount} người lớn, {roomsCount} phòng) • Kiểm tra giá tốt nhất.
@@ -650,19 +650,13 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* Trạng thái tra cứu API FR-06 */}
+              {/* Trạng thái tra cứu API */}
               {isSearching && (
                 <div className="card border-0 shadow-sm rounded-3 p-4 bg-white text-center my-3">
                   <div className="d-flex align-items-center justify-content-center gap-2 text-primary">
                     <div className="spinner-border spinner-border-sm" role="status"></div>
-                    <span className="fw-semibold">Đang tìm kiếm phòng trống theo thời gian thực (FR-06)...</span>
+                    <span className="fw-semibold">Đang tải...</span>
                   </div>
-                </div>
-              )}
-              {searchFeedback && !isSearching && (
-                <div className="alert alert-info py-2 px-3 small rounded-3 d-flex align-items-center gap-2 mb-3">
-                  <Info size={16} className="text-primary flex-shrink-0" />
-                  <span>{searchFeedback}</span>
                 </div>
               )}
 

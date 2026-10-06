@@ -318,7 +318,7 @@ export default function HotelsPage() {
               <div className="card border-0 shadow-sm rounded-4 p-5 text-center bg-white">
                 <div className="d-flex align-items-center justify-content-center gap-2 text-primary py-4">
                   <div className="spinner-border spinner-border-sm" role="status"></div>
-                  <span className="fw-semibold">Đang cập nhật danh sách khách sạn từ hệ thống (FR-07/FR-06)...</span>
+                  <span className="fw-semibold">Đang tải...</span>
                 </div>
               </div>
             ) : filteredHotels.length === 0 ? (

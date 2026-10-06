@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../services/api';
 import { getFriendlyErrorMessage, sanitizeErrorMessage } from '../utils/errorHandler';
 import { MOCK_HOTELS } from '../data/mockData';
+import AlertModal from '../components/AlertModal';
 
 import { 
   ArrowLeft, ShieldCheck, CreditCard, QrCode, Wallet, Building2, 
@@ -141,13 +142,43 @@ export default function CheckoutPage() {
   const taxAndFee = Math.round(roomPriceTotal * 0.1); // 10% thuế và phí dịch vụ
   const finalTotal = Math.max(0, roomPriceTotal + taxAndFee - discountAmount);
 
+  // State cho Alert Modal thân thiện thay thế alert() mặc định của trình duyệt
+  const [alertState, setAlertState] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'error',
+    confirmText: 'Đã hiểu',
+    onConfirm: null
+  });
+
+  const showAlert = ({ title, message, type = 'error', confirmText = 'Đã hiểu', onConfirm = null }) => {
+    setAlertState({
+      isOpen: true,
+      title,
+      message,
+      type,
+      confirmText,
+      onConfirm
+    });
+  };
+
+  const closeAlert = () => {
+    setAlertState(prev => ({ ...prev, isOpen: false }));
+  };
+
   // Xử lý xác nhận thanh toán & đặt phòng
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmitBooking = async (e) => {
     e.preventDefault();
     if (!fullName || !email || !phoneNumber) {
-      alert('Vui lòng điền đầy đủ Họ tên, Email và Số điện thoại liên hệ!');
+      showAlert({
+        title: 'Thông tin chưa đầy đủ',
+        message: 'Vui lòng điền đầy đủ Họ tên, Email và Số điện thoại liên hệ để nhận xác nhận đặt phòng nhé!',
+        type: 'warning',
+        confirmText: 'Bổ sung ngay'
+      });
       return;
     }
 
@@ -156,18 +187,30 @@ export default function CheckoutPage() {
 
     // Chặn tài khoản Quản trị viên (Admin) không được phép đặt phòng
     if (isAdminUser) {
-      alert('Tài khoản Quản trị viên (Admin) không được phép thực hiện đặt phòng!\nVui lòng đăng xuất và sử dụng tài khoản Khách hàng (Customer) để đặt phòng.');
+      showAlert({
+        title: 'Không thể đặt phòng',
+        message: 'Tài khoản Quản trị viên (Admin) không được phép thực hiện đặt phòng!\nVui lòng đăng xuất và sử dụng tài khoản Khách hàng (Customer) để đặt phòng.',
+        type: 'warning',
+        confirmText: 'Đã hiểu'
+      });
       return;
     }
 
     // Bắt buộc đăng nhập tài khoản Khách hàng
     if (!isAuthenticated) {
-      alert('Vui lòng đăng nhập tài khoản Khách hàng để hoàn tất đặt phòng!');
-      navigate('/login', { 
-        state: { 
-          from: location,
-          notice: 'Vui lòng đăng nhập tài khoản Khách hàng để hoàn tất đặt phòng.' 
-        } 
+      showAlert({
+        title: 'Yêu cầu đăng nhập',
+        message: 'Vui lòng đăng nhập tài khoản Khách hàng để hoàn tất đặt phòng.',
+        type: 'info',
+        confirmText: 'Đăng nhập ngay',
+        onConfirm: () => {
+          navigate('/login', { 
+            state: { 
+              from: location,
+              notice: 'Vui lòng đăng nhập tài khoản Khách hàng để hoàn tất đặt phòng.' 
+            } 
+          });
+        }
       });
       return;
     }
@@ -190,8 +233,25 @@ export default function CheckoutPage() {
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        const errMsg = getFriendlyErrorMessage(errData, 'Không thể tạo đơn đặt phòng.');
-        alert(`Đặt phòng thất bại: ${errMsg}\n(Vui lòng thử chọn ngày khác hoặc phòng khác nếu phòng đã bị trùng lịch)`);
+        const rawErrMsg = getFriendlyErrorMessage(errData, '');
+
+        let friendlyTitle = 'Đặt phòng thất bại';
+        let friendlyMsg = 'Phòng đã có khách đặt trong khoảng thời gian này!\nBạn vui lòng chọn ngày khác hoặc chọn phòng khác nhé.';
+
+        // Xử lý thông báo trực quan, thân thiện nếu phòng bị trùng lịch
+        if (!rawErrMsg || rawErrMsg.includes('trùng') || rawErrMsg.includes('khoảng thời gian') || rawErrMsg.includes('đã được đặt') || rawErrMsg.includes('không còn trống')) {
+          friendlyTitle = 'Đặt phòng thất bại';
+          friendlyMsg = 'Phòng đã bị trùng lịch đặt trong khoảng thời gian này!\nBạn vui lòng chọn ngày khác hoặc chọn phòng khác nhé.';
+        } else if (rawErrMsg) {
+          friendlyMsg = rawErrMsg;
+        }
+
+        showAlert({
+          title: friendlyTitle,
+          message: friendlyMsg,
+          type: 'error',
+          confirmText: 'Đã hiểu'
+        });
         setIsSubmitting(false);
         return;
       }
@@ -268,8 +328,13 @@ export default function CheckoutPage() {
         }
       } else {
         const payErr = await payResponse.json().catch(() => ({}));
-        const payMsg = getFriendlyErrorMessage(payErr, 'Lỗi khởi tạo thanh toán.');
-        alert(`Không thể kết nối cổng thanh toán: ${payMsg}`);
+        const payMsg = getFriendlyErrorMessage(payErr, 'Lỗi kết nối cổng thanh toán.');
+        showAlert({
+          title: 'Lỗi cổng thanh toán',
+          message: `Không thể kết nối cổng thanh toán lúc này: ${payMsg}\nBạn có thể thử lại hoặc chọn phương thức Thanh toán tại khách sạn nhé!`,
+          type: 'error',
+          confirmText: 'Đã hiểu'
+        });
         setIsSubmitting(false);
         return;
       }
@@ -283,7 +348,12 @@ export default function CheckoutPage() {
 
     } catch (err) {
       console.error('Lỗi quá trình đặt phòng:', err);
-      alert('Có lỗi xảy ra trong quá trình đặt phòng: ' + sanitizeErrorMessage(err));
+      showAlert({
+        title: 'Có lỗi xảy ra',
+        message: 'Đã xảy ra lỗi trong quá trình xử lý đặt phòng: ' + sanitizeErrorMessage(err),
+        type: 'error',
+        confirmText: 'Đã hiểu'
+      });
       setIsSubmitting(false);
     }
   };
@@ -829,6 +899,17 @@ export default function CheckoutPage() {
         </div>
 
       </div>
+
+      {/* Modal Thông Báo Thân Thiện Người Dùng */}
+      <AlertModal
+        isOpen={alertState.isOpen}
+        onClose={closeAlert}
+        type={alertState.type}
+        title={alertState.title}
+        message={alertState.message}
+        confirmText={alertState.confirmText}
+        onConfirm={alertState.onConfirm}
+      />
     </div>
   );
 }
