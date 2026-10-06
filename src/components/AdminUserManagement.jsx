@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Users, UserCheck, UserX, RefreshCw, ChevronLeft, ChevronRight, Lock, Unlock } from 'lucide-react';
 import { apiFetch } from '../services/api';
+import { useAlert } from '../context/AlertContext';
 
 /**
  * FR-16: Admin quản lý tài khoản người dùng.
@@ -14,6 +15,7 @@ import { apiFetch } from '../services/api';
  * lịch sử đặt phòng/khách vãng lai của màn hình Quản lý khách hàng.
  */
 export default function AdminUserManagement() {
+  const { showConfirm, showAlert } = useAlert();
   const [users, setUsers] = useState([]);
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(10);
@@ -69,7 +71,15 @@ export default function AdminUserManagement() {
     const currentlyEnabled = user.isEnabled === true;
     const actionLabel = currentlyEnabled ? 'khóa' : 'mở khóa';
 
-    if (!window.confirm(`Bạn có chắc chắn muốn ${actionLabel} tài khoản này?`)) {
+    const confirmed = await showConfirm({
+      title: `${currentlyEnabled ? 'Khóa' : 'Mở khóa'} tài khoản`,
+      message: `Bạn có chắc chắn muốn ${actionLabel} tài khoản "${user.email || user.username || user.fullName}" không?`,
+      type: currentlyEnabled ? 'warning' : 'info',
+      confirmText: currentlyEnabled ? 'Khóa tài khoản' : 'Mở khóa',
+      cancelText: 'Hủy'
+    });
+
+    if (!confirmed) {
       return;
     }
 

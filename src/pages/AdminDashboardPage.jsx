@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useAlert } from '../context/AlertContext';
 import { apiFetch } from '../services/api';
 import { getFriendlyErrorMessage, sanitizeErrorMessage } from '../utils/errorHandler';
 import AdminUserManagement from '../components/AdminUserManagement';
@@ -94,6 +95,7 @@ const SIDEBAR_MENU = [
 export default function AdminDashboardPage() {
   const navigate = useNavigate();
   const { user, isAdmin, login, logout } = useAuth();
+  const { showAlert, showConfirm } = useAlert();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [toastMsg, setToastMsg] = useState(null);
@@ -392,12 +394,20 @@ export default function AdminDashboardPage() {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('Vui lòng chọn tập tin hình ảnh hợp lệ (JPG, PNG, WEBP)');
+      showAlert({
+        title: 'Tập tin không hợp lệ',
+        message: 'Vui lòng chọn tập tin hình ảnh hợp lệ (JPG, PNG, WEBP).',
+        type: 'error'
+      });
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      alert('Dung lượng hình ảnh tối đa là 5MB');
+      showAlert({
+        title: 'Tập tin quá lớn',
+        message: 'Dung lượng hình ảnh tối đa là 5MB.',
+        type: 'warning'
+      });
       return;
     }
 
@@ -504,7 +514,15 @@ export default function AdminDashboardPage() {
   };
 
   const deleteHotel = async (id) => {
-    if (!window.confirm('Bạn có chắc muốn xóa khách sạn này khỏi hệ thống không?')) return;
+    const hotelToDelete = hotels.find(h => h.id === id);
+    const confirmed = await showConfirm({
+      title: 'Xóa khách sạn khỏi hệ thống',
+      message: `Bạn có chắc chắn muốn xóa khách sạn "${hotelToDelete?.name || ''}" không?\nThao tác này sẽ xóa toàn bộ các loại phòng thuộc khách sạn này.`,
+      type: 'warning',
+      confirmText: 'Xóa khách sạn',
+      cancelText: 'Hủy'
+    });
+    if (!confirmed) return;
     try {
       const res = await apiFetch(`/admin/hotels/${id}`, { method: 'DELETE' });
       if (res.ok) {
@@ -541,12 +559,20 @@ export default function AdminDashboardPage() {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('Vui lòng chọn tập tin hình ảnh hợp lệ (JPG, PNG, WEBP)');
+      showAlert({
+        title: 'Tập tin không hợp lệ',
+        message: 'Vui lòng chọn tập tin hình ảnh hợp lệ (JPG, PNG, WEBP).',
+        type: 'error'
+      });
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      alert('Dung lượng hình ảnh tối đa là 5MB');
+      showAlert({
+        title: 'Tập tin quá lớn',
+        message: 'Dung lượng hình ảnh tối đa là 5MB.',
+        type: 'warning'
+      });
       return;
     }
 
@@ -772,7 +798,14 @@ export default function AdminDashboardPage() {
 
   const deleteRoom = async (id) => {
     const targetRoom = roomsList.find(r => r.id === id);
-    if (!window.confirm(`Bạn có chắc muốn xóa loại phòng "${targetRoom?.name || ''}" không?`)) return;
+    const confirmed = await showConfirm({
+      title: 'Xóa loại phòng',
+      message: `Bạn có chắc muốn xóa loại phòng "${targetRoom?.name || ''}" không?\nThao tác này không thể hoàn tác.`,
+      type: 'warning',
+      confirmText: 'Xóa loại phòng',
+      cancelText: 'Hủy'
+    });
+    if (!confirmed) return;
     try {
       if (typeof id === 'number' || !String(id).startsWith('r-')) {
         const res = await apiFetch(`/admin/rooms/${id}`, { method: 'DELETE' });
@@ -823,13 +856,23 @@ export default function AdminDashboardPage() {
   const handleConfirmBooking = async (b) => {
     // 1. Chặn duyệt đơn quá hạn
     if (b.isExpired || (b.rawStatus || b.status || '').toUpperCase() === 'EXPIRED') {
-      alert(`Không thể duyệt đơn: Đơn đặt phòng [${b.bookingCode || b.id}] đã quá ngày nhận phòng (${b.checkInDate})!\nBạn có thể nhấn nút "Xóa đơn" để dọn dẹp hệ thống.`);
+      showAlert({
+        title: 'Không thể duyệt đơn',
+        message: `Đơn đặt phòng [${b.bookingCode || b.id}] đã quá ngày nhận phòng (${b.checkInDate})!\nBạn có thể nhấn nút "Xóa đơn" để dọn dẹp hệ thống.`,
+        type: 'warning',
+        confirmText: 'Đã hiểu'
+      });
       return;
     }
 
     // 2. Chặn duyệt đơn nếu khách chọn chuyển khoản mà chưa thanh toán
     if (b.paymentMethod === 'vnpay' && b.paymentStatus !== 'paid') {
-      alert(`Không thể duyệt đơn: Khách hàng chưa thanh toán bằng phương thức chuyển khoản/VNPay!\nVui lòng đợi khách thanh toán hoàn tất trước khi duyệt.`);
+      showAlert({
+        title: 'Chưa thanh toán VNPay',
+        message: 'Khách hàng chưa thanh toán bằng phương thức chuyển khoản/VNPay!\nVui lòng đợi khách thanh toán hoàn tất trước khi duyệt.',
+        type: 'warning',
+        confirmText: 'Đã hiểu'
+      });
       return;
     }
 
@@ -856,7 +899,14 @@ export default function AdminDashboardPage() {
   // Xóa đơn đặt phòng khỏi hệ thống
   const handleDeleteBooking = async (b) => {
     const code = b.bookingCode || b.id;
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa vĩnh viễn đơn đặt phòng [${code}] khỏi hệ thống không?`)) {
+    const confirmed = await showConfirm({
+      title: 'Xóa đơn đặt phòng',
+      message: `Bạn có chắc chắn muốn xóa vĩnh viễn đơn đặt phòng [${code}] khỏi hệ thống không?\nThao tác này sẽ xóa dữ liệu đơn lưu trên hệ thống.`,
+      type: 'warning',
+      confirmText: 'Xóa vĩnh viễn',
+      cancelText: 'Hủy'
+    });
+    if (!confirmed) {
       return;
     }
     const bookingId = b.raw?.id || (typeof b.id === 'number' ? b.id : null);
@@ -884,10 +934,22 @@ export default function AdminDashboardPage() {
   const handleCleanupExpiredBookings = async () => {
     const expiredBookings = bookings.filter(b => b.isExpired || (b.rawStatus || b.status || '').toUpperCase() === 'EXPIRED');
     if (expiredBookings.length === 0) {
-      alert('Hiện tại không có đơn đặt phòng nào bị quá hạn!');
+      showAlert({
+        title: 'Thông báo',
+        message: 'Hiện tại không có đơn đặt phòng nào bị quá hạn!',
+        type: 'info',
+        confirmText: 'Đã hiểu'
+      });
       return;
     }
-    if (!window.confirm(`Tìm thấy ${expiredBookings.length} đơn đặt phòng đã quá ngày nhận phòng.\nBạn có chắc chắn muốn dọn dẹp và xóa các đơn này khỏi hệ thống không?`)) {
+    const confirmed = await showConfirm({
+      title: 'Dọn dẹp đơn quá hạn',
+      message: `Tìm thấy ${expiredBookings.length} đơn đặt phòng đã quá ngày nhận phòng.\nBạn có chắc chắn muốn dọn dẹp và xóa các đơn này khỏi hệ thống không?`,
+      type: 'warning',
+      confirmText: 'Dọn dẹp ngay',
+      cancelText: 'Hủy'
+    });
+    if (!confirmed) {
       return;
     }
     try {
@@ -910,7 +972,14 @@ export default function AdminDashboardPage() {
   // Hủy đơn đặt phòng bởi Admin
   const handleCancelBooking = async (b, reason = 'Admin hủy đơn') => {
     const bookingId = b.raw?.id || b.id;
-    if (!window.confirm(`Bạn có chắc chắn muốn hủy đơn đặt phòng [${b.bookingCode || bookingId}] không?`)) return;
+    const confirmed = await showConfirm({
+      title: 'Hủy đơn đặt phòng',
+      message: `Bạn có chắc chắn muốn hủy đơn đặt phòng [${b.bookingCode || bookingId}] không?`,
+      type: 'warning',
+      confirmText: 'Xác nhận hủy',
+      cancelText: 'Đóng'
+    });
+    if (!confirmed) return;
     try {
       showToast('Đang xử lý hủy đơn đặt phòng...');
       const res = await apiFetch(`/admin/bookings/${bookingId}/cancel?reason=${encodeURIComponent(reason)}`, {
@@ -934,10 +1003,13 @@ export default function AdminDashboardPage() {
 
     // Khi chuyển sang COMPLETED (Hoàn thành/Trả phòng) với đơn tiền mặt: Xác nhận đã thu tiền
     if (newStatus === 'COMPLETED' && b.paymentMethod === 'pay_at_hotel' && b.paymentStatus !== 'paid') {
-      const confirmedCash = window.confirm(
-        `Đơn phòng [${b.bookingCode || bookingId}] chọn thanh toán tiền mặt tại khách sạn.\n\n` +
-        `Bạn có xác nhận đã thu đủ số tiền (${(b.totalAmount || 0).toLocaleString('vi-VN')} đ) từ khách trước khi hoàn tất trả phòng không?`
-      );
+      const confirmedCash = await showConfirm({
+        title: 'Xác nhận thu tiền mặt',
+        message: `Đơn phòng [${b.bookingCode || bookingId}] chọn thanh toán tiền mặt tại khách sạn.\n\nBạn có xác nhận đã thu đủ số tiền (${(b.totalAmount || 0).toLocaleString('vi-VN')} đ) từ khách trước khi hoàn tất trả phòng không?`,
+        type: 'info',
+        confirmText: 'Đã thu tiền đủ',
+        cancelText: 'Chưa thu'
+      });
       if (!confirmedCash) return;
     }
 
@@ -1023,7 +1095,11 @@ export default function AdminDashboardPage() {
     const bookingId = b.raw?.id || (typeof b.id === 'number' ? b.id : null);
 
     if (b.checkOutDate && /^\d{4}-\d{2}-\d{2}$/.test(b.checkOutDate) && actualCheckInDate > b.checkOutDate) {
-      alert(`Ngày nhận phòng thực tế (${actualCheckInDate}) không thể sau ngày trả phòng (${b.checkOutDate})!`);
+      showAlert({
+        title: 'Ngày không hợp lệ',
+        message: `Ngày nhận phòng thực tế (${actualCheckInDate}) không thể sau ngày trả phòng (${b.checkOutDate})!`,
+        type: 'error'
+      });
       return;
     }
 
@@ -1093,7 +1169,11 @@ export default function AdminDashboardPage() {
     const bookingId = b.raw?.id || (typeof b.id === 'number' ? b.id : null);
 
     if (b.checkInDate && /^\d{4}-\d{2}-\d{2}$/.test(b.checkInDate) && actualCheckOutDate < b.checkInDate) {
-      alert(`Ngày trả phòng thực tế (${actualCheckOutDate}) không thể trước ngày nhận phòng (${b.checkInDate})!`);
+      showAlert({
+        title: 'Ngày không hợp lệ',
+        message: `Ngày trả phòng thực tế (${actualCheckOutDate}) không thể trước ngày nhận phòng (${b.checkInDate})!`,
+        type: 'error'
+      });
       return;
     }
 
@@ -1268,7 +1348,11 @@ export default function AdminDashboardPage() {
                   try {
                     await login('admin@traveloka.vn', 'admin123');
                   } catch (e) {
-                    alert('Lỗi đăng nhập: ' + e.message);
+                    showAlert({
+                      title: 'Lỗi đăng nhập',
+                      message: e.message || 'Không thể đăng nhập tài khoản quản trị.',
+                      type: 'error'
+                    });
                   }
                 }} 
                 className="btn btn-primary btn-lg fw-bold rounded-pill shadow-sm"
@@ -1972,7 +2056,12 @@ export default function AdminDashboardPage() {
                                   {b.paymentMethod === 'vnpay' && b.paymentStatus !== 'paid' ? (
                                     <button
                                       type="button"
-                                      onClick={() => alert(`Không thể duyệt đơn thủ công: Khách hàng chưa thanh toán bằng phương thức chuyển khoản/VNPay!\n\n• Hệ thống áp dụng thời hạn 30 phút để thanh toán.\n• Khi khách thanh toán thành công, hệ thống sẽ TỰ ĐỘNG DUYỆT ĐƠN.\n• Nếu quá 30 phút chưa thanh toán, hệ thống sẽ tự động hủy đơn.`)}
+                                      onClick={() => showAlert({
+                                        title: 'Chờ thanh toán VNPay',
+                                        message: `Không thể duyệt đơn thủ công: Khách hàng chưa thanh toán bằng phương thức chuyển khoản/VNPay!\n\n• Hệ thống áp dụng thời hạn 30 phút để thanh toán.\n• Khi khách thanh toán thành công, hệ thống sẽ TỰ ĐỘNG DUYỆT ĐƠN.\n• Nếu quá 30 phút chưa thanh toán, hệ thống sẽ tự động hủy đơn.`,
+                                        type: 'info',
+                                        confirmText: 'Đã hiểu'
+                                      })}
                                       style={{
                                         background: '#fef3c7',
                                         color: '#92400e',

@@ -18,7 +18,6 @@ export default function HotelsPage() {
   // State các bộ lọc
   const [selectedCity, setSelectedCity] = useState(cityParam);
   const [selectedStars, setSelectedStars] = useState([]);
-  const [minPrice, setMinPrice] = useState(500000);
   const [maxPrice, setMaxPrice] = useState(5000000);
   const [selectedAmenities, setSelectedAmenities] = useState([]);
   const [sortBy, setSortBy] = useState('popular'); // popular, priceAsc, priceDesc, ratingDesc
@@ -119,7 +118,6 @@ export default function HotelsPage() {
   const handleResetFilters = () => {
     setSelectedCity('');
     setSelectedStars([]);
-    setMinPrice(500000);
     setMaxPrice(5000000);
     setSelectedAmenities([]);
     setSortBy('popular');
@@ -150,10 +148,10 @@ export default function HotelsPage() {
         return false;
       }
 
-      // 3. Lọc theo khoảng giá (minPrice & maxPrice):
-      // Nếu giá phòng vượt quá mức giá tối đa HOẶC thấp hơn mức giá tối thiểu đã chọn thì KHÔNG hiển thị
+      // 3. Lọc theo mức giá tối đa:
+      // Bất kỳ khách sạn nào có giá phòng vượt quá mức giá người dùng chọn (trên giá này) -> TUYỆT ĐỐI KHÔNG HIỂN THỊ
       const hotelPrice = getHotelPrice(hotel);
-      if (hotelPrice > maxPrice || hotelPrice < minPrice) {
+      if (hotelPrice > maxPrice) {
         return false;
       }
 
@@ -178,7 +176,7 @@ export default function HotelsPage() {
       if (sortBy === 'ratingDesc') return (b.ratingScore || 8.5) - (a.ratingScore || 8.5);
       return 0; // popular
     });
-  }, [backendHotels, selectedCity, selectedStars, minPrice, maxPrice, selectedAmenities, sortBy]);
+  }, [backendHotels, selectedCity, selectedStars, maxPrice, selectedAmenities, sortBy]);
 
   return (
     <div className="bg-light pb-4 min-vh-100 page-top-spacing">
@@ -243,92 +241,47 @@ export default function HotelsPage() {
                 </select>
               </div>
 
-              {/* 2. Lọc theo Khoảng giá */}
+              {/* 2. Lọc theo Mức giá tối đa */}
               <div className="mb-4 pb-3 border-bottom">
                 <div className="d-flex justify-content-between align-items-center mb-2">
-                  <label className="form-label fw-bold text-dark small text-uppercase mb-0">Khoảng giá mỗi đêm</label>
-                </div>
-                <div className="bg-light p-2 rounded-3 border mb-3 text-center">
-                  <span className="fw-bold text-primary small">
-                    {minPrice.toLocaleString('vi-VN')} đ
-                  </span>
-                  <span className="text-secondary mx-2 small">–</span>
+                  <label className="form-label fw-bold text-dark small text-uppercase mb-0">Mức giá tối đa</label>
                   <span className="fw-bold text-danger small">
                     {maxPrice.toLocaleString('vi-VN')} đ
                   </span>
                 </div>
-
-                {/* Thanh trượt Giá tối thiểu */}
-                <div className="mb-3">
-                  <div className="d-flex justify-content-between text-secondary mb-1" style={{ fontSize: '12px' }}>
-                    <span>Giá tối thiểu (Từ):</span>
-                    <span className="fw-semibold text-primary">{minPrice.toLocaleString('vi-VN')} đ</span>
-                  </div>
-                  <input 
-                    type="range" 
-                    className="form-range" 
-                    min="500000" 
-                    max="5000000" 
-                    step="100000"
-                    value={minPrice}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      setMinPrice(val);
-                      if (val > maxPrice) setMaxPrice(val);
-                    }}
-                  />
-                  <div className="d-flex justify-content-between text-muted" style={{ fontSize: '11px' }}>
-                    <span>500.000 đ</span>
-                    <span>5.000.000 đ</span>
-                  </div>
+                <input 
+                  type="range" 
+                  className="form-range" 
+                  min="500000" 
+                  max="5000000" 
+                  step="100000"
+                  value={maxPrice}
+                  onChange={(e) => setMaxPrice(Number(e.target.value))}
+                />
+                <div className="d-flex justify-content-between text-secondary small mb-3" style={{ fontSize: '11px' }}>
+                  <span>500.000 đ</span>
+                  <span>5.000.000 đ</span>
                 </div>
 
-                {/* Thanh trượt Giá tối đa */}
-                <div className="mb-3">
-                  <div className="d-flex justify-content-between text-secondary mb-1" style={{ fontSize: '12px' }}>
-                    <span>Giá tối đa (Đến):</span>
-                    <span className="fw-semibold text-danger">{maxPrice.toLocaleString('vi-VN')} đ</span>
-                  </div>
-                  <input 
-                    type="range" 
-                    className="form-range" 
-                    min="500000" 
-                    max="5000000" 
-                    step="100000"
-                    value={maxPrice}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      setMaxPrice(val);
-                      if (val < minPrice) setMinPrice(val);
-                    }}
-                  />
-                  <div className="d-flex justify-content-between text-muted" style={{ fontSize: '11px' }}>
-                    <span>500.000 đ</span>
-                    <span>5.000.000 đ</span>
-                  </div>
-                </div>
-
-                {/* Các nút chọn nhanh khoảng giá */}
-                <div className="d-flex flex-wrap gap-1 mt-2">
+                {/* Các nút chọn nhanh mức giá */}
+                <div className="d-flex flex-wrap gap-1">
                   {[
-                    { label: '< 1.5 tr', min: 500000, max: 1500000 },
-                    { label: '1.5 - 2.5 tr', min: 1500000, max: 2500000 },
-                    { label: '2.5 - 4 tr', min: 2500000, max: 4000000 },
-                    { label: '> 4 triệu', min: 4000000, max: 5000000 },
+                    { label: '500k', value: 500000 },
+                    { label: 'Dưới 1 triệu', value: 1000000 },
+                    { label: 'Dưới 2 triệu', value: 2000000 },
+                    { label: 'Dưới 3 triệu', value: 3000000 },
+                    { label: 'Tất cả (5 tr)', value: 5000000 },
                   ].map((p, idx) => (
                     <button
                       key={idx}
                       type="button"
                       className={`btn btn-sm px-2 py-1 rounded-pill ${
-                        minPrice === p.min && maxPrice === p.max 
-                          ? 'btn-primary text-white' 
+                        maxPrice === p.value 
+                          ? 'btn-danger text-white fw-bold' 
                           : 'btn-outline-secondary border-light-subtle'
                       }`}
                       style={{ fontSize: '11px' }}
-                      onClick={() => {
-                        setMinPrice(p.min);
-                        setMaxPrice(p.max);
-                      }}
+                      onClick={() => setMaxPrice(p.value)}
                     >
                       {p.label}
                     </button>

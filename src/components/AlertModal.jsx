@@ -80,7 +80,7 @@ export default function AlertModal({
         zIndex: 2000,
         animation: 'fadeIn 0.2s ease-out'
       }}
-      onClick={onClose}
+      onClick={handleCancel}
     >
       <div 
         className="card border-0 shadow-lg rounded-4 text-center p-4 position-relative"
@@ -96,7 +96,7 @@ export default function AlertModal({
         {/* Nút đóng X góc trên */}
         <button
           type="button"
-          onClick={onClose}
+          onClick={handleCancel}
           className="btn-close position-absolute top-0 end-0 m-3"
           aria-label="Đóng"
           style={{ fontSize: '12px' }}
