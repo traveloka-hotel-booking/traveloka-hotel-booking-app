@@ -367,16 +367,13 @@ export default function HotelsPage() {
                   <div key={hotel.id} className="card border-0 shadow-sm rounded-4 overflow-hidden hover-shadow bg-white">
                     <div className="row g-0">
                       {/* Ảnh khách sạn */}
-                      <div className="col-lg-4 col-md-5 position-relative">
+                      <div className="col-lg-4 col-md-5">
                         <img 
                           src={hotel.thumbnailUrl} 
                           className="w-100 h-100 object-fit-cover" 
                           alt={hotel.name}
                           style={{ minHeight: '240px', maxHeight: '280px' }}
                         />
-                        <span className="position-absolute top-0 start-0 m-3 badge bg-primary px-3 py-1 rounded-pill">
-                          📍 {hotel.city}
-                        </span>
                       </div>
 
                       {/* Thông tin chi tiết */}

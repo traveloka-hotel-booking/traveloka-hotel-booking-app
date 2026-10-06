@@ -797,7 +797,7 @@ export default function CheckoutPage() {
                 <div>
                   <span className="badge bg-primary-subtle text-primary small mb-1">Khách sạn {hotel.starRating} sao</span>
                   <h6 className="fw-bold text-dark mb-1 line-clamp-2">{hotel.name}</h6>
-                  <p className="text-secondary small mb-0 line-clamp-1">📍 {hotel.city}</p>
+                  <p className="text-secondary small mb-0 line-clamp-1">{hotel.city}</p>
                 </div>
               </div>
 

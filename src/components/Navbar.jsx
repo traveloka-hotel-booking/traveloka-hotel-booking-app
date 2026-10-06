@@ -139,13 +139,11 @@ export default function Navbar() {
                   Khách sạn
                 </Link>
               </li>
-              {!isAdmin && (
-                <li className="nav-item">
-                  <Link className="nav-link px-3 py-1 text-white opacity-85 hover-opacity small fw-medium" to="/my-bookings">
-                    Chuyến đi của tôi
-                  </Link>
-                </li>
-              )}
+              <li className="nav-item">
+                <Link className="nav-link px-3 py-1 text-white opacity-85 hover-opacity small fw-medium" to="/my-bookings">
+                  Chuyến đi của tôi
+                </Link>
+              </li>
               <li className="nav-item">
                 <a 
                   href="#hotel-list-section" 
