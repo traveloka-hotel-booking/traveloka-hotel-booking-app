@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { MOCK_HOTELS, getHotelsData } from '../data/mockData';
 import { apiFetch } from '../services/api';
 import { 
@@ -12,6 +13,7 @@ export default function HotelDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, isAuthenticated } = useAuth();
   
   // Đọc dữ liệu tìm kiếm dự phòng từ localStorage nếu F5 hoặc mở tab mới
   const savedSearch = (() => {
@@ -130,19 +132,34 @@ export default function HotelDetailPage() {
   };
 
   const handleBookRoom = (room) => {
-    // Điều hướng sang trang thanh toán & đặt phòng CheckoutPage kèm dữ liệu tìm kiếm
-    navigate('/checkout', { 
-      state: { 
-        hotel, 
-        room, 
-        checkInDate: searchState.checkIn,
-        checkOutDate: searchState.checkOut,
-        guestCount: searchState.adultsCount || 2,
-        roomsCount: searchState.roomsCount || 1,
-        destination: searchState.destination,
-        ...searchState 
-      } 
-    });
+    const bookingState = { 
+      hotel, 
+      room, 
+      checkInDate: searchState.checkIn,
+      checkOutDate: searchState.checkOut,
+      guestCount: searchState.adultsCount || 2,
+      roomsCount: searchState.roomsCount || 1,
+      destination: searchState.destination,
+      ...searchState 
+    };
+
+    // Bắt buộc đăng nhập tài khoản Khách hàng khi tiến hành đặt phòng
+    if (!isAuthenticated) {
+      try {
+        localStorage.setItem('traveloka_pending_booking', JSON.stringify(bookingState));
+      } catch {}
+
+      navigate('/login', { 
+        state: { 
+          from: { pathname: '/checkout', state: bookingState },
+          notice: 'Vui lòng đăng nhập tài khoản Khách hàng để tiếp tục đặt phòng.'
+        } 
+      });
+      return;
+    }
+
+    // Đã đăng nhập -> Điều hướng sang trang thanh toán & đặt phòng CheckoutPage
+    navigate('/checkout', { state: bookingState });
   };
 
   return (

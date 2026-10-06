@@ -15,8 +15,10 @@ export default function LoginPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // Lấy đường dẫn trước đó nếu có để redirect sau khi đăng nhập
-  const from = location.state?.from?.pathname || '/';
+  // Lấy đường dẫn trước đó và state dữ liệu nếu có để redirect sau khi đăng nhập
+  const from = location.state?.from?.pathname || (typeof location.state?.from === 'string' ? location.state.from : null) || '/';
+  const fromState = location.state?.from?.state || location.state?.bookingState || null;
+  const noticeMsg = location.state?.notice || '';
 
   // Xử lý đăng nhập thông thường
   const handleSubmit = async (e) => {
@@ -43,26 +45,26 @@ export default function LoginPage() {
         if (user?.role === 'ROLE_ADMIN') {
             navigate('/admin');
         } else {
-            navigate(from, { replace: true });
+            navigate(from, { state: fromState, replace: true });
         }
 
     } catch (error) {
       setErrorMsg(sanitizeErrorMessage(error, 'Email hoặc mật khẩu không đúng!'));
     } finally {
-    setIsLoggingIn(false);
-  }
+      setIsLoggingIn(false);
+    }
   };
 
   // Đăng nhập nhanh Google
   const handleGoogleLogin = () => {
     const user = loginWithGoogle();
-    navigate(user.role === 'admin' ? '/admin' : from, { replace: true });
+    navigate(user.role === 'admin' ? '/admin' : from, { state: fromState, replace: true });
   };
 
   // Đăng nhập nhanh Facebook
   const handleFacebookLogin = () => {
     loginWithFacebook();
-    navigate(from, { replace: true });
+    navigate(from, { state: fromState, replace: true });
   };
 
   // Đăng nhập nhanh tài khoản Admin mẫu
@@ -79,7 +81,7 @@ export default function LoginPage() {
   const handleQuickUser = async () => {
     try {
       await login('customer@traveloka.vn', '123456');
-      navigate(from, { replace: true });
+      navigate(from, { state: fromState, replace: true });
     } catch (err) {
       setErrorMsg(sanitizeErrorMessage(err, 'Đăng nhập Khách Hàng không thành công!'));
     }
@@ -103,6 +105,14 @@ export default function LoginPage() {
                   Chào mừng bạn quay trở lại với Traveloka Hotel Booking
                 </p>
               </div>
+
+              {/* Thông báo chuyển hướng đặt phòng */}
+              {noticeMsg && (
+                <div className="alert alert-info py-2 small d-flex align-items-center gap-2 mb-3">
+                  <AlertCircle size={16} className="flex-shrink-0 text-primary" />
+                  <span>{noticeMsg}</span>
+                </div>
+              )}
 
               {/* Thông báo lỗi nếu có */}
               {errorMsg && (
