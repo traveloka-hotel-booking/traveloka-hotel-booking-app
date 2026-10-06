@@ -48,7 +48,9 @@ export default function LoginPage() {
 
     } catch (error) {
       setErrorMsg(sanitizeErrorMessage(error, 'Email hoặc mật khẩu không đúng!'));
-    }
+    } finally {
+    setIsLoggingIn(false);
+  }
   };
 
   // Đăng nhập nhanh Google

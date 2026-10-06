@@ -231,7 +231,9 @@ const handleSaveProfile = async (e) => {
     } catch (error) {
       console.error('Update profile error:', error);
       showToast(sanitizeErrorMessage(error, 'Cập nhật thông tin thất bại'));
-    }
+    } finally {
+    setIsSavingProfile(false);
+  }
   };
 
   // Xử lý đổi mật khẩu
