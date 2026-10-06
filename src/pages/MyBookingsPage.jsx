@@ -7,6 +7,7 @@ import {
   XCircle, CheckCircle, Clock, AlertTriangle, RotateCcw, Building, Info, Sparkles, RefreshCw
 } from 'lucide-react';
 import { MOCK_HOTELS } from '../data/mockData';
+import AlertModal from '../components/AlertModal';
 
 export default function MyBookingsPage() {
   const navigate = useNavigate();
@@ -151,6 +152,35 @@ export default function MyBookingsPage() {
   const [loading, setLoading] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
 
+  // State cho Alert Modal thân thiện thay thế alert() và window.confirm()
+  const [alertModal, setAlertModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'error',
+    confirmText: 'Đã hiểu',
+    cancelText: 'Hủy',
+    showCancel: false,
+    onConfirm: null
+  });
+
+  const showAlert = ({ title, message, type = 'error', confirmText = 'Đã hiểu', cancelText = 'Hủy', showCancel = false, onConfirm = null }) => {
+    setAlertModal({
+      isOpen: true,
+      title,
+      message,
+      type,
+      confirmText,
+      cancelText,
+      showCancel,
+      onConfirm
+    });
+  };
+
+  const closeAlert = () => {
+    setAlertModal(prev => ({ ...prev, isOpen: false }));
+  };
+
   // Tải danh sách đơn đặt phòng từ Backend và LocalStorage
   const loadBookings = async () => {
     try {
@@ -230,7 +260,12 @@ export default function MyBookingsPage() {
         });
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
-          alert(errData.message || 'Không thể hủy đơn đặt phòng vào thời điểm này.');
+          showAlert({
+            title: 'Không thể hủy đơn',
+            message: errData.message || 'Không thể hủy đơn đặt phòng vào thời điểm này. Vui lòng thử lại sau!',
+            type: 'error',
+            confirmText: 'Đã hiểu'
+          });
           setIsCancelling(false);
           return;
         }
@@ -246,9 +281,20 @@ export default function MyBookingsPage() {
       localStorage.setItem('traveloka_bookings', JSON.stringify(updated));
       setBookings(updated);
       setCancellingBookingId(null);
+      showAlert({
+        title: 'Hủy đơn thành công',
+        message: `Đơn đặt phòng ${bookingItem.bookingCode || bookingItem.id} đã được hủy thành công!`,
+        type: 'success',
+        confirmText: 'Đã hiểu'
+      });
     } catch (err) {
       console.error('Lỗi khi hủy đơn:', err);
-      alert('Có lỗi xảy ra khi hủy đơn đặt phòng. Vui lòng thử lại sau.');
+      showAlert({
+        title: 'Có lỗi xảy ra',
+        message: 'Có lỗi xảy ra khi hủy đơn đặt phòng. Vui lòng thử lại sau!',
+        type: 'error',
+        confirmText: 'Đã hiểu'
+      });
     } finally {
       setIsCancelling(false);
     }
@@ -256,10 +302,18 @@ export default function MyBookingsPage() {
 
   // Xóa toàn bộ lịch sử (Reset demo)
   const handleClearAll = () => {
-    if (window.confirm('Bạn có chắc chắn muốn xóa toàn bộ lịch sử đặt phòng đã lưu không?')) {
-      localStorage.removeItem('traveloka_bookings');
-      setBookings([]);
-    }
+    showAlert({
+      title: 'Xóa toàn bộ lịch sử?',
+      message: 'Bạn có chắc chắn muốn xóa toàn bộ lịch sử đặt phòng đã lưu không? Thao tác này sẽ làm trống danh sách chuyến đi của bạn.',
+      type: 'warning',
+      confirmText: 'Xóa toàn bộ',
+      cancelText: 'Giữ lại',
+      showCancel: true,
+      onConfirm: () => {
+        localStorage.removeItem('traveloka_bookings');
+        setBookings([]);
+      }
+    });
   };
 
   // Lọc theo Tab: Đơn đã hoàn thành tự động biến mất khỏi danh mục "Tất cả" và chuyển qua mục "Hoàn thành"
@@ -317,8 +371,8 @@ export default function MyBookingsPage() {
           </div>
         </div>
 
-        {/* Banner trạng thái đồng bộ: Khách vãng lai vs Thành viên */}
-        {!isAuthenticated ? (
+        {/* Banner dành cho khách chưa đăng nhập */}
+        {!isAuthenticated && (
           <div className="alert alert-info border-0 shadow-sm rounded-4 p-3 mb-4 d-flex align-items-center justify-content-between flex-wrap gap-3 bg-info-subtle text-dark">
             <div className="d-flex align-items-center gap-2 small">
               <Info size={20} className="text-info flex-shrink-0" />
@@ -331,18 +385,8 @@ export default function MyBookingsPage() {
               className="btn btn-primary btn-sm rounded-pill px-3 py-1 fw-bold shadow-sm" 
               style={{ fontSize: '12.5px' }}
             >
-              Đăng nhập để đồng bộ tài khoản
+              Đăng nhập
             </Link>
-          </div>
-        ) : (
-          <div className="alert alert-success border-0 shadow-sm rounded-4 p-3 mb-4 d-flex align-items-center justify-content-between flex-wrap gap-3 bg-success-subtle text-dark">
-            <div className="d-flex align-items-center gap-2 small">
-              <CheckCircle size={20} className="text-success flex-shrink-0" />
-              <span>
-                Đang hiển thị các chuyến đi của tài khoản <strong>{user?.name || user?.fullName}</strong> ({user?.email}).
-              </span>
-            </div>
-            <span className="badge bg-success text-white px-3 py-1 rounded-pill small">✓ Đã đồng bộ tài khoản</span>
           </div>
         )}
 
@@ -549,8 +593,20 @@ export default function MyBookingsPage() {
             ))}
           </div>
         )}
-
       </div>
+
+      {/* Modal Thông Báo Thân Thiện Người Dùng */}
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        onClose={closeAlert}
+        type={alertModal.type}
+        title={alertModal.title}
+        message={alertModal.message}
+        confirmText={alertModal.confirmText}
+        cancelText={alertModal.cancelText}
+        showCancel={alertModal.showCancel}
+        onConfirm={alertModal.onConfirm}
+      />
     </div>
   );
 }

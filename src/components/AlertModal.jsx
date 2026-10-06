@@ -8,13 +8,25 @@ export default function AlertModal({
   title = 'Thông báo',
   message = '',
   confirmText = 'Đã hiểu',
-  onConfirm
+  cancelText = 'Hủy',
+  showCancel = false,
+  onConfirm,
+  onCancel
 }) {
   if (!isOpen) return null;
 
   const handleConfirm = () => {
     if (onConfirm) {
       onConfirm();
+    }
+    if (onClose) {
+      onClose();
+    }
+  };
+
+  const handleCancel = () => {
+    if (onCancel) {
+      onCancel();
     }
     if (onClose) {
       onClose();
@@ -68,7 +80,7 @@ export default function AlertModal({
         zIndex: 2000,
         animation: 'fadeIn 0.2s ease-out'
       }}
-      onClick={onClose}
+      onClick={handleCancel}
     >
       <div 
         className="card border-0 shadow-lg rounded-4 text-center p-4 position-relative"
@@ -84,7 +96,7 @@ export default function AlertModal({
         {/* Nút đóng X góc trên */}
         <button
           type="button"
-          onClick={onClose}
+          onClick={handleCancel}
           className="btn-close position-absolute top-0 end-0 m-3"
           aria-label="Đóng"
           style={{ fontSize: '12px' }}
@@ -113,19 +125,43 @@ export default function AlertModal({
         </p>
 
         {/* Nút bấm xác nhận thân thiện */}
-        <div>
-          <button
-            type="button"
-            className="btn w-100 py-2 fw-semibold rounded-3 text-white shadow-sm"
-            style={{
-              ...config.btnStyle,
-              fontSize: '15px'
-            }}
-            onClick={handleConfirm}
-          >
-            {confirmText}
-          </button>
-        </div>
+        {showCancel ? (
+          <div className="d-flex gap-2">
+            <button
+              type="button"
+              className="btn btn-light border py-2 fw-semibold rounded-3 flex-fill text-secondary"
+              style={{ fontSize: '15px' }}
+              onClick={handleCancel}
+            >
+              {cancelText}
+            </button>
+            <button
+              type="button"
+              className="btn py-2 fw-semibold rounded-3 text-white shadow-sm flex-fill"
+              style={{
+                ...config.btnStyle,
+                fontSize: '15px'
+              }}
+              onClick={handleConfirm}
+            >
+              {confirmText}
+            </button>
+          </div>
+        ) : (
+          <div>
+            <button
+              type="button"
+              className="btn w-100 py-2 fw-semibold rounded-3 text-white shadow-sm"
+              style={{
+                ...config.btnStyle,
+                fontSize: '15px'
+              }}
+              onClick={handleConfirm}
+            >
+              {confirmText}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

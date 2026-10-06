@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Hotel, Headphones, Search, Globe, User, ShieldCheck, LogOut, ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useAlert } from '../context/AlertContext';
 import SupportModal from './SupportModal';
 
 export default function Navbar() {
@@ -9,6 +10,7 @@ export default function Navbar() {
   const navigate = useNavigate();
   const isHome = location.pathname === '/';
   const { user, isAuthenticated, isAdmin, logout } = useAuth();
+  const { showAlert } = useAlert();
 
   // State điều khiển đóng/mở dropdown menu của người dùng
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -62,7 +64,11 @@ export default function Navbar() {
       navigate("/", { replace: true });
     } catch (error) {
       console.error("Logout error:", error);
-      alert("Đăng xuất thất bại. Vui lòng thử lại.");
+      showAlert({
+        title: 'Đăng xuất thất bại',
+        message: 'Đăng xuất không thành công. Vui lòng thử lại!',
+        type: 'error'
+      });
       setIsLoggingOut(false);
     }
   };
@@ -133,13 +139,11 @@ export default function Navbar() {
                   Khách sạn
                 </Link>
               </li>
-              {!isAdmin && (
-                <li className="nav-item">
-                  <Link className="nav-link px-3 py-1 text-white opacity-85 hover-opacity small fw-medium" to="/my-bookings">
-                    Chuyến đi của tôi
-                  </Link>
-                </li>
-              )}
+              <li className="nav-item">
+                <Link className="nav-link px-3 py-1 text-white opacity-85 hover-opacity small fw-medium" to="/my-bookings">
+                  Chuyến đi của tôi
+                </Link>
+              </li>
               <li className="nav-item">
                 <a 
                   href="#hotel-list-section" 

@@ -201,7 +201,7 @@ export default function HotelDetailPage() {
             <div>
               {/* Sao & Thành phố */}
               <div className="d-flex align-items-center gap-2 mb-2">
-                <span className="badge bg-primary px-3 py-1 rounded-pill">📍 {hotel.city}</span>
+                <span className="badge bg-primary px-3 py-1 rounded-pill">{hotel.city}</span>
                 <div className="d-flex align-items-center gap-1 text-warning">
                   {Array.from({ length: hotel.starRating }).map((_, i) => (
                     <Star key={i} size={16} fill="#ffc107" />

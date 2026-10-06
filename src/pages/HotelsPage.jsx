@@ -125,6 +125,11 @@ export default function HotelsPage() {
     setSearchParams({});
   };
 
+  // Helper lấy giá phòng của khách sạn
+  const getHotelPrice = (hotel) => {
+    return Number(hotel?.minPricePerNight ?? hotel?.rooms?.[0]?.pricePerNight ?? hotel?.minPrice ?? hotel?.pricePerNight ?? 1200000);
+  };
+
   // Lọc và sắp xếp dữ liệu (Ưu tiên dữ liệu từ Backend API, fallback sang MockData khi API offline)
   const filteredHotels = useMemo(() => {
     const isUsingBackend = backendHotels !== null && Array.isArray(backendHotels);
@@ -143,9 +148,10 @@ export default function HotelsPage() {
         return false;
       }
 
-      // 3. Lọc theo giá tối đa (lấy giá phòng thấp nhất của khách sạn)
-      const minHotelPrice = hotel.minPricePerNight ?? hotel.rooms?.[0]?.pricePerNight ?? 0;
-      if (minHotelPrice > maxPrice) {
+      // 3. Lọc theo mức giá tối đa:
+      // Bất kỳ khách sạn nào có giá phòng vượt quá mức giá người dùng chọn (trên giá này) -> TUYỆT ĐỐI KHÔNG HIỂN THỊ
+      const hotelPrice = getHotelPrice(hotel);
+      if (hotelPrice > maxPrice) {
         return false;
       }
 
@@ -162,8 +168,8 @@ export default function HotelsPage() {
 
       return true;
     }).sort((a, b) => {
-      const priceA = a.minPricePerNight ?? a.rooms?.[0]?.pricePerNight ?? 0;
-      const priceB = b.minPricePerNight ?? b.rooms?.[0]?.pricePerNight ?? 0;
+      const priceA = getHotelPrice(a);
+      const priceB = getHotelPrice(b);
 
       if (sortBy === 'priceAsc') return priceA - priceB;
       if (sortBy === 'priceDesc') return priceB - priceA;
@@ -178,12 +184,9 @@ export default function HotelsPage() {
         {/* Tiêu đề trang */}
         <div className="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
           <div>
-            <h2 className="fw-bold mb-1">
+            <h2 className="fw-bold mb-0">
               Khách Sạn {selectedCity && selectedCity !== "Tất cả" ? `Tại ${selectedCity}` : "Tại Việt Nam"}
             </h2>
-            <p className="text-secondary mb-0">
-              Tìm thấy <strong className="text-primary">{filteredHotels.length}</strong> khách sạn phù hợp với tiêu chí của bạn
-            </p>
           </div>
 
           {/* Sắp xếp kết quả */}
@@ -238,7 +241,7 @@ export default function HotelsPage() {
                 </select>
               </div>
 
-              {/* 2. Lọc theo Khoảng giá */}
+              {/* 2. Lọc theo Mức giá tối đa */}
               <div className="mb-4 pb-3 border-bottom">
                 <div className="d-flex justify-content-between align-items-center mb-2">
                   <label className="form-label fw-bold text-dark small text-uppercase mb-0">Mức giá tối đa</label>
@@ -251,13 +254,38 @@ export default function HotelsPage() {
                   className="form-range" 
                   min="500000" 
                   max="5000000" 
-                  step="200000"
+                  step="100000"
                   value={maxPrice}
                   onChange={(e) => setMaxPrice(Number(e.target.value))}
                 />
-                <div className="d-flex justify-content-between text-secondary small">
+                <div className="d-flex justify-content-between text-secondary small mb-3" style={{ fontSize: '11px' }}>
                   <span>500.000 đ</span>
                   <span>5.000.000 đ</span>
+                </div>
+
+                {/* Các nút chọn nhanh mức giá */}
+                <div className="d-flex flex-wrap gap-1">
+                  {[
+                    { label: '500k', value: 500000 },
+                    { label: 'Dưới 1 triệu', value: 1000000 },
+                    { label: 'Dưới 2 triệu', value: 2000000 },
+                    { label: 'Dưới 3 triệu', value: 3000000 },
+                    { label: 'Tất cả (5 tr)', value: 5000000 },
+                  ].map((p, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      className={`btn btn-sm px-2 py-1 rounded-pill ${
+                        maxPrice === p.value 
+                          ? 'btn-danger text-white fw-bold' 
+                          : 'btn-outline-secondary border-light-subtle'
+                      }`}
+                      style={{ fontSize: '11px' }}
+                      onClick={() => setMaxPrice(p.value)}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -339,16 +367,13 @@ export default function HotelsPage() {
                   <div key={hotel.id} className="card border-0 shadow-sm rounded-4 overflow-hidden hover-shadow bg-white">
                     <div className="row g-0">
                       {/* Ảnh khách sạn */}
-                      <div className="col-lg-4 col-md-5 position-relative">
+                      <div className="col-lg-4 col-md-5">
                         <img 
                           src={hotel.thumbnailUrl} 
                           className="w-100 h-100 object-fit-cover" 
                           alt={hotel.name}
                           style={{ minHeight: '240px', maxHeight: '280px' }}
                         />
-                        <span className="position-absolute top-0 start-0 m-3 badge bg-primary px-3 py-1 rounded-pill">
-                          📍 {hotel.city}
-                        </span>
                       </div>
 
                       {/* Thông tin chi tiết */}
@@ -410,10 +435,10 @@ export default function HotelsPage() {
                           <div>
                             <span className="badge bg-danger-subtle text-danger mb-1">Tiết kiệm 20% hôm nay</span>
                             <div className="text-secondary small">
-                              Giá gốc: <del>{Math.round((hotel.minPricePerNight ?? hotel.rooms?.[0]?.originalPrice ?? 1500000) * 1.25).toLocaleString('vi-VN')} đ</del>
+                              Giá gốc: <del>{Math.round(getHotelPrice(hotel) * 1.25).toLocaleString('vi-VN')} đ</del>
                             </div>
                             <div className="fs-4 fw-bold text-danger">
-                              {(hotel.minPricePerNight ?? hotel.rooms?.[0]?.pricePerNight ?? 1200000).toLocaleString('vi-VN')} đ
+                              {getHotelPrice(hotel).toLocaleString('vi-VN')} đ
                               <span className="text-secondary fs-6 fw-normal"> / đêm</span>
                             </div>
                           </div>
