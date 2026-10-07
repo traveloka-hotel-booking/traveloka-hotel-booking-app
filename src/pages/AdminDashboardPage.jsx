@@ -2528,7 +2528,7 @@ export default function AdminDashboardPage() {
                     ) : (
                       <>
                         <UploadCloud size={16} />
-                        <span>Upload Ảnh (Cloudinary)</span>
+                        <span>Upload Ảnh </span>
                       </>
                     )}
                   </button>
