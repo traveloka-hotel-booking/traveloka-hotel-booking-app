@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { MOCK_HOTELS, getHotelsData } from '../data/mockData';
 import { apiFetch } from '../services/api';
 import { 
   MapPin, Star, Wifi, Waves, Coffee, Car, Dumbbell, 
@@ -25,27 +24,15 @@ export default function HotelDetailPage() {
   })();
   const searchState = { ...savedSearch, ...(location.state || {}) };
 
-  // Tìm khách sạn theo ID từ danh sách tổng hợp (bao gồm cả khách sạn mới do Admin tạo)
-  const [hotel, setHotel] = useState(() => {
-    const allHotels = getHotelsData();
-    return allHotels.find(h => String(h.id) === String(id)) || allHotels[0];
-  });
+  // Khách sạn lấy từ Backend
+  const [hotel, setHotel] = useState(null);
 
   // State ảnh chính đang được hiển thị trong Gallery
-  const [activeImage, setActiveImage] = useState(hotel?.images?.[0] || hotel?.thumbnailUrl);
+  const [activeImage, setActiveImage] = useState(null);
   const [bookingSuccessNotice, setBookingSuccessNotice] = useState(null);
 
-  // Tải & đồng bộ chi tiết khách sạn và danh sách phòng từ Backend và LocalStorage
+  // Tải chi tiết khách sạn và danh sách phòng từ Backend API
   const loadHotelDetails = async () => {
-    // 1. Đồng bộ tức thì từ localStorage/MockData
-    const all = getHotelsData();
-    const localHotel = all.find(h => String(h.id) === String(id)) || all[0];
-    if (localHotel) {
-      setHotel(localHotel);
-      setActiveImage(prev => prev || localHotel.images?.[0] || localHotel.thumbnailUrl);
-    }
-
-    // 2. Fetch API Backend đồng bộ từ cơ sở dữ liệu thực tế (Cloudinary image, giá, trạng thái...)
     try {
       const [hRes, rRes] = await Promise.all([
         apiFetch(`/hotels/${id}`),
@@ -95,6 +82,9 @@ export default function HotelDetailPage() {
 
           return updated;
         });
+        if (backendHotel?.thumbnailUrl) {
+          setActiveImage(prev => prev || backendHotel.thumbnailUrl);
+        }
       }
     } catch (err) {
       console.warn('API hotel details fallback:', err);
@@ -161,6 +151,19 @@ export default function HotelDetailPage() {
     // Đã đăng nhập -> Điều hướng sang trang thanh toán & đặt phòng CheckoutPage
     navigate('/checkout', { state: bookingState });
   };
+
+  if (!hotel) {
+    return (
+      <div className="bg-light min-vh-100 py-5 page-top-spacing d-flex flex-column align-items-center justify-content-center">
+        <div className="spinner-border text-primary mb-3" role="status"></div>
+        <h5 className="fw-bold text-dark mb-1">Đang tải thông tin khách sạn...</h5>
+        <p className="text-secondary small mb-3">Vui lòng chờ trong giây lát</p>
+        <button onClick={() => navigate('/hotels')} className="btn btn-outline-primary btn-sm rounded-pill">
+          Quay lại danh sách khách sạn
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-light pb-4 min-vh-100 page-top-spacing">

@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { MOCK_HOTELS, getHotelsData } from '../data/mockData';
 import { filterHotelsApi, searchHotelsApi } from '../services/hotelApi';
 import { 
   Search, MapPin, Star, Filter, RotateCcw, 
@@ -130,10 +129,9 @@ export default function HotelsPage() {
     return Number(hotel?.minPricePerNight ?? hotel?.rooms?.[0]?.pricePerNight ?? hotel?.minPrice ?? hotel?.pricePerNight ?? 1200000);
   };
 
-  // Lọc và sắp xếp dữ liệu (Ưu tiên dữ liệu từ Backend API, fallback sang MockData khi API offline)
+  // Lọc và sắp xếp dữ liệu trực tiếp từ Backend API (MySQL)
   const filteredHotels = useMemo(() => {
-    const isUsingBackend = backendHotels !== null && Array.isArray(backendHotels);
-    const sourceHotels = isUsingBackend ? backendHotels : getHotelsData();
+    const sourceHotels = Array.isArray(backendHotels) ? backendHotels : [];
 
     return sourceHotels.filter(hotel => {
       // 1. Lọc theo thành phố (nếu dùng mock fallback)

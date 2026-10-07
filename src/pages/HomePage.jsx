@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { MOCK_HOTELS, getHotelsData } from '../data/mockData';
-import { searchHotelsApi } from '../services/hotelApi';
+import { searchHotelsApi, filterHotelsApi } from '../services/hotelApi';
 import { 
   Search, MapPin, Calendar, Users, Star, ArrowRight, ChevronDown, ChevronUp,
   Minus, Plus, ShieldCheck, Tag, Clock, Sparkles, Check, Info, ArrowUp, ThumbsUp,
@@ -122,6 +121,21 @@ export default function HomePage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Tải danh sách khách sạn thật từ Backend khi mở trang chủ
+  useEffect(() => {
+    const fetchInitialHotels = async () => {
+      try {
+        const res = await filterHotelsApi({ page: 0, size: 20 });
+        const list = Array.isArray(res?.content) ? res.content : (Array.isArray(res) ? res : []);
+        setBackendHotels(list);
+      } catch (err) {
+        console.warn('Initial backend hotels load fallback:', err);
+        setBackendHotels([]);
+      }
+    };
+    fetchInitialHotels();
+  }, []);
+
   // Gọi API FR-06 tìm kiếm phòng trống theo ngày và số khách
   const performSearch = async () => {
     setIsSearching(true);
@@ -145,8 +159,8 @@ export default function HomePage() {
         setSearchFeedback('Không tìm thấy khách sạn còn trống trong cơ sở dữ liệu cho tiêu chí này.');
       }
     } catch (err) {
-      console.warn('FR-06 search API offline or error, falling back to local data:', err);
-      setBackendHotels(null);
+      console.warn('FR-06 search API offline or error:', err);
+      setBackendHotels([]);
     } finally {
       setIsSearching(false);
     }
@@ -161,12 +175,11 @@ export default function HomePage() {
 
   // Lọc danh sách khách sạn theo Điểm Đến, Số Sao, Đánh Giá và Sắp Xếp
   const displayedHotels = useMemo(() => {
-    const isUsingBackend = backendHotels !== null && Array.isArray(backendHotels);
-    const sourceHotels = isUsingBackend ? backendHotels : getHotelsData();
+    const sourceHotels = Array.isArray(backendHotels) ? backendHotels : [];
 
     return sourceHotels.filter(hotel => {
-      // 1. Lọc theo Điểm đến (khớp theo Thành phố, Tên khách sạn hoặc Địa chỉ khi dùng dữ liệu dự phòng)
-      if (!isUsingBackend && destination && destination.trim() !== '') {
+      // 1. Lọc theo Điểm đến nếu có
+      if (destination && destination.trim() !== '') {
         const term = destination.toLowerCase().trim();
         const matchCity = hotel.city?.toLowerCase().includes(term);
         const matchAddress = hotel.address?.toLowerCase().includes(term);

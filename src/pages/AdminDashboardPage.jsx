@@ -5,7 +5,6 @@ import { useAlert } from '../context/AlertContext';
 import { apiFetch } from '../services/api';
 import { getFriendlyErrorMessage, sanitizeErrorMessage } from '../utils/errorHandler';
 import AdminUserManagement from '../components/AdminUserManagement';
-import { MOCK_HOTELS } from '../data/mockData';
 
 
 import {
@@ -107,8 +106,8 @@ export default function AdminDashboardPage() {
 
   // ── Hotels state ──
   const [hotels, setHotels] = useState(() => {
-    try { const s = localStorage.getItem('traveloka_custom_hotels'); return s ? JSON.parse(s) : MOCK_HOTELS; }
-    catch { return MOCK_HOTELS; }
+    try { const s = localStorage.getItem('traveloka_custom_hotels'); return s ? JSON.parse(s) : []; }
+    catch { return []; }
   });
 
   // ── Rooms state (FR-14) ──
@@ -117,23 +116,12 @@ export default function AdminDashboardPage() {
       const s = localStorage.getItem('traveloka_custom_rooms');
       if (s) {
         const parsed = JSON.parse(s);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch (e) {
       console.warn('Error reading traveloka_custom_rooms:', e);
     }
-    const flat = hotels.flatMap(h => (h.rooms || []).map(r => ({
-      ...r,
-      hotelId: h.id,
-      hotelName: h.name,
-      status: r.status || 'AVAILABLE',
-      bedType: r.bedType || '1 Giường đôi lớn (King Size)',
-      roomSize: r.roomSize || '35 m²'
-    })));
-    try {
-      localStorage.setItem('traveloka_custom_rooms', JSON.stringify(flat));
-    } catch {}
-    return flat;
+    return [];
   });
 
   // ── Helper chuẩn hóa đơn đặt phòng ──
@@ -343,7 +331,7 @@ export default function AdminDashboardPage() {
         const hotelRes = await apiFetch('/admin/hotels?size=50');
         if (hotelRes.ok) {
           const hotelData = await hotelRes.json();
-          if (hotelData.result && hotelData.result.content && hotelData.result.content.length > 0) {
+          if (hotelData.result && Array.isArray(hotelData.result.content)) {
             setHotels(hotelData.result.content);
             localStorage.setItem('traveloka_custom_hotels', JSON.stringify(hotelData.result.content));
           }
@@ -356,7 +344,7 @@ export default function AdminDashboardPage() {
         const roomRes = await apiFetch('/admin/rooms');
         if (roomRes.ok) {
           const roomData = await roomRes.json();
-          if (roomData.result && roomData.result.length > 0) {
+          if (roomData.result && Array.isArray(roomData.result)) {
             setRoomsList(roomData.result);
             localStorage.setItem('traveloka_custom_rooms', JSON.stringify(roomData.result));
           }
@@ -1343,22 +1331,9 @@ export default function AdminDashboardPage() {
             <h3 className="fw-bold text-dark mb-2">Khu Vực Quản Trị Viên</h3>
             <p className="text-secondary mb-4">Bạn cần đăng nhập bằng tài khoản có quyền Quản trị viên để truy cập vào hệ thống này.</p>
             <div className="d-flex flex-column gap-2">
-              <button 
-                onClick={async () => {
-                  try {
-                    await login('admin@traveloka.vn', 'admin123');
-                  } catch (e) {
-                    showAlert({
-                      title: 'Lỗi đăng nhập',
-                      message: e.message || 'Không thể đăng nhập tài khoản quản trị.',
-                      type: 'error'
-                    });
-                  }
-                }} 
-                className="btn btn-primary btn-lg fw-bold rounded-pill shadow-sm"
-              >
-                ⚡ Đăng nhập nhanh với quyền Admin mẫu
-              </button>
+              <Link to="/login" state={{ from: '/admin' }} className="btn btn-primary btn-lg fw-bold rounded-pill shadow-sm">
+                Đăng nhập tài khoản Quản trị viên
+              </Link>
               <Link to="/" className="btn btn-light rounded-pill py-2 text-secondary">Quay lại trang chủ</Link>
             </div>
           </div>

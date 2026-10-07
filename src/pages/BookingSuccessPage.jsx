@@ -5,14 +5,12 @@ import {
   CheckCircle, Copy, Check, Printer, ArrowRight, Home, 
   MapPin, Calendar, Users, BedDouble, Phone, Mail, ShieldCheck, QrCode, Sparkles, UserPlus
 } from 'lucide-react';
-import { MOCK_HOTELS } from '../data/mockData';
-
 export default function BookingSuccessPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
 
-  // Đọc dữ liệu booking từ state chuyển trang, hoặc lấy đơn gần nhất từ localStorage, hoặc mockup fallback
+  // Đọc dữ liệu booking từ state chuyển trang, hoặc lấy đơn gần nhất từ localStorage
   const getInitialBooking = () => {
     if (location.state?.booking) return location.state.booking;
     try {
@@ -21,27 +19,26 @@ export default function BookingSuccessPage() {
     } catch (e) {
       console.error(e);
     }
-    // Mock fallback
     return {
-      id: 'TVLK-849201',
-      createdAt: '19/09/2026 10:00',
-      hotelName: MOCK_HOTELS[0].name,
-      hotelCity: MOCK_HOTELS[0].city,
-      hotelAddress: MOCK_HOTELS[0].address,
-      hotelThumbnail: MOCK_HOTELS[0].thumbnailUrl,
-      roomName: MOCK_HOTELS[0].rooms[0].name,
-      roomBed: MOCK_HOTELS[0].rooms[0].bedType,
-      checkInDate: '2026-09-25',
-      checkOutDate: '2026-09-26',
+      id: 'TVLK-BOOKED',
+      createdAt: new Date().toLocaleDateString('vi-VN'),
+      hotelName: 'Khách sạn của bạn',
+      hotelCity: 'Việt Nam',
+      hotelAddress: 'Địa chỉ khách sạn',
+      hotelThumbnail: '',
+      roomName: 'Phòng đã đặt',
+      roomBed: '1 Giường đôi lớn',
+      checkInDate: '—',
+      checkOutDate: '—',
       nights: 1,
       guestCount: 2,
-      contactName: 'Nguyễn Văn A',
-      guestName: 'Nguyễn Văn A',
-      contactEmail: 'nguyenvana@gmail.com',
-      contactPhone: '0912 345 678',
-      specialRequests: ['Phòng không hút thuốc'],
+      contactName: user?.fullName || 'Khách hàng',
+      guestName: user?.fullName || 'Khách hàng',
+      contactEmail: user?.email || '',
+      contactPhone: user?.phone || '',
+      specialRequests: [],
       paymentMethod: 'vnpay',
-      totalAmount: 1320000,
+      totalAmount: 0,
       status: 'confirmed'
     };
   };
