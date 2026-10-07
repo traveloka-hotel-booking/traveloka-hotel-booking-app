@@ -38,6 +38,14 @@ export default function ProfilePage() {
   });
 
   const [errorMessage, setErrorMessage] = useState('');
+  
+
+  // Gợi ý địa chỉ bằng Photon (OpenStreetMap) - không cần tạo API backend riêng
+  const [addressSuggestions, setAddressSuggestions] = useState([]);
+  const [isLoadingAddressSuggestions, setIsLoadingAddressSuggestions] = useState(false);
+  const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
+  const addressSearchAbortRef = useRef(null);
+  const addressSearchTimeoutRef = useRef(null);
 
   // Lấy profile khi mở trang
   useEffect(() => {
@@ -177,6 +185,135 @@ export default function ProfilePage() {
     return `${cleaned.slice(0, 4)} ••• ${cleaned.slice(-3)}`;
   };
 
+  // Tìm kiếm địa chỉ trực tiếp từ Photon khi người dùng nhập
+  const searchAddressSuggestions = async (value) => {
+    const keyword = value.trim();
+
+    if (addressSearchAbortRef.current) {
+      addressSearchAbortRef.current.abort();
+    }
+
+    if (keyword.length < 3) {
+      setAddressSuggestions([]);
+      setShowAddressSuggestions(false);
+      setIsLoadingAddressSuggestions(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    addressSearchAbortRef.current = controller;
+    setIsLoadingAddressSuggestions(true);
+    setShowAddressSuggestions(true);
+
+    try {
+      const params = new URLSearchParams({
+      q: keyword,
+      limit: '5'
+    });
+
+      const response = await fetch(
+        `https://photon.komoot.io/api/?${params.toString()}`,
+        {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json'
+          },
+          signal: controller.signal
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Photon HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      console.log('🔎 Từ khóa:', keyword);
+      console.log('📡 Photon status:', response.status);
+      console.log('📦 Photon response:', data);
+
+      setAddressSuggestions(
+        Array.isArray(data?.features) ? data.features : []
+      );
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        console.error('Address autocomplete error:', error);
+        setAddressSuggestions([]);
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setIsLoadingAddressSuggestions(false);
+      }
+    }
+  };
+
+  // Chuyển dữ liệu Photon thành chuỗi địa chỉ dễ đọc
+  const getPhotonAddressText = (feature) => {
+    const properties = feature?.properties || {};
+
+    const parts = [
+      properties.name,
+      properties.housenumber && properties.street
+        ? `${properties.housenumber} ${properties.street}`
+        : properties.street,
+      properties.locality,
+      properties.district,
+      properties.city,
+      properties.state,
+      properties.country
+    ].filter(Boolean);
+
+    return [...new Set(parts)].join(', ');
+  };
+
+  // Debounce để không gọi dịch vụ tìm kiếm liên tục theo từng ký tự
+  const handleAddressChange = (e) => {
+    const value = e.target.value;
+
+    setProfileForm((prev) => ({
+      ...prev,
+      address: value
+    }));
+
+    if (addressSearchTimeoutRef.current) {
+      clearTimeout(addressSearchTimeoutRef.current);
+    }
+
+    if (value.trim().length < 3) {
+      setAddressSuggestions([]);
+      setShowAddressSuggestions(false);
+      return;
+    }
+
+    setShowAddressSuggestions(true);
+
+    addressSearchTimeoutRef.current = setTimeout(() => {
+      searchAddressSuggestions(value);
+    }, 1000);
+  };
+
+  const handleSelectAddress = (feature) => {
+    const selectedAddress = getPhotonAddressText(feature);
+
+    setProfileForm((prev) => ({
+      ...prev,
+      address: selectedAddress
+    }));
+    setAddressSuggestions([]);
+    setShowAddressSuggestions(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (addressSearchAbortRef.current) {
+        addressSearchAbortRef.current.abort();
+      }
+      if (addressSearchTimeoutRef.current) {
+        clearTimeout(addressSearchTimeoutRef.current);
+      }
+    };
+  }, []);
+
   // Mở modal chỉnh sửa và đổ dữ liệu hiện tại vào form
   const handleOpenEditProfile = () => {
     const current = profile || user || {};
@@ -189,6 +326,8 @@ export default function ProfilePage() {
       address: current.address || ''
     });
 
+    setAddressSuggestions([]);
+    setShowAddressSuggestions(false);
     setModalType('edit_profile');
   };
 
@@ -225,6 +364,8 @@ const handleSaveProfile = async (e) => {
       // Backend trả về profile mới sau khi update
       setProfile(result.result);
       setErrorMessage('');
+      setShowAddressSuggestions(false);
+      setAddressSuggestions([]);
 
       setModalType(null);
       showToast('Cập nhật thông tin hồ sơ thành công!');
@@ -774,7 +915,7 @@ const handleSaveProfile = async (e) => {
                     </div>
                   </div>
 
-                  <div className="mb-3">
+                  <div className="mb-3 position-relative">
                     <label className="form-label small fw-semibold text-dark">
                       Địa chỉ
                     </label>
@@ -782,14 +923,67 @@ const handleSaveProfile = async (e) => {
                       className="form-control"
                       rows="3"
                       value={profileForm.address}
-                      onChange={(e) =>
-                        setProfileForm({
-                          ...profileForm,
-                          address: e.target.value
-                        })
-                      }
+                      onChange={handleAddressChange}
+                      onFocus={() => {
+                        if (profileForm.address.trim().length >= 3) {
+                          setShowAddressSuggestions(true);
+                        }
+                      }}
                       placeholder="Nhập địa chỉ của bạn"
+                      autoComplete="off"
                     ></textarea>
+
+                    {showAddressSuggestions && profileForm.address.trim().length >= 3 && (
+                      <div
+                        className="position-absolute start-0 end-0 bg-white border rounded-3 shadow-sm mt-1 overflow-hidden"
+                        style={{ zIndex: 1056, maxHeight: '240px', overflowY: 'auto' }}
+                      >
+                        {isLoadingAddressSuggestions && (
+                          <div className="px-3 py-2 small text-secondary d-flex align-items-center gap-2">
+                            <Loader2 size={14} className="spinner-border spinner-border-sm" />
+                            Đang tìm địa chỉ...
+                          </div>
+                        )}
+
+                        {!isLoadingAddressSuggestions && addressSuggestions.length === 0 && (
+                          <div className="px-3 py-2 small text-secondary">
+                            Không tìm thấy địa chỉ phù hợp
+                          </div>
+                        )}
+
+                        {!isLoadingAddressSuggestions && addressSuggestions.map((feature) => {
+                          const addressText = getPhotonAddressText(feature);
+                          const properties = feature?.properties || {};
+                          const key = `${properties.osm_type || 'osm'}-${properties.osm_id || addressText}`;
+
+                          return (
+                            <button
+                              key={key}
+                              type="button"
+                              className="w-100 text-start border-0 bg-white px-3 py-2 small"
+                              style={{ cursor: 'pointer' }}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => handleSelectAddress(feature)}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor = '#f8f9fa';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = '#fff';
+                              }}
+                            >
+                              {addressText || 'Địa chỉ không xác định'}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <small className="text-secondary d-block mt-1">
+                      Nhập ít nhất 3 ký tự để tìm và chọn địa chỉ gợi ý.
+                    </small>
+                    <small className="text-secondary d-block mt-1" style={{ fontSize: '11px' }}>
+                      Dữ liệu địa chỉ © OpenStreetMap contributors
+                    </small>
                   </div>
 
                 </div>
@@ -1047,8 +1241,8 @@ const handleSaveProfile = async (e) => {
                         </div>
                       </div>
                       {!dev.current && (
-                        <button 
-                          onClick={() => showToast('Đã đăng xuất khỏi thiết bị này!')} 
+                        <button
+                          onClick={() => showToast('Đã đăng xuất khỏi thiết bị này!')}
                           className="btn btn-outline-danger btn-sm rounded-pill px-3"
                           style={{ fontSize: '12px' }}
                         >
