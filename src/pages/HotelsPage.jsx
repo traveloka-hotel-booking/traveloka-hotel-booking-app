@@ -134,34 +134,11 @@ export default function HotelsPage() {
     const sourceHotels = Array.isArray(backendHotels) ? backendHotels : [];
 
     return sourceHotels.filter(hotel => {
-      // 1. Lọc theo thành phố (nếu dùng mock fallback)
-      if (!isUsingBackend && selectedCity && selectedCity !== "Tất cả") {
-        if (!hotel.city?.toLowerCase().includes(selectedCity.toLowerCase())) {
-          return false;
-        }
-      }
-
-      // 2. Lọc theo số sao (nếu dùng mock fallback)
-      if (!isUsingBackend && selectedStars.length > 0 && !selectedStars.includes(hotel.starRating)) {
-        return false;
-      }
-
-      // 3. Lọc theo mức giá tối đa:
-      // Bất kỳ khách sạn nào có giá phòng vượt quá mức giá người dùng chọn (trên giá này) -> TUYỆT ĐỐI KHÔNG HIỂN THỊ
+      // Lọc theo mức giá tối đa:
+      // Bất kỳ khách sạn nào có giá phòng vượt quá mức giá người dùng chọn -> không hiển thị
       const hotelPrice = getHotelPrice(hotel);
       if (hotelPrice > maxPrice) {
         return false;
-      }
-
-      // 4. Lọc theo tiện ích (nếu dùng mock fallback)
-      if (!isUsingBackend && selectedAmenities.length > 0) {
-        const hotelAmenities = Array.isArray(hotel.amenities)
-          ? hotel.amenities
-          : (typeof hotel.amenities === 'string' ? hotel.amenities.split(',').map(s => s.trim()) : []);
-        const hasAmenity = selectedAmenities.some(a => 
-          hotelAmenities.some(item => item.toLowerCase().includes(a.toLowerCase()))
-        );
-        if (!hasAmenity) return false;
       }
 
       return true;
@@ -174,7 +151,7 @@ export default function HotelsPage() {
       if (sortBy === 'ratingDesc') return (b.ratingScore || 8.5) - (a.ratingScore || 8.5);
       return 0; // popular
     });
-  }, [backendHotels, selectedCity, selectedStars, maxPrice, selectedAmenities, sortBy]);
+  }, [backendHotels, maxPrice, sortBy]);
 
   return (
     <div className="bg-light pb-4 min-vh-100 page-top-spacing">
@@ -367,7 +344,7 @@ export default function HotelsPage() {
                       {/* Ảnh khách sạn */}
                       <div className="col-lg-4 col-md-5">
                         <img 
-                          src={hotel.thumbnailUrl} 
+                          src={hotel.thumbnailUrl || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600&auto=format&fit=crop&q=80'} 
                           className="w-100 h-100 object-fit-cover" 
                           alt={hotel.name}
                           style={{ minHeight: '240px', maxHeight: '280px' }}
@@ -380,10 +357,10 @@ export default function HotelsPage() {
                           <div className="d-flex justify-content-between align-items-start gap-2 mb-1">
                             <div>
                               <div className="d-flex align-items-center gap-1 text-warning mb-1">
-                                {Array.from({ length: hotel.starRating }).map((_, idx) => (
+                                {Array.from({ length: Math.max(1, Math.min(5, Number(hotel.starRating || 5))) }).map((_, idx) => (
                                   <Star key={idx} size={14} fill="#ffc107" />
                                 ))}
-                                <span className="text-secondary small ms-1">Khách sạn {hotel.starRating} sao</span>
+                                <span className="text-secondary small ms-1">Khách sạn {hotel.starRating || 5} sao</span>
                               </div>
                               <h4 className="fw-bold text-dark mb-1">{hotel.name}</h4>
                             </div>
@@ -391,19 +368,19 @@ export default function HotelsPage() {
                             {/* Điểm đánh giá */}
                             <div className="text-end flex-shrink-0">
                               <span className="badge bg-success text-white fs-6 px-2 py-1 rounded-3">
-                                ★ {hotel.ratingScore}
+                                ★ {hotel.ratingScore || 8.5}
                               </span>
-                              <span className="d-block small text-secondary mt-1">{hotel.ratingText}</span>
+                              <span className="d-block small text-secondary mt-1">{hotel.ratingText || 'Rất tốt'}</span>
                             </div>
                           </div>
 
                           <p className="text-secondary small mb-2 d-flex align-items-center gap-1">
                             <MapPin size={15} className="text-danger flex-shrink-0" />
-                            <span>{hotel.address}</span>
+                            <span>{hotel.address || hotel.city || 'Việt Nam'}</span>
                           </p>
 
                           <p className="text-secondary small line-clamp-2 mb-3">
-                            {hotel.description}
+                            {hotel.description || `Khách sạn cao cấp tiện nghi tại ${hotel.city || 'Việt Nam'}.`}
                           </p>
 
                           {/* Tiện ích nổi bật */}

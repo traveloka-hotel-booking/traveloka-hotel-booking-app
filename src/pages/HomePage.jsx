@@ -38,8 +38,8 @@ export default function HomePage() {
   const today = new Date().toISOString().split('T')[0];
   const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
 
-  // State tìm kiếm trên Hero (ưu tiên lấy dữ liệu đã tìm kiếm gần nhất)
-  const [destination, setDestination] = useState(savedSearch?.destination || 'Hà Nội');
+  // State tìm kiếm trên Hero (để trống ban đầu để hiển thị toàn bộ khách sạn trên hệ thống)
+  const [destination, setDestination] = useState(savedSearch?.destination || '');
   const [checkIn, setCheckIn] = useState(savedSearch?.checkIn || today);
   const [checkOut, setCheckOut] = useState(savedSearch?.checkOut || tomorrow);
   
@@ -701,7 +701,7 @@ export default function HomePage() {
                       <div className="col-lg-4 col-md-5 p-2">
                         <div className="position-relative mb-1">
                           <img 
-                            src={hotel.thumbnailUrl} 
+                            src={hotel.thumbnailUrl || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600&auto=format&fit=crop&q=80'} 
                             alt={hotel.name}
                             className="w-100 rounded-2 object-fit-cover"
                             style={{ height: '180px' }}
@@ -716,7 +716,7 @@ export default function HomePage() {
                         <div className="row g-1">
                           <div className="col-4">
                             <img 
-                              src={hotel.images?.[1] || hotel.thumbnailUrl} 
+                              src={hotel.images?.[1] || hotel.thumbnailUrl || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=80'} 
                               alt="thumb 1"
                               className="w-100 rounded-1 object-fit-cover"
                               style={{ height: '55px' }}
@@ -724,7 +724,7 @@ export default function HomePage() {
                           </div>
                           <div className="col-4">
                             <img 
-                              src={hotel.images?.[2] || hotel.thumbnailUrl} 
+                              src={hotel.images?.[2] || hotel.thumbnailUrl || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=80'} 
                               alt="thumb 2"
                               className="w-100 rounded-1 object-fit-cover"
                               style={{ height: '55px' }}
@@ -732,7 +732,7 @@ export default function HomePage() {
                           </div>
                           <div className="col-4">
                             <img 
-                              src={hotel.images?.[3] || hotel.thumbnailUrl} 
+                              src={hotel.images?.[3] || hotel.thumbnailUrl || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=80'} 
                               alt="thumb 3"
                               className="w-100 rounded-1 object-fit-cover"
                               style={{ height: '55px' }}
@@ -749,7 +749,7 @@ export default function HomePage() {
                             {hotel.name}
                           </h5>
                           <div className="d-flex align-items-center gap-1 text-warning mb-2">
-                            {Array.from({ length: hotel.starRating }).map((_, i) => (
+                            {Array.from({ length: Math.max(1, Math.min(5, Number(hotel.starRating || 5))) }).map((_, i) => (
                               <Star key={i} size={14} fill="#ffc107" />
                             ))}
                           </div>
@@ -757,7 +757,7 @@ export default function HomePage() {
                           {/* Khoảng cách & Vị trí */}
                           <div className="d-flex align-items-center gap-1 text-secondary small mb-2" style={{ fontSize: '12px' }}>
                             <MapPin size={13} className="text-danger flex-shrink-0" />
-                            <span>Cách trung tâm thành phố 130m ({hotel.city})</span>
+                            <span>Cách trung tâm thành phố 130m ({hotel.city || 'Việt Nam'})</span>
                           </div>
 
                           {/* Tiện ích ngắn gọn dạng pill badge */}
