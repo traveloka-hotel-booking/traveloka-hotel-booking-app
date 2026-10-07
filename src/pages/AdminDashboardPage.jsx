@@ -1582,7 +1582,7 @@ export default function AdminDashboardPage() {
               <span style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>Hồ Sơ Của Tôi</span>
             </Link>
 
-            <button onClick={() => { logout(); navigate('/'); }} style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#fee2e2', border: 'none', borderRadius: 20, padding: '7px 16px', color: '#dc2626', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+            <button onClick={async () => { await logout(); navigate('/'); }} style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#fee2e2', border: 'none', borderRadius: 20, padding: '7px 16px', color: '#dc2626', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
               <LogOut size={15} /> Đăng Xuất
             </button>
           </div>

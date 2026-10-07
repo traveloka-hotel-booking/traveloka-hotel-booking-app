@@ -465,8 +465,8 @@ const handleSaveProfile = async (e) => {
                     </div>
 
                     <button 
-                      onClick={() => {
-                        logout();
+                      onClick={async () => {
+                        await logout();
                         navigate('/');
                       }}
                       className="d-flex align-items-center gap-2 p-2 rounded-3 text-danger border-0 bg-transparent text-start hover-bg-light small mt-2"
