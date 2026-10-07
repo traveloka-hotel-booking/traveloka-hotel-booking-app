@@ -20,11 +20,9 @@ export default function LoginPage() {
   const fromState = location.state?.from?.state || location.state?.bookingState || null;
   const noticeMsg = location.state?.notice || '';
 
-  // Xử lý đăng nhập thông thường
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Tránh gửi nhiều yêu cầu đăng nhập liên tiếp
     if (isLoggingIn) return;
 
     if (!email || !password) {
@@ -38,7 +36,6 @@ export default function LoginPage() {
     try {
       await login(email, password);
 
-      // Lấy user hiện tại từ localStorage
       const savedUser = localStorage.getItem('traveloka_auth_user');
       const user = savedUser ? JSON.parse(savedUser) : null;
 
@@ -49,7 +46,9 @@ export default function LoginPage() {
       }
 
     } catch (error) {
-      setErrorMsg(sanitizeErrorMessage(error, 'Email hoặc mật khẩu không đúng!'));
+      setErrorMsg(
+        sanitizeErrorMessage(error, 'Email hoặc mật khẩu không đúng!')
+      );
     } finally {
       setIsLoggingIn(false);
     }
@@ -60,10 +59,8 @@ export default function LoginPage() {
       <div className="container">
         <div className="row justify-content-center">
           <div className="col-lg-5 col-md-8 col-sm-10">
-
             <div className="card border-0 shadow-sm rounded-4 p-4 p-md-5 bg-white">
-              
-              {/* Logo & Tiêu đề */}
+
               <div className="text-center mb-4">
                 <div className="d-inline-flex align-items-center justify-content-center p-2 bg-primary text-white rounded-3 mb-2 shadow-sm">
                   <Hotel size={28} />
@@ -101,7 +98,7 @@ export default function LoginPage() {
                   <input 
                     type="text" 
                     className="form-control border-secondary-subtle" 
-                    placeholder="VD: huutran0991@gmail.com"
+                    placeholder="VD: name@example.com" 
                     value={email}
                     onChange={(e) => {
                       setEmail(e.target.value);
@@ -111,7 +108,6 @@ export default function LoginPage() {
                   />
                 </div>
 
-                {/* Mật khẩu */}
                 <div className="mb-3">
                   <div className="d-flex justify-content-between align-items-center mb-1">
                     <label className="form-label small fw-semibold text-dark mb-0">
@@ -121,11 +117,12 @@ export default function LoginPage() {
                       Quên mật khẩu?
                     </Link>
                   </div>
+
                   <div className="input-group">
                     <input 
                       type={showPassword ? "text" : "password"} 
                       className="form-control border-secondary-subtle" 
-                      placeholder="Nhập mật khẩu"
+                      placeholder="Nhập mật khẩu" 
                       value={password}
                       onChange={(e) => {
                         setPassword(e.target.value);
@@ -133,9 +130,9 @@ export default function LoginPage() {
                       }}
                       required
                     />
-                    <button 
-                      type="button" 
-                      onClick={() => setShowPassword(!showPassword)} 
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
                       className="btn btn-outline-secondary border-secondary-subtle"
                       title={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
                     >
@@ -166,7 +163,7 @@ export default function LoginPage() {
                         className="spinner-border spinner-border-sm" 
                         role="status" 
                         aria-hidden="true"
-                      ></span>
+                      />
                       Đang đăng nhập...
                     </>
                   ) : (
@@ -178,13 +175,15 @@ export default function LoginPage() {
               {/* Chuyển sang trang Đăng ký */}
               <div className="text-center small text-secondary mt-4 pt-3 border-top">
                 Bạn chưa có tài khoản?{' '}
-                <Link to="/register" className="text-primary fw-bold text-decoration-none">
+                <Link
+                  to="/register"
+                  className="text-primary fw-bold text-decoration-none"
+                >
                   Đăng ký ngay
                 </Link>
               </div>
 
             </div>
-
           </div>
         </div>
       </div>

@@ -16,6 +16,8 @@ import RegisterPage from './pages/RegisterPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import ProfilePage from './pages/ProfilePage';
 import PaymentCallbackPage from './pages/PaymentCallbackPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 
 // Các route không hiển thị Navbar & Footer (trang Admin có layout riêng)
 const ADMIN_ROUTES = ['/admin'];
@@ -64,6 +66,14 @@ function AppLayout() {
 
           {/* 11. Trang Tiếp nhận phản hồi từ Cổng thanh toán VNPay Sandbox */}
           <Route path="/payment-callback" element={<PaymentCallbackPage />} />
+        
+          {/*12.  Quên mật khẩu */}
+          <Route path="/forgot-password" element={<ForgotPasswordPage />}
+          />
+
+          {/*13. Đặt lại mật khẩu */}
+          <Route path="/reset-password/:token" element={<ResetPasswordPage />}
+          />
         </Routes>
       </main>
 
