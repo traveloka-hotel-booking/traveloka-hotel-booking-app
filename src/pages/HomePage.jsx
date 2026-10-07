@@ -4,22 +4,55 @@ import { searchHotelsApi, filterHotelsApi } from '../services/hotelApi';
 import { 
   Search, MapPin, Calendar, Users, Star, ArrowRight, ChevronDown, ChevronUp,
   Minus, Plus, ShieldCheck, Tag, Clock, Sparkles, Check, Info, ArrowUp, ThumbsUp,
-  Award, Shield, HelpCircle, Loader2
+  Award, Shield, HelpCircle, Loader2, X, RotateCcw
 } from 'lucide-react';
 
-// Danh sách gợi ý điểm đến phổ biến tại Việt Nam theo yêu cầu
+// Danh sách gợi ý điểm đến phổ biến tại Việt Nam (chuẩn hóa tên đồng bộ với CSDL và Admin)
 const VIETNAM_DESTINATIONS = [
-  "TP. Hồ Chí Minh",
-  "Đà Nẵng",
+  "Hồ Chí Minh",
   "Hà Nội",
+  "Đà Nẵng",
   "Nha Trang",
   "Đà Lạt",
+  "Phú Quốc",
   "Phan Thiết",
-  "Đảo Phú Quốc",
   "Vũng Tàu",
   "Quy Nhơn",
   "Sa Pa"
 ];
+
+// Chuẩn hóa chuỗi địa danh: loại bỏ tiền tố TP./Thành phố/Đảo/Tỉnh và khoảng trắng thừa
+const normalizeLocationText = (str) => {
+  if (!str) return '';
+  return str.toLowerCase()
+    .replace(/^(tp\.?|thành phố|tỉnh|đảo)\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+// Kiểm tra khớp địa danh thông minh (hỗ trợ linh hoạt: "TP. Hồ Chí Minh" <-> "Hồ Chí Minh" <-> "Sài Gòn" <-> "HCM")
+const isLocationMatch = (target, term) => {
+  if (!term || !term.trim()) return true;
+  if (!target) return false;
+
+  const rawTarget = target.toLowerCase().trim();
+  const rawTerm = term.toLowerCase().trim();
+  if (rawTarget.includes(rawTerm) || rawTerm.includes(rawTarget)) return true;
+
+  const normTarget = normalizeLocationText(target);
+  const normTerm = normalizeLocationText(term);
+  if (normTarget && normTerm && (normTarget.includes(normTerm) || normTerm.includes(normTarget))) {
+    return true;
+  }
+
+  // Hỗ trợ alias Hồ Chí Minh / Sài Gòn / HCM
+  const hcmAliases = ['hồ chí minh', 'sài gòn', 'sai gon', 'hcm', 'tphcm'];
+  const isTermHcm = hcmAliases.some(a => rawTerm.includes(a) || normTerm.includes(a));
+  const isTargetHcm = hcmAliases.some(a => rawTarget.includes(a) || normTarget.includes(a));
+  if (isTermHcm && isTargetHcm) return true;
+
+  return false;
+};
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -142,8 +175,17 @@ export default function HomePage() {
     setSearchFeedback('');
     try {
       const guests = Math.max(1, Number(adultsCount || 1) + Number(childrenCount || 0));
+      
+      // Chuẩn hóa tên thành phố tìm kiếm sang tên chuẩn CSDL
+      let searchCity = destination?.trim() || '';
+      if (isLocationMatch('Hồ Chí Minh', searchCity)) {
+        searchCity = 'Hồ Chí Minh';
+      } else if (isLocationMatch('Phú Quốc', searchCity)) {
+        searchCity = 'Phú Quốc';
+      }
+
       const res = await searchHotelsApi({
-        city: destination?.trim() || '',
+        city: searchCity,
         checkIn: checkIn || today,
         checkOut: checkOut || tomorrow,
         guests,
@@ -178,12 +220,11 @@ export default function HomePage() {
     const sourceHotels = Array.isArray(backendHotels) ? backendHotels : [];
 
     return sourceHotels.filter(hotel => {
-      // 1. Lọc theo Điểm đến nếu có
+      // 1. Lọc theo Điểm đến nếu có (khớp địa danh thông minh)
       if (destination && destination.trim() !== '') {
-        const term = destination.toLowerCase().trim();
-        const matchCity = hotel.city?.toLowerCase().includes(term);
-        const matchAddress = hotel.address?.toLowerCase().includes(term);
-        const matchName = hotel.name?.toLowerCase().includes(term);
+        const matchCity = isLocationMatch(hotel.city, destination);
+        const matchAddress = isLocationMatch(hotel.address, destination);
+        const matchName = isLocationMatch(hotel.name, destination);
         if (!matchCity && !matchAddress && !matchName) {
           return false;
         }
@@ -249,15 +290,30 @@ export default function HomePage() {
                     <label className="text-secondary small d-block mb-1" style={{ fontSize: '11px', fontWeight: 600 }}>
                       Vui lòng nhập điểm đến
                     </label>
-                    <input 
-                      type="text" 
-                      className="form-control border-0 p-0 fw-bold fs-6 text-dark shadow-none bg-transparent"
-                      placeholder="Thành phố, sân bay, khu vực, đ..."
-                      value={destination}
-                      onFocus={() => setIsDestinationPickerOpen(true)}
-                      onClick={() => setIsDestinationPickerOpen(true)}
-                      onChange={(e) => setDestination(e.target.value)}
-                    />
+                    <div className="d-flex align-items-center position-relative">
+                      <input 
+                        type="text" 
+                        className="form-control border-0 p-0 fw-bold fs-6 text-dark shadow-none bg-transparent pe-3"
+                        placeholder="Thành phố, sân bay, khu vực, đ..."
+                        value={destination}
+                        onFocus={() => setIsDestinationPickerOpen(true)}
+                        onClick={() => setIsDestinationPickerOpen(true)}
+                        onChange={(e) => setDestination(e.target.value)}
+                      />
+                      {destination && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-link text-secondary p-0 border-0 me-1"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDestination('');
+                          }}
+                          title="Xóa điểm đến để xem tất cả khách sạn"
+                        >
+                          <X size={16} />
+                        </button>
+                      )}
+                    </div>
 
                     {/* Popup gợi ý điểm đến phổ biến tại Việt Nam theo yêu cầu Chỗ 2 */}
                     {isDestinationPickerOpen && (
@@ -633,9 +689,23 @@ export default function HomePage() {
               
               {/* Tiêu đề danh sách */}
               <div className="mb-3">
-                <h3 className="fw-bold text-dark mb-1">
-                  Khách sạn tại {destination || "Việt Nam"}
-                </h3>
+                <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
+                  <h3 className="fw-bold text-dark mb-0">
+                    Khách sạn tại {destination ? `"${destination}"` : "Việt Nam (Toàn bộ)"}
+                  </h3>
+                  {destination && (
+                    <button 
+                      type="button"
+                      onClick={() => setDestination('')}
+                      className="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 d-flex align-items-center gap-1 small"
+                      style={{ fontSize: '12px' }}
+                      title="Hiển thị tất cả khách sạn trên toàn quốc"
+                    >
+                      <RotateCcw size={13} />
+                      <span>Xem tất cả tỉnh thành</span>
+                    </button>
+                  )}
+                </div>
                 <p className="text-secondary small mb-3">
                   Lưu trú từ {checkIn} đến {checkOut} ({adultsCount} người lớn, {roomsCount} phòng) • Kiểm tra giá tốt nhất.
                 </p>
