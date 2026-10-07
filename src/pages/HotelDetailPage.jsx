@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../services/api';
@@ -30,6 +30,31 @@ export default function HotelDetailPage() {
   // State ảnh chính đang được hiển thị trong Gallery
   const [activeImage, setActiveImage] = useState(null);
   const [bookingSuccessNotice, setBookingSuccessNotice] = useState(null);
+
+  // Danh sách 4 hình ảnh khách sạn đồng bộ với Admin và Trang Chủ
+  const galleryImages = useMemo(() => {
+    if (!hotel) return [];
+    let list = [];
+    if (Array.isArray(hotel.images) && hotel.images.length > 0) {
+      list = hotel.images.filter(Boolean);
+    } else if (typeof hotel.images === 'string' && hotel.images.trim()) {
+      list = hotel.images.split(',').map(s => s.trim()).filter(Boolean);
+    } else if (hotel.thumbnailUrl) {
+      list = [hotel.thumbnailUrl];
+    }
+    const defaultFallbacks = [
+      'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=1000&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=600&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=600&auto=format&fit=crop&q=80',
+    ];
+    return [
+      list[0] || hotel.thumbnailUrl || defaultFallbacks[0],
+      list[1] || defaultFallbacks[1],
+      list[2] || defaultFallbacks[2],
+      list[3] || defaultFallbacks[3]
+    ];
+  }, [hotel]);
 
   // Tải chi tiết khách sạn và danh sách phòng từ Backend API
   const loadHotelDetails = async () => {
@@ -82,8 +107,13 @@ export default function HotelDetailPage() {
 
           return updated;
         });
-        if (backendHotel?.thumbnailUrl) {
-          setActiveImage(prev => prev || backendHotel.thumbnailUrl);
+        const firstImg = (Array.isArray(backendHotel?.images) && backendHotel.images[0])
+          ? backendHotel.images[0]
+          : (typeof backendHotel?.images === 'string' && backendHotel.images.split(',')[0])
+          ? backendHotel.images.split(',')[0].trim()
+          : backendHotel?.thumbnailUrl;
+        if (firstImg) {
+          setActiveImage(firstImg);
         }
       }
     } catch (err) {
@@ -242,23 +272,23 @@ export default function HotelDetailPage() {
             {/* Ảnh lớn chính */}
             <div className="col-lg-8">
               <img 
-                src={activeImage} 
+                src={activeImage || galleryImages[0]} 
                 alt={hotel.name} 
                 className="w-100 rounded-3 shadow-sm"
                 style={{ height: '420px', objectFit: 'cover' }}
               />
             </div>
 
-            {/* Danh sách ảnh con có thể bấm chọn */}
+            {/* Danh sách 4 ảnh con có thể bấm chọn */}
             <div className="col-lg-4">
               <div className="row g-2 h-100">
-                {(hotel.images || [hotel.thumbnailUrl]).slice(0, 4).map((imgUrl, index) => (
+                {galleryImages.map((imgUrl, index) => (
                   <div key={index} className="col-6">
                     <img 
                       src={imgUrl} 
                       alt={`Ảnh ${index + 1}`} 
                       onClick={() => setActiveImage(imgUrl)}
-                      className={`w-100 rounded-3 cursor-pointer object-fit-cover border ${activeImage === imgUrl ? 'border-primary border-3 shadow' : 'opacity-75'}`}
+                      className={`w-100 rounded-3 cursor-pointer object-fit-cover border ${(activeImage || galleryImages[0]) === imgUrl ? 'border-primary border-3 shadow' : 'opacity-75'}`}
                       style={{ height: '205px', transition: 'all 0.2s' }}
                     />
                   </div>

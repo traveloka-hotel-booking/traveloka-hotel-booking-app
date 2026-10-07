@@ -54,6 +54,32 @@ const isLocationMatch = (target, term) => {
   return false;
 };
 
+// Trích xuất danh sách 4 hình ảnh của khách sạn an toàn và đồng bộ
+const getHotelImageList = (hotel) => {
+  let list = [];
+  if (Array.isArray(hotel?.images) && hotel.images.length > 0) {
+    list = hotel.images.filter(Boolean);
+  } else if (typeof hotel?.images === 'string' && hotel.images.trim()) {
+    list = hotel.images.split(',').map(s => s.trim()).filter(Boolean);
+  } else if (hotel?.thumbnailUrl) {
+    list = [hotel.thumbnailUrl];
+  }
+
+  const defaultFallbacks = [
+    'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=600&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=600&auto=format&fit=crop&q=80',
+  ];
+
+  return [
+    list[0] || hotel?.thumbnailUrl || defaultFallbacks[0],
+    list[1] || defaultFallbacks[1],
+    list[2] || defaultFallbacks[2],
+    list[3] || defaultFallbacks[3]
+  ];
+};
+
 export default function HomePage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -763,15 +789,17 @@ export default function HomePage() {
               ) : (
                 /* Danh sách thẻ Khách Sạn (Bố cục ngang theo đúng ảnh 2) */
                 <div className="d-flex flex-column gap-3">
-                {displayedHotels.map((hotel) => (
+                {displayedHotels.map((hotel) => {
+                  const imgs = getHotelImageList(hotel);
+                  return (
                   <div key={hotel.id} className="card border-0 shadow-sm rounded-3 overflow-hidden bg-white hover-shadow">
                     <div className="row g-0">
                       
-                      {/* Cột ảnh (Gồm 1 ảnh to + 2 ảnh nhỏ kèm badge +99 ảnh như ảnh 2) */}
+                      {/* Cột ảnh (Gồm 1 ảnh to + 3 ảnh nhỏ) */}
                       <div className="col-lg-4 col-md-5 p-2">
                         <div className="position-relative mb-1">
                           <img 
-                            src={hotel.thumbnailUrl || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600&auto=format&fit=crop&q=80'} 
+                            src={imgs[0]} 
                             alt={hotel.name}
                             className="w-100 rounded-2 object-fit-cover"
                             style={{ height: '180px' }}
@@ -786,7 +814,7 @@ export default function HomePage() {
                         <div className="row g-1">
                           <div className="col-4">
                             <img 
-                              src={hotel.images?.[1] || hotel.thumbnailUrl || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=80'} 
+                              src={imgs[1]} 
                               alt="thumb 1"
                               className="w-100 rounded-1 object-fit-cover"
                               style={{ height: '55px' }}
@@ -794,7 +822,7 @@ export default function HomePage() {
                           </div>
                           <div className="col-4">
                             <img 
-                              src={hotel.images?.[2] || hotel.thumbnailUrl || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=80'} 
+                              src={imgs[2]} 
                               alt="thumb 2"
                               className="w-100 rounded-1 object-fit-cover"
                               style={{ height: '55px' }}
@@ -802,7 +830,7 @@ export default function HomePage() {
                           </div>
                           <div className="col-4">
                             <img 
-                              src={hotel.images?.[3] || hotel.thumbnailUrl || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=80'} 
+                              src={imgs[3]} 
                               alt="thumb 3"
                               className="w-100 rounded-1 object-fit-cover"
                               style={{ height: '55px' }}
@@ -893,7 +921,8 @@ export default function HomePage() {
 
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 

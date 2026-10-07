@@ -80,7 +80,7 @@ export default function HotelsPage() {
   }, [loadHotels]);
 
   // Danh sách các thành phố có trong dữ liệu
-  const cities = ["Tất cả", "Hà Nội", "Đà Nẵng", "Hồ Chí Minh", "Nha Trang", "Đà Lạt", "Phú Quốc"];
+  const cities = ["Tất cả", "Hà Nội", "Đà Nẵng", "Hồ Chí Minh", "Sa Pa", "Nha Trang", "Đà Lạt", "Phú Quốc"];
 
   // Danh sách các tiện ích để lọc
   const amenityOptions = [
@@ -344,7 +344,7 @@ export default function HotelsPage() {
                       {/* Ảnh khách sạn */}
                       <div className="col-lg-4 col-md-5">
                         <img 
-                          src={hotel.thumbnailUrl || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600&auto=format&fit=crop&q=80'} 
+                          src={(Array.isArray(hotel.images) ? hotel.images[0] : null) || hotel.thumbnailUrl || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600&auto=format&fit=crop&q=80'} 
                           className="w-100 h-100 object-fit-cover" 
                           alt={hotel.name}
                           style={{ minHeight: '240px', maxHeight: '280px' }}
