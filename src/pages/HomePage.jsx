@@ -309,7 +309,7 @@ export default function HomePage() {
       >
         <div className="container my-auto">
           <div className="row justify-content-center">
-            <div className="col-xl-11 col-lg-12">
+            <div className="col-xl-12 col-lg-12">
               {/* Tiêu đề chính như ảnh 1 */}
               <div className="mb-4">
                 <h1 className="fw-bold fs-2 d-flex align-items-center gap-2 mb-2 text-white">
@@ -573,7 +573,7 @@ export default function HomePage() {
                   <div className="col-lg-2 col-md-4 p-2">
                     <button 
                       type="submit" 
-                      className="btn btn-primary w-100 py-3 fw-bold rounded-3 d-flex align-items-center justify-content-center gap-2 shadow-sm text-nowrap"
+                      className="btn btn-primary w-100 py-3 fw-bold rounded-3 d-flex align-items-center justify-content-center gap-0 shadow-sm text-nowrap"
                       style={{ backgroundColor: '#2563eb' }}
                     >
                       <Search size={20} />
