@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { 
   User, Shield, Lock, Smartphone, Mail, Key, Monitor, 
   History, Edit3, CheckCircle, AlertCircle, Hotel, LogOut, ChevronRight, X,
-  Camera, Loader2, Eye, EyeOff
+  Camera, Loader2, Eye, EyeOff, MapPin
 } from 'lucide-react';
 import { apiFetch } from '../services/api';
 import { getFriendlyErrorMessage, sanitizeErrorMessage } from '../utils/errorHandler';
@@ -194,7 +194,16 @@ export default function ProfilePage() {
     return `${cleaned.slice(0, 4)} ••• ${cleaned.slice(-3)}`;
   };
 
-  // Tìm kiếm địa chỉ trực tiếp từ Photon khi người dùng nhập
+  // Chuẩn hóa từ khóa địa chỉ: nếu có ký tự & hoặc dấu nối phức tạp, lấy phần địa chỉ chính
+  const normalizeAddressQuery = (rawText) => {
+    let clean = (rawText || '').trim();
+    if (clean.includes('&')) {
+      clean = clean.split('&')[0].trim();
+    }
+    return clean;
+  };
+
+  // Tìm kiếm địa chỉ giới hạn 100% tại Việt Nam (Nominatim OSM + Photon Bounding Box VN)
   const searchAddressSuggestions = async (value) => {
     const keyword = value.trim();
 
@@ -214,32 +223,87 @@ export default function ProfilePage() {
     setIsLoadingAddressSuggestions(true);
     setShowAddressSuggestions(true);
 
-    try {
-      const params = new URLSearchParams({
-      q: keyword,
-      limit: '5'
-    });
+    const queryToSearch = normalizeAddressQuery(keyword);
 
-      const response = await fetch(
-        `https://photon.komoot.io/api/?${params.toString()}`,
+    try {
+      // 1. Thử tìm kiếm với Nominatim OpenStreetMap (chỉ lấy tại Việt Nam)
+      const nominatimUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(queryToSearch)}&countrycodes=vn&format=json&addressdetails=1&limit=6`;
+      const response = await fetch(nominatimUrl, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'Accept-Language': 'vi'
+        },
+        signal: controller.signal
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (Array.isArray(data) && data.length > 0) {
+          const vnResults = data
+            .filter((item) => item.display_name && (item.display_name.includes('Việt Nam') || item.display_name.includes('Vietnam')))
+            .map((item) => ({
+              id: `nom-${item.place_id}`,
+              text: item.display_name
+            }));
+
+          if (vnResults.length > 0) {
+            setAddressSuggestions(vnResults);
+            return;
+          }
+        }
+      }
+
+      // 2. Fallback: Nếu Nominatim không ra hoặc lỗi mạng, tìm qua Photon với Bounding Box giới hạn trong Việt Nam
+      const photonParams = new URLSearchParams({
+        q: queryToSearch,
+        limit: '6',
+        bbox: '102.14,8.18,109.46,23.39' // Toàn bộ lãnh thổ Việt Nam
+      });
+
+      const photonResponse = await fetch(
+        `https://photon.komoot.io/api/?${photonParams.toString()}`,
         {
           method: 'GET',
-          headers: {
-            Accept: 'application/json'
-          },
+          headers: { Accept: 'application/json' },
           signal: controller.signal
         }
       );
 
-      if (!response.ok) {
-        throw new Error(`Photon HTTP ${response.status}`);
+      if (photonResponse.ok) {
+        const photonData = await photonResponse.json();
+        const features = Array.isArray(photonData?.features) ? photonData.features : [];
+
+        // Lọc nghiêm ngặt chỉ lấy kết quả tại Việt Nam
+        const vnPhotonResults = features
+          .filter((f) => {
+            const props = f?.properties || {};
+            const code = (props.countrycode || '').toUpperCase();
+            const country = (props.country || '').toLowerCase();
+            return code === 'VN' || country.includes('việt nam') || country.includes('vietnam');
+          })
+          .map((f) => {
+            const props = f?.properties || {};
+            const parts = [
+              props.name,
+              props.housenumber && props.street ? `${props.housenumber} ${props.street}` : props.street,
+              props.locality,
+              props.district,
+              props.city,
+              props.state,
+              'Việt Nam'
+            ].filter(Boolean);
+            const text = [...new Set(parts)].join(', ');
+            return {
+              id: `photon-${props.osm_type || 'osm'}-${props.osm_id || text}`,
+              text
+            };
+          });
+
+        setAddressSuggestions(vnPhotonResults);
+      } else {
+        setAddressSuggestions([]);
       }
-
-      const data = await response.json();
-
-      setAddressSuggestions(
-        Array.isArray(data?.features) ? data.features : []
-      );
     } catch (error) {
       if (error.name !== 'AbortError') {
         setAddressSuggestions([]);
@@ -251,26 +315,7 @@ export default function ProfilePage() {
     }
   };
 
-  // Chuyển dữ liệu Photon thành chuỗi địa chỉ dễ đọc
-  const getPhotonAddressText = (feature) => {
-    const properties = feature?.properties || {};
-
-    const parts = [
-      properties.name,
-      properties.housenumber && properties.street
-        ? `${properties.housenumber} ${properties.street}`
-        : properties.street,
-      properties.locality,
-      properties.district,
-      properties.city,
-      properties.state,
-      properties.country
-    ].filter(Boolean);
-
-    return [...new Set(parts)].join(', ');
-  };
-
-  // Debounce tối ưu 350ms giúp phản hồi gợi ý nhanh và mượt mà
+  // Debounce 350ms giúp phản hồi gợi ý nhanh và mượt mà
   const handleAddressChange = (e) => {
     const value = e.target.value;
 
@@ -296,8 +341,8 @@ export default function ProfilePage() {
     }, 350);
   };
 
-  const handleSelectAddress = (feature) => {
-    const selectedAddress = getPhotonAddressText(feature);
+  const handleSelectAddress = (item) => {
+    const selectedAddress = typeof item === 'string' ? item : item?.text || '';
 
     setProfileForm((prev) => ({
       ...prev,
@@ -958,30 +1003,25 @@ const handleSaveProfile = async (e) => {
                           </div>
                         )}
 
-                        {!isLoadingAddressSuggestions && addressSuggestions.map((feature) => {
-                          const addressText = getPhotonAddressText(feature);
-                          const properties = feature?.properties || {};
-                          const key = `${properties.osm_type || 'osm'}-${properties.osm_id || addressText}`;
-
-                          return (
-                            <button
-                              key={key}
-                              type="button"
-                              className="w-100 text-start border-0 bg-white px-3 py-2 small"
-                              style={{ cursor: 'pointer' }}
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => handleSelectAddress(feature)}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.backgroundColor = '#f8f9fa';
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.backgroundColor = '#fff';
-                              }}
-                            >
-                              {addressText || 'Địa chỉ không xác định'}
-                            </button>
-                          );
-                        })}
+                        {!isLoadingAddressSuggestions && addressSuggestions.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className="w-100 text-start border-0 bg-white px-3 py-2 small d-flex align-items-start gap-2 border-bottom border-light"
+                            style={{ cursor: 'pointer', transition: 'background-color 0.15s ease' }}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => handleSelectAddress(item)}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = '#f0f9ff';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = '#fff';
+                            }}
+                          >
+                            <MapPin size={16} className="text-danger flex-shrink-0 mt-1" />
+                            <span className="text-dark">{item.text}</span>
+                          </button>
+                        ))}
                       </div>
                     )}
 
