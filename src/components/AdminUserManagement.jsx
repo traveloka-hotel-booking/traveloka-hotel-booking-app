@@ -105,9 +105,7 @@ export default function AdminUserManagement() {
         return;
       }
 
-      setNotice(
-        `${currentlyEnabled ? 'Đã khóa' : 'Đã mở khóa'} tài khoản thành công.`
-      );
+      setNotice('Cập nhật thành công');
 
       await loadUsers();
     } catch (e) {
@@ -138,7 +136,7 @@ export default function AdminUserManagement() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 18 }}>
           <div>
             <h2 style={{ margin: 0, color: '#1e293b', fontSize: 18, fontWeight: 700 }}>Danh sách người dùng</h2>
-            <p style={{ margin: '5px 0 0', color: '#94a3b8', fontSize: 13 }}>Quản lý tài khoản và trạng thái truy cập hệ thống</p>
+            <p style={{ margin: '5px 0 0', color: '#94a3b8', fontSize: 13 }}>Quản lý tài khoản và trạng thái truy cập</p>
           </div>
           <button type="button" onClick={loadUsers} disabled={loading}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 7, border: '1px solid #e2e8f0', background: '#fff', borderRadius: 9, padding: '9px 13px', color: '#475569', cursor: loading ? 'not-allowed' : 'pointer', fontWeight: 600 }}>

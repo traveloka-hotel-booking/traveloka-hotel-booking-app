@@ -493,7 +493,7 @@ export default function AdminDashboardPage() {
           images: nextImgs
         };
       });
-      showToast(`Tải ảnh ${targetIdx + 1} lên Cloudinary thành công!`);
+      showToast('Tải ảnh thành công');
     } catch (err) {
       console.error('Lỗi khi tải ảnh khách sạn lên Cloudinary:', err);
       showToast('Lỗi tải ảnh lên Cloudinary: ' + sanitizeErrorMessage(err));
@@ -532,7 +532,7 @@ export default function AdminDashboardPage() {
         if (res.ok) {
           const json = await res.json();
           updateHotels(hotels.map(h => h.id === editingHotel.id ? json.result : h));
-          showToast('Cập nhật khách sạn lên máy chủ thành công!');
+          showToast('Cập nhật thành công');
         } else {
           const errJson = await res.json().catch(() => ({}));
           showToast('Lỗi cập nhật: ' + getFriendlyErrorMessage(errJson, 'Cập nhật thất bại'));
@@ -555,7 +555,7 @@ export default function AdminDashboardPage() {
         if (res.ok) {
           const json = await res.json();
           updateHotels([json.result, ...hotels]);
-          showToast('Thêm khách sạn mới lên cơ sở dữ liệu thành công!');
+          showToast('Thêm mới thành công');
         } else {
           const errJson = await res.json().catch(() => ({}));
           showToast('Lỗi thêm khách sạn: ' + getFriendlyErrorMessage(errJson, 'Thêm thất bại'));
@@ -571,7 +571,7 @@ export default function AdminDashboardPage() {
   const deleteHotel = async (id) => {
     const hotelToDelete = hotels.find(h => h.id === id);
     const confirmed = await showConfirm({
-      title: 'Xóa khách sạn khỏi hệ thống',
+      title: 'Xóa khách sạn',
       message: `Bạn có chắc chắn muốn xóa khách sạn "${hotelToDelete?.name || ''}" không?\nThao tác này sẽ xóa toàn bộ các loại phòng thuộc khách sạn này.`,
       type: 'warning',
       confirmText: 'Xóa khách sạn',
@@ -579,16 +579,14 @@ export default function AdminDashboardPage() {
     });
     if (!confirmed) return;
     try {
-      const res = await apiFetch(`/admin/hotels/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        showToast('Đã xóa khách sạn khỏi máy chủ');
-      }
+      await apiFetch(`/admin/hotels/${id}`, { method: 'DELETE' });
     } catch (e) {
       console.warn('Delete hotel API error, updating state:', e);
     }
     updateHotels(hotels.filter(h => h.id !== id));
     const nextRooms = roomsList.filter(r => r.hotelId !== id);
     updateRooms(nextRooms);
+    showToast('Xóa thành công');
   };
 
   // ── Room modal (FR-14) ──
@@ -671,7 +669,7 @@ export default function AdminDashboardPage() {
       }
 
       setRoomForm(prev => ({ ...prev, imageUrl: uploadedUrl }));
-      showToast('Tải ảnh loại phòng lên Cloudinary thành công!');
+      showToast('Tải ảnh thành công');
     } catch (err) {
       console.error('Lỗi khi tải ảnh loại phòng lên Cloudinary:', err);
       showToast('Lỗi tải ảnh lên Cloudinary: ' + sanitizeErrorMessage(err));
@@ -696,7 +694,7 @@ export default function AdminDashboardPage() {
       BOOKED: 'Đang Có Khách (Booked)',
       MAINTENANCE: 'Đang Bảo Trì (Maintenance)'
     };
-    showToast(`Đã đổi trạng thái phòng thành: ${statusLabels[newStatus] || newStatus}`);
+    showToast('Cập nhật thành công');
 
     try {
       if (typeof roomId === 'number' || !String(roomId).startsWith('r-')) {
@@ -776,10 +774,10 @@ export default function AdminDashboardPage() {
         if (res.ok) {
           const json = await res.json();
           savedRoomObj = { ...json.result, hotelName: targetHotel?.name };
-          showToast('Cập nhật loại phòng trên máy chủ thành công!');
+          showToast('Cập nhật thành công');
         } else {
           savedRoomObj = { ...editingRoom, ...roomForm, hotelId: targetHotel?.id, hotelName: targetHotel?.name };
-          showToast('Đã lưu thay đổi loại phòng');
+          showToast('Cập nhật thành công');
         }
         const updated = roomsList.map(r => r.id === editingRoom.id ? savedRoomObj : r);
         updateRooms(updated);
@@ -806,7 +804,7 @@ export default function AdminDashboardPage() {
             hotelId: json.result?.hotelId || Number(roomForm.hotelId),
             hotelName: json.result?.hotelName || targetHotel?.name
           };
-          showToast('Tạo mới loại phòng trên máy chủ thành công!');
+          showToast('Thêm mới thành công');
         } else {
           savedRoomObj = {
             id: `r-${Date.now()}`,
@@ -814,7 +812,7 @@ export default function AdminDashboardPage() {
             hotelId: targetHotel ? targetHotel.id : (Number(roomForm.hotelId) || hotels[0]?.id),
             hotelName: targetHotel?.name
           };
-          showToast('Đã tạo loại phòng mới');
+          showToast('Thêm mới thành công');
         }
         const updated = [savedRoomObj, ...roomsList];
         updateRooms(updated);
@@ -831,7 +829,7 @@ export default function AdminDashboardPage() {
         const updated = roomsList.map(r => r.id === editingRoom.id ? savedRoomObj : r);
         updateRooms(updated);
         syncHotelWithRooms(roomForm.hotelId, updated);
-        showToast('Đã lưu loại phòng');
+        showToast('Cập nhật thành công');
       } else {
         savedRoomObj = {
           id: `r-${Date.now()}`,
@@ -845,7 +843,7 @@ export default function AdminDashboardPage() {
         setRoomSearchQuery('');
         setRoomHotelFilter('ALL');
         setRoomStatusFilter('ALL');
-        showToast('Đã lưu loại phòng mới');
+        showToast('Thêm mới thành công');
       }
     }
     setShowRoomModal(false);
@@ -863,10 +861,7 @@ export default function AdminDashboardPage() {
     if (!confirmed) return;
     try {
       if (typeof id === 'number' || !String(id).startsWith('r-')) {
-        const res = await apiFetch(`/admin/rooms/${id}`, { method: 'DELETE' });
-        if (res.ok) {
-          showToast('Đã xóa loại phòng khỏi máy chủ');
-        }
+        await apiFetch(`/admin/rooms/${id}`, { method: 'DELETE' });
       }
     } catch (e) {
       console.warn('Delete room error:', e);
@@ -876,7 +871,7 @@ export default function AdminDashboardPage() {
     if (targetRoom) {
       syncHotelWithRooms(targetRoom.hotelId, updated);
     }
-    showToast('Đã xóa loại phòng khỏi hệ thống');
+    showToast('Xóa thành công');
   };
 
   // ── Bookings logic (FR-15) ──
@@ -913,7 +908,7 @@ export default function AdminDashboardPage() {
     if (b.isExpired || (b.rawStatus || b.status || '').toUpperCase() === 'EXPIRED') {
       showAlert({
         title: 'Không thể duyệt đơn',
-        message: `Đơn đặt phòng [${b.bookingCode || b.id}] đã quá ngày nhận phòng (${b.checkInDate})!\nBạn có thể nhấn nút "Xóa đơn" để dọn dẹp hệ thống.`,
+        message: `Đơn đặt phòng [${b.bookingCode || b.id}] đã quá ngày nhận phòng (${b.checkInDate})!\nBạn có thể nhấn nút "Xóa đơn" để dọn dẹp.`,
         type: 'warning',
         confirmText: 'Đã hiểu'
       });
@@ -943,7 +938,7 @@ export default function AdminDashboardPage() {
           throw new Error(getFriendlyErrorMessage(data, 'Duyệt đơn đặt phòng thất bại'));
         }
       }
-      showToast('Duyệt đơn đặt phòng thành công!');
+      showToast('Cập nhật thành công');
       await fetchBookings();
     } catch (err) {
       console.error('Confirm booking error:', err);
@@ -951,12 +946,12 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // Xóa đơn đặt phòng khỏi hệ thống
+  // Xóa đơn đặt phòng
   const handleDeleteBooking = async (b) => {
     const code = b.bookingCode || b.id;
     const confirmed = await showConfirm({
       title: 'Xóa đơn đặt phòng',
-      message: `Bạn có chắc chắn muốn xóa vĩnh viễn đơn đặt phòng [${code}] khỏi hệ thống không?\nThao tác này sẽ xóa dữ liệu đơn lưu trên hệ thống.`,
+      message: `Bạn có chắc chắn muốn xóa vĩnh viễn đơn đặt phòng [${code}] không?\nThao tác này sẽ xóa dữ liệu đơn.`,
       type: 'warning',
       confirmText: 'Xóa vĩnh viễn',
       cancelText: 'Hủy'
@@ -978,7 +973,7 @@ export default function AdminDashboardPage() {
       }
       const updated = bookings.filter(item => item.id !== b.id && item.bookingCode !== code);
       updateBookings(updated);
-      showToast(`Đã xóa đơn đặt phòng [${code}] thành công!`);
+      showToast('Xóa thành công');
     } catch (err) {
       console.error('Delete booking error:', err);
       showToast(sanitizeErrorMessage(err, 'Xóa đơn đặt phòng thất bại'));
@@ -999,7 +994,7 @@ export default function AdminDashboardPage() {
     }
     const confirmed = await showConfirm({
       title: 'Dọn dẹp đơn quá hạn',
-      message: `Tìm thấy ${expiredBookings.length} đơn đặt phòng đã quá ngày nhận phòng.\nBạn có chắc chắn muốn dọn dẹp và xóa các đơn này khỏi hệ thống không?`,
+      message: `Tìm thấy ${expiredBookings.length} đơn đặt phòng đã quá ngày nhận phòng.\nBạn có chắc chắn muốn xóa các đơn này không?`,
       type: 'warning',
       confirmText: 'Dọn dẹp ngay',
       cancelText: 'Hủy'
@@ -1016,7 +1011,7 @@ export default function AdminDashboardPage() {
       if (!res.ok) {
         throw new Error(getFriendlyErrorMessage(data, 'Dọn dẹp đơn quá hạn thất bại'));
       }
-      showToast(data.message || `Đã dọn dẹp thành công các đơn quá hạn!`);
+      showToast('Xóa thành công');
       await fetchBookings();
     } catch (err) {
       console.error('Cleanup expired bookings error:', err);
@@ -1044,7 +1039,7 @@ export default function AdminDashboardPage() {
       if (!res.ok) {
         throw new Error(getFriendlyErrorMessage(data, 'Hủy đơn đặt phòng thất bại'));
       }
-      showToast('Đã hủy đơn đặt phòng thành công!');
+      showToast('Cập nhật thành công');
       await fetchBookings();
     } catch (err) {
       console.error('Cancel booking error:', err);
@@ -1077,7 +1072,7 @@ export default function AdminDashboardPage() {
       if (!res.ok) {
         throw new Error(getFriendlyErrorMessage(data, 'Cập nhật trạng thái thất bại'));
       }
-      showToast(newStatus === 'COMPLETED' ? 'Đã hoàn tất đơn! Đơn đã chuyển sang mục Hoàn thành.' : 'Cập nhật trạng thái đơn thành công!');
+      showToast('Cập nhật thành công');
       await fetchBookings();
     } catch (err) {
       console.error('Update status error:', err);
@@ -1094,7 +1089,7 @@ export default function AdminDashboardPage() {
         return item;
       });
       updateBookings(updated);
-      showToast(newStatus === 'COMPLETED' ? 'Đã hoàn tất đơn! Đơn đã chuyển sang mục Hoàn thành.' : sanitizeErrorMessage(err, 'Đã cập nhật trạng thái đơn!'));
+      showToast('Cập nhật thành công');
     }
   };
 
@@ -1117,7 +1112,7 @@ export default function AdminDashboardPage() {
       if (bookingId) {
         const res = await apiFetch(`/admin/bookings/${bookingId}/pay-cash`, { method: 'PUT' });
         if (res.ok) {
-          showToast('Đã xác nhận thu tiền mặt thành công!');
+          showToast('Cập nhật thành công');
           await fetchBookings();
           return;
         }
@@ -1127,7 +1122,7 @@ export default function AdminDashboardPage() {
     }
     const next = bookings.map(b => b.id === id ? { ...b, paymentStatus: 'paid', paidAt: new Date().toLocaleString('vi-VN') } : b);
     updateBookings(next);
-    showToast('Đã xác nhận thu tiền mặt cho đơn!');
+    showToast('Cập nhật thành công');
   };
 
   // ── Flexible Check-in Modal state & handlers ──
@@ -1170,7 +1165,7 @@ export default function AdminDashboardPage() {
           throw new Error(getFriendlyErrorMessage(data, 'Nhận phòng thất bại'));
         }
       }
-      showToast('Đã hoàn tất nhận phòng và cập nhật lịch lưu trú thành công!');
+      showToast('Cập nhật thành công');
       setCheckinModalBooking(null);
       await fetchBookings();
     } catch (err) {
@@ -1198,7 +1193,7 @@ export default function AdminDashboardPage() {
       });
       updateBookings(updated);
       setCheckinModalBooking(null);
-      showToast(sanitizeErrorMessage(err, 'Đã hoàn tất nhận phòng và cập nhật lịch lưu trú!'));
+      showToast('Cập nhật thành công');
     } finally {
       setIsSubmittingCheckin(false);
     }
@@ -1244,7 +1239,7 @@ export default function AdminDashboardPage() {
           throw new Error(getFriendlyErrorMessage(data, 'Trả phòng thất bại'));
         }
       }
-      showToast('Đã hoàn tất trả phòng và quyết toán hóa đơn! Đơn đã được chuyển qua mục Hoàn thành.');
+      showToast('Cập nhật thành công');
       setCheckoutModalBooking(null);
       await fetchBookings();
     } catch (err) {
@@ -1274,7 +1269,7 @@ export default function AdminDashboardPage() {
       });
       updateBookings(updated);
       setCheckoutModalBooking(null);
-      showToast('Đã hoàn tất trả phòng và quyết toán hóa đơn! Đơn đã được chuyển qua mục Hoàn thành.');
+      showToast('Cập nhật thành công');
     } finally {
       setIsSubmittingCheckout(false);
     }
@@ -1562,7 +1557,7 @@ export default function AdminDashboardPage() {
 
           {/* ══ TAB: KHÁCH SẠN (FR-13) ══ */}
           {activeTab === 'hotels' && (
-            <SectionCard title={`Danh Sách Khách Sạn & Khu Nghỉ Dưỡng (${hotels.length} cơ sở)`} sub="Thêm mới, cập nhật hoặc xóa khách sạn khỏi hệ thống"
+            <SectionCard title={`Danh Sách Khách Sạn & Khu Nghỉ Dưỡng (${hotels.length} cơ sở)`} sub="Thêm mới, cập nhật hoặc xóa khách sạn"
               action={<ActionBtn onClick={openAddHotel} icon={<Plus size={16} />}>Thêm Khách Sạn Mới</ActionBtn>}>
               <div className="table-responsive">
                 <table className="table table-hover align-middle mb-0" style={{ fontSize: 13 }}>
@@ -1597,7 +1592,7 @@ export default function AdminDashboardPage() {
                   iconBg="#eef2ff"
                   value={roomStats.total}
                   label="Tổng Số Loại Phòng"
-                  sub={<span style={{ color: '#6366f1', fontWeight: 600, fontSize: 13 }}>Đang quản lý trong hệ thống</span>}
+                  sub={<span style={{ color: '#6366f1', fontWeight: 600, fontSize: 13 }}>Đang quản lý</span>}
                 />
                 <KpiCard
                   icon={<CheckCircle2 size={26} color="#22c55e" />}
@@ -1732,7 +1727,7 @@ export default function AdminDashboardPage() {
                       text={
                         roomSearchQuery || roomHotelFilter !== 'ALL' || roomStatusFilter !== 'ALL'
                           ? 'Không tìm thấy loại phòng nào phù hợp với bộ lọc hiện tại'
-                          : 'Chưa có loại phòng nào trong hệ thống'
+                          : 'Chưa có loại phòng nào'
                       }
                     />
                     {(roomSearchQuery || roomHotelFilter !== 'ALL' || roomStatusFilter !== 'ALL') ? (
@@ -1847,7 +1842,7 @@ export default function AdminDashboardPage() {
                   </div>
                 ))}
               </div>
-              <SectionCard title="Danh Sách Tiện Nghi Khách Sạn" sub="Các tiện ích đã được đăng ký trong hệ thống">
+              <SectionCard title="Danh Sách Tiện Nghi Khách Sạn" sub="Các tiện ích đã được đăng ký">
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
                   {AMENITIES_DATA.map(a => (
                     <div key={a.id} style={{ background: '#f8fafc', borderRadius: 12, padding: 16, border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -2100,7 +2095,7 @@ export default function AdminDashboardPage() {
                                       type="button"
                                       onClick={() => showAlert({
                                         title: 'Chờ thanh toán VNPay',
-                                        message: `Không thể duyệt đơn thủ công: Khách hàng chưa thanh toán bằng phương thức chuyển khoản/VNPay!\n\n• Hệ thống áp dụng thời hạn 30 phút để thanh toán.\n• Khi khách thanh toán thành công, hệ thống sẽ TỰ ĐỘNG DUYỆT ĐƠN.\n• Nếu quá 30 phút chưa thanh toán, hệ thống sẽ tự động hủy đơn.`,
+                                        message: `Không thể duyệt đơn thủ công: Khách hàng chưa thanh toán bằng phương thức chuyển khoản/VNPay!\n\n• Thời hạn thanh toán là 30 phút.\n• Khi khách thanh toán thành công, đơn sẽ TỰ ĐỘNG ĐƯỢC DUYỆT.\n• Nếu quá 30 phút chưa thanh toán, đơn sẽ tự động bị hủy.`,
                                         type: 'info',
                                         confirmText: 'Đã hiểu'
                                       })}
@@ -2198,7 +2193,7 @@ export default function AdminDashboardPage() {
             <div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 20 }}>
                 <KpiCard icon={<Users size={26} color="#3b82f6" />} iconBg="#eff6ff" value={customerList.length} label="Tổng Khách Hàng" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Đã từng đặt phòng</span>} />
-                <KpiCard icon={<Award size={26} color="#f59e0b" />} iconBg="#fffbeb" value={customerList.filter(c => !c.isGuest).length} label="Thành Viên Đăng Ký" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Có tài khoản hệ thống</span>} />
+                <KpiCard icon={<Award size={26} color="#f59e0b" />} iconBg="#fffbeb" value={customerList.filter(c => !c.isGuest).length} label="Thành Viên Đăng Ký" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Đã có tài khoản</span>} />
                 <KpiCard icon={<Users size={26} color="#8b5cf6" />} iconBg="#f5f3ff" value={customerList.filter(c => c.isGuest).length} label="Khách Vãng Lai" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Đặt không cần tài khoản</span>} />
                 <KpiCard icon={<DollarSign size={26} color="#22c55e" />} iconBg="#f0fdf4" value={customerList.length > 0 ? Math.round(customerList.reduce((s, c) => s + c.totalSpent, 0) / customerList.length).toLocaleString('vi-VN') + ' đ' : '0 đ'} label="Chi Tiêu TB/Khách" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Trên đơn đã xác nhận</span>} />
               </div>
@@ -2258,7 +2253,7 @@ export default function AdminDashboardPage() {
                   </ResponsiveContainer>
                 </ChartCard>
               </div>
-              <SectionCard title="Lịch Sử Giao Dịch" sub="Tất cả giao dịch thanh toán trong hệ thống">
+              <SectionCard title="Lịch Sử Giao Dịch" sub="Tất cả giao dịch thanh toán">
                 {bookings.length === 0 ? <Empty text="Chưa có giao dịch thanh toán nào" /> : (
                   <div className="table-responsive">
                     <table className="table table-hover align-middle mb-0" style={{ fontSize: 13 }}>
@@ -2323,7 +2318,7 @@ export default function AdminDashboardPage() {
             <div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 20 }}>
                 <KpiCard icon={<MessageSquare size={26} color="#f59e0b" />} iconBg="#fffbeb" value={allReviews.length} label="Tổng Đánh Giá" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Từ khách lưu trú</span>} />
-                <KpiCard icon={<Star size={26} color="#f59e0b" />} iconBg="#fffbeb" value={stats.avgRating + '/10'} label="Điểm TB Hệ Thống" sub={<span style={{ color: '#22c55e', fontWeight: 600, fontSize: 13 }}>⭐ Xuất sắc</span>} />
+                <KpiCard icon={<Star size={26} color="#f59e0b" />} iconBg="#fffbeb" value={stats.avgRating + '/10'} label="Điểm TB Đánh Giá" sub={<span style={{ color: '#22c55e', fontWeight: 600, fontSize: 13 }}>⭐ Xuất sắc</span>} />
                 <KpiCard icon={<TrendingUp size={26} color="#22c55e" />} iconBg="#f0fdf4" value={allReviews.filter(r => r.rating >= 9).length} label="Đánh Giá Xuất Sắc" sub={<span style={{ color: '#22c55e', fontWeight: 600, fontSize: 13 }}>Điểm ≥ 9/10</span>} />
                 <KpiCard icon={<Building size={26} color="#3b82f6" />} iconBg="#eff6ff" value={hotels.reduce((s, h) => s + (h.reviewCount || 0), 0)} label="Tổng Lượt Đánh Giá" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Trên nền tảng Traveloka</span>} />
               </div>
@@ -2408,7 +2403,7 @@ export default function AdminDashboardPage() {
 
       {/* ════ MODAL THÊM / SỬA KHÁCH SẠN (FR-13) ════ */}
       {showHotelModal && (
-        <Modal onClose={() => setShowHotelModal(false)} title={editingHotel ? 'Chỉnh Sửa Thông Tin Khách Sạn' : 'Thêm Khách Sạn Mới Vào Hệ Thống'}>
+        <Modal onClose={() => setShowHotelModal(false)} title={editingHotel ? 'Chỉnh Sửa Thông Tin Khách Sạn' : 'Thêm Khách Sạn Mới'}>
           <form onSubmit={saveHotel}>
             <div style={{ padding: 24, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div style={{ gridColumn: '1/2' }}><FL>Tên khách sạn *</FL><input className="form-control" value={hotelForm.name} onChange={e => setHotelForm({ ...hotelForm, name: e.target.value })} required placeholder="VD: Khách Sạn New World Sài Gòn" /></div>
@@ -2896,7 +2891,7 @@ export default function AdminDashboardPage() {
                   required
                 />
                 <span style={{ fontSize: 12.5, color: '#64748b' }}>
-                  (Hệ thống tự động tính toán lại số đêm và quyết toán hóa đơn)
+                  (Tự động tính toán lại số đêm và quyết toán hóa đơn)
                 </span>
               </div>
             </div>
