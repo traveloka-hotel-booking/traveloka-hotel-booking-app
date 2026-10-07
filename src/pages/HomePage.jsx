@@ -1,26 +1,84 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { MOCK_HOTELS, getHotelsData } from '../data/mockData';
-import { searchHotelsApi } from '../services/hotelApi';
+import { searchHotelsApi, filterHotelsApi } from '../services/hotelApi';
 import { 
   Search, MapPin, Calendar, Users, Star, ArrowRight, ChevronDown, ChevronUp,
   Minus, Plus, ShieldCheck, Tag, Clock, Sparkles, Check, Info, ArrowUp, ThumbsUp,
-  Award, Shield, HelpCircle, Loader2
+  Award, Shield, HelpCircle, Loader2, X, RotateCcw
 } from 'lucide-react';
 
-// Danh sách gợi ý điểm đến phổ biến tại Việt Nam theo yêu cầu
+// Danh sách gợi ý điểm đến phổ biến tại Việt Nam (chuẩn hóa tên đồng bộ với CSDL và Admin)
 const VIETNAM_DESTINATIONS = [
-  "TP. Hồ Chí Minh",
-  "Đà Nẵng",
+  "Hồ Chí Minh",
   "Hà Nội",
+  "Đà Nẵng",
   "Nha Trang",
   "Đà Lạt",
+  "Phú Quốc",
   "Phan Thiết",
-  "Đảo Phú Quốc",
   "Vũng Tàu",
   "Quy Nhơn",
   "Sa Pa"
 ];
+
+// Chuẩn hóa chuỗi địa danh: loại bỏ tiền tố TP./Thành phố/Đảo/Tỉnh và khoảng trắng thừa
+const normalizeLocationText = (str) => {
+  if (!str) return '';
+  return str.toLowerCase()
+    .replace(/^(tp\.?|thành phố|tỉnh|đảo)\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+// Kiểm tra khớp địa danh thông minh (hỗ trợ linh hoạt: "TP. Hồ Chí Minh" <-> "Hồ Chí Minh" <-> "Sài Gòn" <-> "HCM")
+const isLocationMatch = (target, term) => {
+  if (!term || !term.trim()) return true;
+  if (!target) return false;
+
+  const rawTarget = target.toLowerCase().trim();
+  const rawTerm = term.toLowerCase().trim();
+  if (rawTarget.includes(rawTerm) || rawTerm.includes(rawTarget)) return true;
+
+  const normTarget = normalizeLocationText(target);
+  const normTerm = normalizeLocationText(term);
+  if (normTarget && normTerm && (normTarget.includes(normTerm) || normTerm.includes(normTarget))) {
+    return true;
+  }
+
+  // Hỗ trợ alias Hồ Chí Minh / Sài Gòn / HCM
+  const hcmAliases = ['hồ chí minh', 'sài gòn', 'sai gon', 'hcm', 'tphcm'];
+  const isTermHcm = hcmAliases.some(a => rawTerm.includes(a) || normTerm.includes(a));
+  const isTargetHcm = hcmAliases.some(a => rawTarget.includes(a) || normTarget.includes(a));
+  if (isTermHcm && isTargetHcm) return true;
+
+  return false;
+};
+
+// Trích xuất danh sách 4 hình ảnh của khách sạn an toàn và đồng bộ
+const getHotelImageList = (hotel) => {
+  let list = [];
+  if (Array.isArray(hotel?.images) && hotel.images.length > 0) {
+    list = hotel.images.filter(Boolean);
+  } else if (typeof hotel?.images === 'string' && hotel.images.trim()) {
+    list = hotel.images.split(',').map(s => s.trim()).filter(Boolean);
+  } else if (hotel?.thumbnailUrl) {
+    list = [hotel.thumbnailUrl];
+  }
+
+  const defaultFallbacks = [
+    'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=600&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=600&auto=format&fit=crop&q=80',
+  ];
+
+  return [
+    list[0] || hotel?.thumbnailUrl || defaultFallbacks[0],
+    list[1] || defaultFallbacks[1],
+    list[2] || defaultFallbacks[2],
+    list[3] || defaultFallbacks[3]
+  ];
+};
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -39,8 +97,8 @@ export default function HomePage() {
   const today = new Date().toISOString().split('T')[0];
   const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
 
-  // State tìm kiếm trên Hero (ưu tiên lấy dữ liệu đã tìm kiếm gần nhất)
-  const [destination, setDestination] = useState(savedSearch?.destination || 'Hà Nội');
+  // State tìm kiếm trên Hero (để trống ban đầu để hiển thị toàn bộ khách sạn trên hệ thống)
+  const [destination, setDestination] = useState(savedSearch?.destination || '');
   const [checkIn, setCheckIn] = useState(savedSearch?.checkIn || today);
   const [checkOut, setCheckOut] = useState(savedSearch?.checkOut || tomorrow);
   
@@ -122,14 +180,52 @@ export default function HomePage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Tải danh sách khách sạn thật từ Backend khi mở trang chủ và tự động đồng bộ khi Admin thay đổi dữ liệu
+  useEffect(() => {
+    const fetchInitialHotels = async () => {
+      try {
+        const res = await filterHotelsApi({ page: 0, size: 20 });
+        const list = Array.isArray(res?.content) ? res.content : (Array.isArray(res) ? res : []);
+        setBackendHotels(list);
+      } catch (err) {
+        console.warn('Initial backend hotels load fallback:', err);
+        setBackendHotels([]);
+      }
+    };
+    fetchInitialHotels();
+
+    const handleSync = () => {
+      fetchInitialHotels();
+    };
+
+    window.addEventListener('traveloka_hotels_updated', handleSync);
+    window.addEventListener('traveloka_rooms_updated', handleSync);
+    window.addEventListener('storage', handleSync);
+
+    return () => {
+      window.removeEventListener('traveloka_hotels_updated', handleSync);
+      window.removeEventListener('traveloka_rooms_updated', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
+  }, []);
+
   // Gọi API FR-06 tìm kiếm phòng trống theo ngày và số khách
   const performSearch = async () => {
     setIsSearching(true);
     setSearchFeedback('');
     try {
       const guests = Math.max(1, Number(adultsCount || 1) + Number(childrenCount || 0));
+      
+      // Chuẩn hóa tên thành phố tìm kiếm sang tên chuẩn CSDL
+      let searchCity = destination?.trim() || '';
+      if (isLocationMatch('Hồ Chí Minh', searchCity)) {
+        searchCity = 'Hồ Chí Minh';
+      } else if (isLocationMatch('Phú Quốc', searchCity)) {
+        searchCity = 'Phú Quốc';
+      }
+
       const res = await searchHotelsApi({
-        city: destination?.trim() || '',
+        city: searchCity,
         checkIn: checkIn || today,
         checkOut: checkOut || tomorrow,
         guests,
@@ -145,8 +241,8 @@ export default function HomePage() {
         setSearchFeedback('Không tìm thấy khách sạn còn trống trong cơ sở dữ liệu cho tiêu chí này.');
       }
     } catch (err) {
-      console.warn('FR-06 search API offline or error, falling back to local data:', err);
-      setBackendHotels(null);
+      console.warn('FR-06 search API offline or error:', err);
+      setBackendHotels([]);
     } finally {
       setIsSearching(false);
     }
@@ -161,16 +257,14 @@ export default function HomePage() {
 
   // Lọc danh sách khách sạn theo Điểm Đến, Số Sao, Đánh Giá và Sắp Xếp
   const displayedHotels = useMemo(() => {
-    const isUsingBackend = backendHotels !== null && Array.isArray(backendHotels);
-    const sourceHotels = isUsingBackend ? backendHotels : getHotelsData();
+    const sourceHotels = Array.isArray(backendHotels) ? backendHotels : [];
 
     return sourceHotels.filter(hotel => {
-      // 1. Lọc theo Điểm đến (khớp theo Thành phố, Tên khách sạn hoặc Địa chỉ khi dùng dữ liệu dự phòng)
-      if (!isUsingBackend && destination && destination.trim() !== '') {
-        const term = destination.toLowerCase().trim();
-        const matchCity = hotel.city?.toLowerCase().includes(term);
-        const matchAddress = hotel.address?.toLowerCase().includes(term);
-        const matchName = hotel.name?.toLowerCase().includes(term);
+      // 1. Lọc theo Điểm đến nếu có (khớp địa danh thông minh)
+      if (destination && destination.trim() !== '') {
+        const matchCity = isLocationMatch(hotel.city, destination);
+        const matchAddress = isLocationMatch(hotel.address, destination);
+        const matchName = isLocationMatch(hotel.name, destination);
         if (!matchCity && !matchAddress && !matchName) {
           return false;
         }
@@ -236,15 +330,30 @@ export default function HomePage() {
                     <label className="text-secondary small d-block mb-1" style={{ fontSize: '11px', fontWeight: 600 }}>
                       Vui lòng nhập điểm đến
                     </label>
-                    <input 
-                      type="text" 
-                      className="form-control border-0 p-0 fw-bold fs-6 text-dark shadow-none bg-transparent"
-                      placeholder="Thành phố, sân bay, khu vực, đ..."
-                      value={destination}
-                      onFocus={() => setIsDestinationPickerOpen(true)}
-                      onClick={() => setIsDestinationPickerOpen(true)}
-                      onChange={(e) => setDestination(e.target.value)}
-                    />
+                    <div className="d-flex align-items-center position-relative">
+                      <input 
+                        type="text" 
+                        className="form-control border-0 p-0 fw-bold fs-6 text-dark shadow-none bg-transparent pe-3"
+                        placeholder="Thành phố, sân bay, khu vực, đ..."
+                        value={destination}
+                        onFocus={() => setIsDestinationPickerOpen(true)}
+                        onClick={() => setIsDestinationPickerOpen(true)}
+                        onChange={(e) => setDestination(e.target.value)}
+                      />
+                      {destination && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-link text-secondary p-0 border-0 me-1"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDestination('');
+                          }}
+                          title="Xóa điểm đến để xem tất cả khách sạn"
+                        >
+                          <X size={16} />
+                        </button>
+                      )}
+                    </div>
 
                     {/* Popup gợi ý điểm đến phổ biến tại Việt Nam theo yêu cầu Chỗ 2 */}
                     {isDestinationPickerOpen && (
@@ -620,9 +729,23 @@ export default function HomePage() {
               
               {/* Tiêu đề danh sách */}
               <div className="mb-3">
-                <h3 className="fw-bold text-dark mb-1">
-                  Khách sạn tại {destination || "Việt Nam"} {displayedHotels.length > 0 && `(${displayedHotels.length} kết quả)`}
-                </h3>
+                <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
+                  <h3 className="fw-bold text-dark mb-0">
+                    Khách sạn tại {destination ? `"${destination}"` : "Việt Nam (Toàn bộ)"}
+                  </h3>
+                  {destination && (
+                    <button 
+                      type="button"
+                      onClick={() => setDestination('')}
+                      className="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 d-flex align-items-center gap-1 small"
+                      style={{ fontSize: '12px' }}
+                      title="Hiển thị tất cả khách sạn trên toàn quốc"
+                    >
+                      <RotateCcw size={13} />
+                      <span>Xem tất cả tỉnh thành</span>
+                    </button>
+                  )}
+                </div>
                 <p className="text-secondary small mb-3">
                   Lưu trú từ {checkIn} đến {checkOut} ({adultsCount} người lớn, {roomsCount} phòng) • Kiểm tra giá tốt nhất.
                 </p>
@@ -650,19 +773,13 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* Trạng thái tra cứu API FR-06 */}
+              {/* Trạng thái tra cứu API */}
               {isSearching && (
                 <div className="card border-0 shadow-sm rounded-3 p-4 bg-white text-center my-3">
                   <div className="d-flex align-items-center justify-content-center gap-2 text-primary">
                     <div className="spinner-border spinner-border-sm" role="status"></div>
-                    <span className="fw-semibold">Đang tìm kiếm phòng trống theo thời gian thực (FR-06)...</span>
+                    <span className="fw-semibold">Đang tải...</span>
                   </div>
-                </div>
-              )}
-              {searchFeedback && !isSearching && (
-                <div className="alert alert-info py-2 px-3 small rounded-3 d-flex align-items-center gap-2 mb-3">
-                  <Info size={16} className="text-primary flex-shrink-0" />
-                  <span>{searchFeedback}</span>
                 </div>
               )}
 
@@ -686,15 +803,17 @@ export default function HomePage() {
               ) : (
                 /* Danh sách thẻ Khách Sạn (Bố cục ngang theo đúng ảnh 2) */
                 <div className="d-flex flex-column gap-3">
-                {displayedHotels.map((hotel) => (
+                {displayedHotels.map((hotel) => {
+                  const imgs = getHotelImageList(hotel);
+                  return (
                   <div key={hotel.id} className="card border-0 shadow-sm rounded-3 overflow-hidden bg-white hover-shadow">
                     <div className="row g-0">
                       
-                      {/* Cột ảnh (Gồm 1 ảnh to + 2 ảnh nhỏ kèm badge +99 ảnh như ảnh 2) */}
+                      {/* Cột ảnh (Gồm 1 ảnh to + 3 ảnh nhỏ) */}
                       <div className="col-lg-4 col-md-5 p-2">
                         <div className="position-relative mb-1">
                           <img 
-                            src={hotel.thumbnailUrl} 
+                            src={imgs[0]} 
                             alt={hotel.name}
                             className="w-100 rounded-2 object-fit-cover"
                             style={{ height: '180px' }}
@@ -709,7 +828,7 @@ export default function HomePage() {
                         <div className="row g-1">
                           <div className="col-4">
                             <img 
-                              src={hotel.images?.[1] || hotel.thumbnailUrl} 
+                              src={imgs[1]} 
                               alt="thumb 1"
                               className="w-100 rounded-1 object-fit-cover"
                               style={{ height: '55px' }}
@@ -717,7 +836,7 @@ export default function HomePage() {
                           </div>
                           <div className="col-4">
                             <img 
-                              src={hotel.images?.[2] || hotel.thumbnailUrl} 
+                              src={imgs[2]} 
                               alt="thumb 2"
                               className="w-100 rounded-1 object-fit-cover"
                               style={{ height: '55px' }}
@@ -725,7 +844,7 @@ export default function HomePage() {
                           </div>
                           <div className="col-4">
                             <img 
-                              src={hotel.images?.[3] || hotel.thumbnailUrl} 
+                              src={imgs[3]} 
                               alt="thumb 3"
                               className="w-100 rounded-1 object-fit-cover"
                               style={{ height: '55px' }}
@@ -742,7 +861,7 @@ export default function HomePage() {
                             {hotel.name}
                           </h5>
                           <div className="d-flex align-items-center gap-1 text-warning mb-2">
-                            {Array.from({ length: hotel.starRating }).map((_, i) => (
+                            {Array.from({ length: Math.max(1, Math.min(5, Number(hotel.starRating || 5))) }).map((_, i) => (
                               <Star key={i} size={14} fill="#ffc107" />
                             ))}
                           </div>
@@ -750,7 +869,7 @@ export default function HomePage() {
                           {/* Khoảng cách & Vị trí */}
                           <div className="d-flex align-items-center gap-1 text-secondary small mb-2" style={{ fontSize: '12px' }}>
                             <MapPin size={13} className="text-danger flex-shrink-0" />
-                            <span>Cách trung tâm thành phố 130m ({hotel.city})</span>
+                            <span>Cách trung tâm thành phố 130m ({hotel.city || 'Việt Nam'})</span>
                           </div>
 
                           {/* Tiện ích ngắn gọn dạng pill badge */}
@@ -816,7 +935,8 @@ export default function HomePage() {
 
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 

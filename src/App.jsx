@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import { AuthProvider } from './context/AuthContext';
+import { AlertProvider } from './context/AlertContext';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import HomePage from './pages/HomePage';
@@ -85,9 +86,11 @@ function AppLayout() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <AppLayout />
-      </BrowserRouter>
+      <AlertProvider>
+        <BrowserRouter>
+          <AppLayout />
+        </BrowserRouter>
+      </AlertProvider>
     </AuthProvider>
   );
 }

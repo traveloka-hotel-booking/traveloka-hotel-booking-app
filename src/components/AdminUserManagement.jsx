@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Users, UserCheck, UserX, RefreshCw, ChevronLeft, ChevronRight, Lock, Unlock } from 'lucide-react';
 import { apiFetch } from '../services/api';
+import { useAlert } from '../context/AlertContext';
 
 /**
  * FR-16: Admin quản lý tài khoản người dùng.
@@ -14,6 +15,7 @@ import { apiFetch } from '../services/api';
  * lịch sử đặt phòng/khách vãng lai của màn hình Quản lý khách hàng.
  */
 export default function AdminUserManagement() {
+  const { showConfirm, showAlert } = useAlert();
   const [users, setUsers] = useState([]);
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(10);
@@ -69,7 +71,15 @@ export default function AdminUserManagement() {
     const currentlyEnabled = user.isEnabled === true;
     const actionLabel = currentlyEnabled ? 'khóa' : 'mở khóa';
 
-    if (!window.confirm(`Bạn có chắc chắn muốn ${actionLabel} tài khoản này?`)) {
+    const confirmed = await showConfirm({
+      title: `${currentlyEnabled ? 'Khóa' : 'Mở khóa'} tài khoản`,
+      message: `Bạn có chắc chắn muốn ${actionLabel} tài khoản "${user.email || user.username || user.fullName}" không?`,
+      type: currentlyEnabled ? 'warning' : 'info',
+      confirmText: currentlyEnabled ? 'Khóa tài khoản' : 'Mở khóa',
+      cancelText: 'Hủy'
+    });
+
+    if (!confirmed) {
       return;
     }
 
@@ -95,9 +105,7 @@ export default function AdminUserManagement() {
         return;
       }
 
-      setNotice(
-        `${currentlyEnabled ? 'Đã khóa' : 'Đã mở khóa'} tài khoản thành công.`
-      );
+      setNotice('Cập nhật thành công');
 
       await loadUsers();
     } catch (e) {
@@ -128,7 +136,7 @@ export default function AdminUserManagement() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 18 }}>
           <div>
             <h2 style={{ margin: 0, color: '#1e293b', fontSize: 18, fontWeight: 700 }}>Danh sách người dùng</h2>
-            <p style={{ margin: '5px 0 0', color: '#94a3b8', fontSize: 13 }}>Quản lý tài khoản và trạng thái truy cập hệ thống</p>
+            <p style={{ margin: '5px 0 0', color: '#94a3b8', fontSize: 13 }}>Quản lý tài khoản và trạng thái truy cập</p>
           </div>
           <button type="button" onClick={loadUsers} disabled={loading}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 7, border: '1px solid #e2e8f0', background: '#fff', borderRadius: 9, padding: '9px 13px', color: '#475569', cursor: loading ? 'not-allowed' : 'pointer', fontWeight: 600 }}>

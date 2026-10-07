@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Hotel, Mail, ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react';
 import { apiFetch } from '../services/api';
+import { getFriendlyErrorMessage } from '../utils/errorHandler';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -10,38 +11,38 @@ export default function ForgotPasswordPage() {
   const [submitted, setSubmitted] = useState(false);
 
   const handleSubmit = async (e) => {
-   e.preventDefault();
+    e.preventDefault();
 
-  if (isSubmitting) return;
+    if (isSubmitting) return;
 
-  if (!email.trim()) {
-    setErrorMsg('Vui lòng nhập email.');
-    return;
-  }
+    if (!email.trim()) {
+      setErrorMsg('Vui lòng nhập email.');
+      return;
+    }
 
-  setIsSubmitting(true);
-  setErrorMsg('');
+    setIsSubmitting(true);
+    setErrorMsg('');
 
-  try {
-    await apiFetch('/auth/forgot-password', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        email: email.trim(),
-      }),
-    });
+    try {
+      await apiFetch('/auth/forgot-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: email.trim(),
+        }),
+      });
 
-    setSubmitted(true);
-  } catch (error) {
-    console.error('Forgot password error:', error);
-    setErrorMsg(
-      error.message || 'Không thể gửi yêu cầu. Vui lòng thử lại sau.'
-    );
-  } finally {
-    setIsSubmitting(false);
-  }
+      setSubmitted(true);
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      setErrorMsg(
+        getFriendlyErrorMessage(error, 'Không thể gửi yêu cầu đặt lại mật khẩu. Vui lòng thử lại sau.')
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (submitted) {

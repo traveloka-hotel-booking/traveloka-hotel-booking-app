@@ -11,7 +11,7 @@ import {
   Check
 } from 'lucide-react';
 import { apiFetch } from '../services/api';
-
+import { getFriendlyErrorMessage } from '../utils/errorHandler';
 
 export default function ResetPasswordPage() {
   const { token } = useParams();
@@ -66,9 +66,6 @@ export default function ResetPasswordPage() {
     setErrorMsg('');
 
     try {
-      setIsSubmitting(true);
-      setErrorMsg('');
-
       await apiFetch('/auth/reset-password', {
         method: 'POST',
         headers: {
@@ -80,19 +77,16 @@ export default function ResetPasswordPage() {
         }),
       });
 
-    setSuccess(true);
+      setSuccess(true);
     } catch (error) {
       console.error('Reset password error:', error);
-
       setErrorMsg(
-        error?.result?.errors ||
-        error?.message ||
-        'Không thể đặt lại mật khẩu. Vui lòng thử lại.'
+        getFriendlyErrorMessage(error, 'Không thể đặt lại mật khẩu. Vui lòng thử lại.')
       );
     } finally {
       setIsSubmitting(false);
     }
-    };
+  };
 
   if (success) {
     return (

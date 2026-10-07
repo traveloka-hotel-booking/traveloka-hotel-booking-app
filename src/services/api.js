@@ -24,13 +24,14 @@ export const apiFetch = async (endpoint, options = {}) => {
             headers,
         }
     );
-// Xử lý khi logout hoặc Access Token hết hạn phải trả đúng mã lỗi 401
-    // Đăng nhập sai cũng có thể trả về 401. Không refresh token hoặc
-    // chuyển hướng trong trường hợp này để LoginPage giữ nguyên dữ liệu và lỗi.
-    const isLoginRequest =
-        endpoint.includes('/auth/login') || endpoint === '/login';
+    // Xử lý khi logout hoặc Access Token hết hạn phải trả đúng mã lỗi 401
+    // Đăng nhập sai hoặc đang đăng xuất/refresh cũng có thể trả về 401. Không refresh token hoặc
+    // chuyển hướng trong trường hợp này để tránh vòng lặp token không mong muốn.
+    const isAuthRequest =
+        endpoint.includes('/auth/login') || endpoint === '/login' ||
+        endpoint.includes('/auth/logout') || endpoint.includes('/auth/refresh');
 
-    if (response.status === 401 && !isLoginRequest) {
+    if (response.status === 401 && !isAuthRequest) {
 
         const refreshToken = localStorage.getItem('refreshToken');
         // Không có Refresh Token

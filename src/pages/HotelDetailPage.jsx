@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
-import { MOCK_HOTELS, getHotelsData } from '../data/mockData';
+import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../services/api';
 import { 
   MapPin, Star, Wifi, Waves, Coffee, Car, Dumbbell, 
@@ -12,6 +12,7 @@ export default function HotelDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, isAuthenticated } = useAuth();
   
   // Đọc dữ liệu tìm kiếm dự phòng từ localStorage nếu F5 hoặc mở tab mới
   const savedSearch = (() => {
@@ -23,27 +24,40 @@ export default function HotelDetailPage() {
   })();
   const searchState = { ...savedSearch, ...(location.state || {}) };
 
-  // Tìm khách sạn theo ID từ danh sách tổng hợp (bao gồm cả khách sạn mới do Admin tạo)
-  const [hotel, setHotel] = useState(() => {
-    const allHotels = getHotelsData();
-    return allHotels.find(h => String(h.id) === String(id)) || allHotels[0];
-  });
+  // Khách sạn lấy từ Backend
+  const [hotel, setHotel] = useState(null);
 
   // State ảnh chính đang được hiển thị trong Gallery
-  const [activeImage, setActiveImage] = useState(hotel?.images?.[0] || hotel?.thumbnailUrl);
+  const [activeImage, setActiveImage] = useState(null);
   const [bookingSuccessNotice, setBookingSuccessNotice] = useState(null);
 
-  // Tải & đồng bộ chi tiết khách sạn và danh sách phòng từ Backend và LocalStorage
-  const loadHotelDetails = async () => {
-    // 1. Đồng bộ tức thì từ localStorage/MockData
-    const all = getHotelsData();
-    const localHotel = all.find(h => String(h.id) === String(id)) || all[0];
-    if (localHotel) {
-      setHotel(localHotel);
-      setActiveImage(prev => prev || localHotel.images?.[0] || localHotel.thumbnailUrl);
+  // Danh sách 4 hình ảnh khách sạn đồng bộ với Admin và Trang Chủ
+  const galleryImages = useMemo(() => {
+    if (!hotel) return [];
+    let list = [];
+    if (Array.isArray(hotel.images) && hotel.images.length > 0) {
+      list = hotel.images.filter(Boolean);
+    } else if (typeof hotel.images === 'string' && hotel.images.trim()) {
+      list = hotel.images.split(',').map(s => s.trim()).filter(Boolean);
+    } else if (hotel.thumbnailUrl) {
+      list = [hotel.thumbnailUrl];
     }
+    const defaultFallbacks = [
+      'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=1000&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=600&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=600&auto=format&fit=crop&q=80',
+    ];
+    return [
+      list[0] || hotel.thumbnailUrl || defaultFallbacks[0],
+      list[1] || defaultFallbacks[1],
+      list[2] || defaultFallbacks[2],
+      list[3] || defaultFallbacks[3]
+    ];
+  }, [hotel]);
 
-    // 2. Fetch API Backend đồng bộ từ cơ sở dữ liệu thực tế (Cloudinary image, giá, trạng thái...)
+  // Tải chi tiết khách sạn và danh sách phòng từ Backend API
+  const loadHotelDetails = async () => {
     try {
       const [hRes, rRes] = await Promise.all([
         apiFetch(`/hotels/${id}`),
@@ -93,6 +107,14 @@ export default function HotelDetailPage() {
 
           return updated;
         });
+        const firstImg = (Array.isArray(backendHotel?.images) && backendHotel.images[0])
+          ? backendHotel.images[0]
+          : (typeof backendHotel?.images === 'string' && backendHotel.images.split(',')[0])
+          ? backendHotel.images.split(',')[0].trim()
+          : backendHotel?.thumbnailUrl;
+        if (firstImg) {
+          setActiveImage(firstImg);
+        }
       }
     } catch (err) {
       console.warn('API hotel details fallback:', err);
@@ -130,20 +152,48 @@ export default function HotelDetailPage() {
   };
 
   const handleBookRoom = (room) => {
-    // Điều hướng sang trang thanh toán & đặt phòng CheckoutPage kèm dữ liệu tìm kiếm
-    navigate('/checkout', { 
-      state: { 
-        hotel, 
-        room, 
-        checkInDate: searchState.checkIn,
-        checkOutDate: searchState.checkOut,
-        guestCount: searchState.adultsCount || 2,
-        roomsCount: searchState.roomsCount || 1,
-        destination: searchState.destination,
-        ...searchState 
-      } 
-    });
+    const bookingState = { 
+      hotel, 
+      room, 
+      checkInDate: searchState.checkIn,
+      checkOutDate: searchState.checkOut,
+      guestCount: searchState.adultsCount || 2,
+      roomsCount: searchState.roomsCount || 1,
+      destination: searchState.destination,
+      ...searchState 
+    };
+
+    // Bắt buộc đăng nhập tài khoản Khách hàng khi tiến hành đặt phòng
+    if (!isAuthenticated) {
+      try {
+        localStorage.setItem('traveloka_pending_booking', JSON.stringify(bookingState));
+      } catch {}
+
+      navigate('/login', { 
+        state: { 
+          from: { pathname: '/checkout', state: bookingState },
+          notice: 'Vui lòng đăng nhập tài khoản Khách hàng để tiếp tục đặt phòng.'
+        } 
+      });
+      return;
+    }
+
+    // Đã đăng nhập -> Điều hướng sang trang thanh toán & đặt phòng CheckoutPage
+    navigate('/checkout', { state: bookingState });
   };
+
+  if (!hotel) {
+    return (
+      <div className="bg-light min-vh-100 py-5 page-top-spacing d-flex flex-column align-items-center justify-content-center">
+        <div className="spinner-border text-primary mb-3" role="status"></div>
+        <h5 className="fw-bold text-dark mb-1">Đang tải thông tin khách sạn...</h5>
+        <p className="text-secondary small mb-3">Vui lòng chờ trong giây lát</p>
+        <button onClick={() => navigate('/hotels')} className="btn btn-outline-primary btn-sm rounded-pill">
+          Quay lại danh sách khách sạn
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-light pb-4 min-vh-100 page-top-spacing">
@@ -184,7 +234,7 @@ export default function HotelDetailPage() {
             <div>
               {/* Sao & Thành phố */}
               <div className="d-flex align-items-center gap-2 mb-2">
-                <span className="badge bg-primary px-3 py-1 rounded-pill">📍 {hotel.city}</span>
+                <span className="badge bg-primary px-3 py-1 rounded-pill">{hotel.city}</span>
                 <div className="d-flex align-items-center gap-1 text-warning">
                   {Array.from({ length: hotel.starRating }).map((_, i) => (
                     <Star key={i} size={16} fill="#ffc107" />
@@ -222,23 +272,23 @@ export default function HotelDetailPage() {
             {/* Ảnh lớn chính */}
             <div className="col-lg-8">
               <img 
-                src={activeImage} 
+                src={activeImage || galleryImages[0]} 
                 alt={hotel.name} 
                 className="w-100 rounded-3 shadow-sm"
                 style={{ height: '420px', objectFit: 'cover' }}
               />
             </div>
 
-            {/* Danh sách ảnh con có thể bấm chọn */}
+            {/* Danh sách 4 ảnh con có thể bấm chọn */}
             <div className="col-lg-4">
               <div className="row g-2 h-100">
-                {(hotel.images || [hotel.thumbnailUrl]).slice(0, 4).map((imgUrl, index) => (
+                {galleryImages.map((imgUrl, index) => (
                   <div key={index} className="col-6">
                     <img 
                       src={imgUrl} 
                       alt={`Ảnh ${index + 1}`} 
                       onClick={() => setActiveImage(imgUrl)}
-                      className={`w-100 rounded-3 cursor-pointer object-fit-cover border ${activeImage === imgUrl ? 'border-primary border-3 shadow' : 'opacity-75'}`}
+                      className={`w-100 rounded-3 cursor-pointer object-fit-cover border ${(activeImage || galleryImages[0]) === imgUrl ? 'border-primary border-3 shadow' : 'opacity-75'}`}
                       style={{ height: '205px', transition: 'all 0.2s' }}
                     />
                   </div>
