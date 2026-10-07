@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { MOCK_HOTELS, getHotelsData } from '../data/mockData';
 import { filterHotelsApi, searchHotelsApi } from '../services/hotelApi';
 import { 
   Search, MapPin, Star, Filter, RotateCcw, 
@@ -78,10 +77,24 @@ export default function HotelsPage() {
 
   useEffect(() => {
     loadHotels();
+
+    const handleSync = () => {
+      loadHotels();
+    };
+
+    window.addEventListener('traveloka_hotels_updated', handleSync);
+    window.addEventListener('traveloka_rooms_updated', handleSync);
+    window.addEventListener('storage', handleSync);
+
+    return () => {
+      window.removeEventListener('traveloka_hotels_updated', handleSync);
+      window.removeEventListener('traveloka_rooms_updated', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
   }, [loadHotels]);
 
   // Danh sách các thành phố có trong dữ liệu
-  const cities = ["Tất cả", "Hà Nội", "Đà Nẵng", "Hồ Chí Minh", "Nha Trang", "Đà Lạt", "Phú Quốc"];
+  const cities = ["Tất cả", "Hà Nội", "Đà Nẵng", "Hồ Chí Minh", "Sa Pa", "Nha Trang", "Đà Lạt", "Phú Quốc"];
 
   // Danh sách các tiện ích để lọc
   const amenityOptions = [
@@ -125,52 +138,34 @@ export default function HotelsPage() {
     setSearchParams({});
   };
 
-  // Lọc và sắp xếp dữ liệu (Ưu tiên dữ liệu từ Backend API, fallback sang MockData khi API offline)
+  // Helper lấy giá phòng của khách sạn
+  const getHotelPrice = (hotel) => {
+    return Number(hotel?.minPricePerNight ?? hotel?.rooms?.[0]?.pricePerNight ?? hotel?.minPrice ?? hotel?.pricePerNight ?? 1200000);
+  };
+
+  // Lọc và sắp xếp dữ liệu trực tiếp từ Backend API (MySQL)
   const filteredHotels = useMemo(() => {
-    const isUsingBackend = backendHotels !== null && Array.isArray(backendHotels);
-    const sourceHotels = isUsingBackend ? backendHotels : getHotelsData();
+    const sourceHotels = Array.isArray(backendHotels) ? backendHotels : [];
 
     return sourceHotels.filter(hotel => {
-      // 1. Lọc theo thành phố (nếu dùng mock fallback)
-      if (!isUsingBackend && selectedCity && selectedCity !== "Tất cả") {
-        if (!hotel.city?.toLowerCase().includes(selectedCity.toLowerCase())) {
-          return false;
-        }
-      }
-
-      // 2. Lọc theo số sao (nếu dùng mock fallback)
-      if (!isUsingBackend && selectedStars.length > 0 && !selectedStars.includes(hotel.starRating)) {
+      // Lọc theo mức giá tối đa:
+      // Bất kỳ khách sạn nào có giá phòng vượt quá mức giá người dùng chọn -> không hiển thị
+      const hotelPrice = getHotelPrice(hotel);
+      if (hotelPrice > maxPrice) {
         return false;
-      }
-
-      // 3. Lọc theo giá tối đa (lấy giá phòng thấp nhất của khách sạn)
-      const minHotelPrice = hotel.minPricePerNight ?? hotel.rooms?.[0]?.pricePerNight ?? 0;
-      if (minHotelPrice > maxPrice) {
-        return false;
-      }
-
-      // 4. Lọc theo tiện ích (nếu dùng mock fallback)
-      if (!isUsingBackend && selectedAmenities.length > 0) {
-        const hotelAmenities = Array.isArray(hotel.amenities)
-          ? hotel.amenities
-          : (typeof hotel.amenities === 'string' ? hotel.amenities.split(',').map(s => s.trim()) : []);
-        const hasAmenity = selectedAmenities.some(a => 
-          hotelAmenities.some(item => item.toLowerCase().includes(a.toLowerCase()))
-        );
-        if (!hasAmenity) return false;
       }
 
       return true;
     }).sort((a, b) => {
-      const priceA = a.minPricePerNight ?? a.rooms?.[0]?.pricePerNight ?? 0;
-      const priceB = b.minPricePerNight ?? b.rooms?.[0]?.pricePerNight ?? 0;
+      const priceA = getHotelPrice(a);
+      const priceB = getHotelPrice(b);
 
       if (sortBy === 'priceAsc') return priceA - priceB;
       if (sortBy === 'priceDesc') return priceB - priceA;
       if (sortBy === 'ratingDesc') return (b.ratingScore || 8.5) - (a.ratingScore || 8.5);
       return 0; // popular
     });
-  }, [backendHotels, selectedCity, selectedStars, maxPrice, selectedAmenities, sortBy]);
+  }, [backendHotels, maxPrice, sortBy]);
 
   return (
     <div className="bg-light pb-4 min-vh-100 page-top-spacing">
@@ -178,12 +173,9 @@ export default function HotelsPage() {
         {/* Tiêu đề trang */}
         <div className="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
           <div>
-            <h2 className="fw-bold mb-1">
+            <h2 className="fw-bold mb-0">
               Khách Sạn {selectedCity && selectedCity !== "Tất cả" ? `Tại ${selectedCity}` : "Tại Việt Nam"}
             </h2>
-            <p className="text-secondary mb-0">
-              Tìm thấy <strong className="text-primary">{filteredHotels.length}</strong> khách sạn phù hợp với tiêu chí của bạn
-            </p>
           </div>
 
           {/* Sắp xếp kết quả */}
@@ -238,7 +230,7 @@ export default function HotelsPage() {
                 </select>
               </div>
 
-              {/* 2. Lọc theo Khoảng giá */}
+              {/* 2. Lọc theo Mức giá tối đa */}
               <div className="mb-4 pb-3 border-bottom">
                 <div className="d-flex justify-content-between align-items-center mb-2">
                   <label className="form-label fw-bold text-dark small text-uppercase mb-0">Mức giá tối đa</label>
@@ -251,13 +243,38 @@ export default function HotelsPage() {
                   className="form-range" 
                   min="500000" 
                   max="5000000" 
-                  step="200000"
+                  step="100000"
                   value={maxPrice}
                   onChange={(e) => setMaxPrice(Number(e.target.value))}
                 />
-                <div className="d-flex justify-content-between text-secondary small">
+                <div className="d-flex justify-content-between text-secondary small mb-3" style={{ fontSize: '11px' }}>
                   <span>500.000 đ</span>
                   <span>5.000.000 đ</span>
+                </div>
+
+                {/* Các nút chọn nhanh mức giá */}
+                <div className="d-flex flex-wrap gap-1">
+                  {[
+                    { label: '500k', value: 500000 },
+                    { label: 'Dưới 1 triệu', value: 1000000 },
+                    { label: 'Dưới 2 triệu', value: 2000000 },
+                    { label: 'Dưới 3 triệu', value: 3000000 },
+                    { label: 'Tất cả (5 tr)', value: 5000000 },
+                  ].map((p, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      className={`btn btn-sm px-2 py-1 rounded-pill ${
+                        maxPrice === p.value 
+                          ? 'btn-danger text-white fw-bold' 
+                          : 'btn-outline-secondary border-light-subtle'
+                      }`}
+                      style={{ fontSize: '11px' }}
+                      onClick={() => setMaxPrice(p.value)}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -318,7 +335,7 @@ export default function HotelsPage() {
               <div className="card border-0 shadow-sm rounded-4 p-5 text-center bg-white">
                 <div className="d-flex align-items-center justify-content-center gap-2 text-primary py-4">
                   <div className="spinner-border spinner-border-sm" role="status"></div>
-                  <span className="fw-semibold">Đang cập nhật danh sách khách sạn từ hệ thống (FR-07/FR-06)...</span>
+                  <span className="fw-semibold">Đang tải...</span>
                 </div>
               </div>
             ) : filteredHotels.length === 0 ? (
@@ -339,16 +356,13 @@ export default function HotelsPage() {
                   <div key={hotel.id} className="card border-0 shadow-sm rounded-4 overflow-hidden hover-shadow bg-white">
                     <div className="row g-0">
                       {/* Ảnh khách sạn */}
-                      <div className="col-lg-4 col-md-5 position-relative">
+                      <div className="col-lg-4 col-md-5">
                         <img 
-                          src={hotel.thumbnailUrl} 
+                          src={(Array.isArray(hotel.images) ? hotel.images[0] : null) || hotel.thumbnailUrl || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600&auto=format&fit=crop&q=80'} 
                           className="w-100 h-100 object-fit-cover" 
                           alt={hotel.name}
                           style={{ minHeight: '240px', maxHeight: '280px' }}
                         />
-                        <span className="position-absolute top-0 start-0 m-3 badge bg-primary px-3 py-1 rounded-pill">
-                          📍 {hotel.city}
-                        </span>
                       </div>
 
                       {/* Thông tin chi tiết */}
@@ -357,10 +371,10 @@ export default function HotelsPage() {
                           <div className="d-flex justify-content-between align-items-start gap-2 mb-1">
                             <div>
                               <div className="d-flex align-items-center gap-1 text-warning mb-1">
-                                {Array.from({ length: hotel.starRating }).map((_, idx) => (
+                                {Array.from({ length: Math.max(1, Math.min(5, Number(hotel.starRating || 5))) }).map((_, idx) => (
                                   <Star key={idx} size={14} fill="#ffc107" />
                                 ))}
-                                <span className="text-secondary small ms-1">Khách sạn {hotel.starRating} sao</span>
+                                <span className="text-secondary small ms-1">Khách sạn {hotel.starRating || 5} sao</span>
                               </div>
                               <h4 className="fw-bold text-dark mb-1">{hotel.name}</h4>
                             </div>
@@ -368,19 +382,19 @@ export default function HotelsPage() {
                             {/* Điểm đánh giá */}
                             <div className="text-end flex-shrink-0">
                               <span className="badge bg-success text-white fs-6 px-2 py-1 rounded-3">
-                                ★ {hotel.ratingScore}
+                                ★ {hotel.ratingScore || 8.5}
                               </span>
-                              <span className="d-block small text-secondary mt-1">{hotel.ratingText}</span>
+                              <span className="d-block small text-secondary mt-1">{hotel.ratingText || 'Rất tốt'}</span>
                             </div>
                           </div>
 
                           <p className="text-secondary small mb-2 d-flex align-items-center gap-1">
                             <MapPin size={15} className="text-danger flex-shrink-0" />
-                            <span>{hotel.address}</span>
+                            <span>{hotel.address || hotel.city || 'Việt Nam'}</span>
                           </p>
 
                           <p className="text-secondary small line-clamp-2 mb-3">
-                            {hotel.description}
+                            {hotel.description || `Khách sạn cao cấp tiện nghi tại ${hotel.city || 'Việt Nam'}.`}
                           </p>
 
                           {/* Tiện ích nổi bật */}
@@ -410,10 +424,10 @@ export default function HotelsPage() {
                           <div>
                             <span className="badge bg-danger-subtle text-danger mb-1">Tiết kiệm 20% hôm nay</span>
                             <div className="text-secondary small">
-                              Giá gốc: <del>{Math.round((hotel.minPricePerNight ?? hotel.rooms?.[0]?.originalPrice ?? 1500000) * 1.25).toLocaleString('vi-VN')} đ</del>
+                              Giá gốc: <del>{Math.round(getHotelPrice(hotel) * 1.25).toLocaleString('vi-VN')} đ</del>
                             </div>
                             <div className="fs-4 fw-bold text-danger">
-                              {(hotel.minPricePerNight ?? hotel.rooms?.[0]?.pricePerNight ?? 1200000).toLocaleString('vi-VN')} đ
+                              {getHotelPrice(hotel).toLocaleString('vi-VN')} đ
                               <span className="text-secondary fs-6 fw-normal"> / đêm</span>
                             </div>
                           </div>

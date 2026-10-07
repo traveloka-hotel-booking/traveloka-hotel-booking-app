@@ -5,11 +5,27 @@ import { getFriendlyErrorMessage, sanitizeErrorMessage } from '../utils/errorHan
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  // Đọc thông tin user từ localStorage nếu đã có phiên trước đó
+  // Đọc thông tin user từ localStorage nếu đã có phiên trước đó (tự động loại bỏ phiên demo cũ)
   const [user, setUser] = useState(() => {
     try {
       const savedUser = localStorage.getItem('traveloka_auth_user');
-      return savedUser ? JSON.parse(savedUser) : null;
+      if (savedUser) {
+        const parsed = JSON.parse(savedUser);
+        // Nếu là phiên demo cũ -> dọn dẹp sạch sẽ
+        if (
+          parsed?.email === 'admin@traveloka.vn' ||
+          parsed?.email === 'customer@traveloka.vn' ||
+          parsed?.email === 'huutran.fb@gmail.com' ||
+          parsed?.loginType
+        ) {
+          localStorage.removeItem('traveloka_auth_user');
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          return null;
+        }
+        return parsed;
+      }
+      return null;
     } catch (e) {
       console.error('Lỗi khi đọc auth_user từ localStorage', e);
       return null;
@@ -25,7 +41,7 @@ export const AuthProvider = ({ children }) => {
     }
   }, [user]);
 
-  // Hàm đăng nhập thông thường
+  // Hàm đăng nhập chuẩn qua Backend API (JWT Token)
   const login = async (email, password) => {
     try {
       const response = await apiFetch('/auth/login', {
@@ -77,34 +93,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-
-  const loginWithGoogle = () => {
-    const googleUser = {
-      id: 'usr_google_99',
-      name: 'Trần Hữu',
-      email: 'huutran0991@gmail.com',
-      role: 'ROLE_ADMIN', // Đồng bộ với chuẩn role của Backend JWT
-      avatar: 'https://lh3.googleusercontent.com/a/default-user=s96-c',
-      loginType: 'google'
-    };
-    setUser(googleUser);
-    return googleUser;
-  };
-
-  // Hàm đăng nhập nhanh bằng tài khoản Facebook (mô phỏng OAuth2)
-  const loginWithFacebook = () => {
-    const fbUser = {
-      id: 'usr_fb_88',
-      name: 'Trần Văn Hữu',
-      email: 'huutran.fb@gmail.com',
-      role: 'user',
-      avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=100&auto=format&fit=crop&q=60',
-      loginType: 'facebook'
-    };
-    setUser(fbUser);
-    return fbUser;
-  };
-
   // Hàm cập nhật thông tin người dùng
   const updateUserProfile = (updatedData) => {
     const updated = { ...user, ...updatedData };
@@ -112,28 +100,29 @@ export const AuthProvider = ({ children }) => {
     return updated;
   };
 
-  // Hàm đăng xuất: xóa phiên local ngay để giao diện không bị treo
-  // API logout được gọi nền, không chặn việc chuyển trang.
-  const logout = () => {
+  // Hàm đăng xuất: gửi accessToken để đưa vào blacklist và refreshToken để hủy phiên trên Backend
+  const logout = async () => {
     const refreshToken = localStorage.getItem('refreshToken');
 
-    // Xóa thông tin đăng nhập ngay lập tức
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('traveloka_auth_user');
-    setUser(null);
-
-    // Gửi yêu cầu thu hồi refresh token ở nền
-    if (refreshToken) {
-      apiFetch('/auth/logout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ refreshToken }),
-      }).catch((error) => {
-        console.error('Logout API error:', error);
-      });
+    try {
+      if (refreshToken) {
+        // apiFetch sẽ tự động gửi Authorization: Bearer <accessToken> vì accessToken chưa bị xóa khỏi localStorage
+        await apiFetch('/auth/logout', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ refreshToken }),
+        });
+      }
+    } catch (error) {
+      console.error('Logout API error:', error);
+    } finally {
+      // Dọn dẹp phiên đăng nhập ở local sau khi API đã gửi xong
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('traveloka_auth_user');
+      setUser(null);
     }
   };
 
@@ -141,10 +130,8 @@ export const AuthProvider = ({ children }) => {
     <AuthContext.Provider value={{
       user,
       isAuthenticated: !!user,
-      isAdmin: user?.role === 'admin'  || user?.role === 'ROLE_ADMIN',
+      isAdmin: user?.role === 'admin' || user?.role === 'ROLE_ADMIN',
       login,
-      loginWithGoogle,
-      loginWithFacebook,
       updateUserProfile,
       logout
     }}>

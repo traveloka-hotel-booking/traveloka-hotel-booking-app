@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useAlert } from '../context/AlertContext';
 import { apiFetch } from '../services/api';
 import { getFriendlyErrorMessage, sanitizeErrorMessage } from '../utils/errorHandler';
 import AdminUserManagement from '../components/AdminUserManagement';
-import { MOCK_HOTELS } from '../data/mockData';
 
 
 import {
@@ -94,6 +94,7 @@ const SIDEBAR_MENU = [
 export default function AdminDashboardPage() {
   const navigate = useNavigate();
   const { user, isAdmin, login, logout } = useAuth();
+  const { showAlert, showConfirm } = useAlert();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [toastMsg, setToastMsg] = useState(null);
@@ -105,8 +106,8 @@ export default function AdminDashboardPage() {
 
   // ── Hotels state ──
   const [hotels, setHotels] = useState(() => {
-    try { const s = localStorage.getItem('traveloka_custom_hotels'); return s ? JSON.parse(s) : MOCK_HOTELS; }
-    catch { return MOCK_HOTELS; }
+    try { const s = localStorage.getItem('traveloka_custom_hotels'); return s ? JSON.parse(s) : []; }
+    catch { return []; }
   });
 
   // ── Rooms state (FR-14) ──
@@ -115,23 +116,12 @@ export default function AdminDashboardPage() {
       const s = localStorage.getItem('traveloka_custom_rooms');
       if (s) {
         const parsed = JSON.parse(s);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch (e) {
       console.warn('Error reading traveloka_custom_rooms:', e);
     }
-    const flat = hotels.flatMap(h => (h.rooms || []).map(r => ({
-      ...r,
-      hotelId: h.id,
-      hotelName: h.name,
-      status: r.status || 'AVAILABLE',
-      bedType: r.bedType || '1 Giường đôi lớn (King Size)',
-      roomSize: r.roomSize || '35 m²'
-    })));
-    try {
-      localStorage.setItem('traveloka_custom_rooms', JSON.stringify(flat));
-    } catch {}
-    return flat;
+    return [];
   });
 
   // ── Helper chuẩn hóa đơn đặt phòng ──
@@ -341,7 +331,7 @@ export default function AdminDashboardPage() {
         const hotelRes = await apiFetch('/admin/hotels?size=50');
         if (hotelRes.ok) {
           const hotelData = await hotelRes.json();
-          if (hotelData.result && hotelData.result.content && hotelData.result.content.length > 0) {
+          if (hotelData.result && Array.isArray(hotelData.result.content)) {
             setHotels(hotelData.result.content);
             localStorage.setItem('traveloka_custom_hotels', JSON.stringify(hotelData.result.content));
           }
@@ -354,7 +344,7 @@ export default function AdminDashboardPage() {
         const roomRes = await apiFetch('/admin/rooms');
         if (roomRes.ok) {
           const roomData = await roomRes.json();
-          if (roomData.result && roomData.result.length > 0) {
+          if (roomData.result && Array.isArray(roomData.result)) {
             setRoomsList(roomData.result);
             localStorage.setItem('traveloka_custom_rooms', JSON.stringify(roomData.result));
           }
@@ -379,69 +369,136 @@ export default function AdminDashboardPage() {
   // ── Hotel modal (FR-13) ──
   const [showHotelModal, setShowHotelModal] = useState(false);
   const [editingHotel, setEditingHotel] = useState(null);
-  const [hotelForm, setHotelForm] = useState({ name: '', city: 'Hồ Chí Minh', address: '', starRating: 5, pricePerNight: 1200000, description: '', thumbnailUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&auto=format&fit=crop&q=60' });
+  const [hotelForm, setHotelForm] = useState({ 
+    name: '', 
+    city: 'Hồ Chí Minh', 
+    address: '', 
+    starRating: 5, 
+    pricePerNight: 1200000, 
+    description: '', 
+    thumbnailUrl: '', 
+    images: ['', '', '', ''] 
+  });
   const hotelImageInputRef = useRef(null);
-  const [isUploadingHotelImage, setIsUploadingHotelImage] = useState(false);
+  const activeUploadImageIndexRef = useRef(0);
+  const [uploadingImageIndex, setUploadingImageIndex] = useState(null);
 
-  const openAddHotel = () => { setEditingHotel(null); setHotelForm({ name: '', city: 'Hồ Chí Minh', address: '', starRating: 5, pricePerNight: 1200000, description: '', thumbnailUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&auto=format&fit=crop&q=60' }); setShowHotelModal(true); };
-  const openEditHotel = (h) => { setEditingHotel(h); setHotelForm({ name: h.name, city: h.city, address: h.address, starRating: h.starRating, pricePerNight: h.minPrice || h.rooms?.[0]?.pricePerNight || h.pricePerNight || 1000000, description: h.description, thumbnailUrl: h.thumbnailUrl }); setShowHotelModal(true); };
+  const openAddHotel = () => { 
+    setEditingHotel(null); 
+    setHotelForm({ 
+      name: '', 
+      city: 'Hồ Chí Minh', 
+      address: '', 
+      starRating: 5, 
+      pricePerNight: 1200000, 
+      description: '', 
+      thumbnailUrl: '', 
+      images: ['', '', '', ''] 
+    }); 
+    setShowHotelModal(true); 
+  };
 
-  // Xử lý upload ảnh đại diện khách sạn (MultipartFile) lên Cloudinary
+  const openEditHotel = (h) => { 
+    setEditingHotel(h); 
+    let initialImgs = ['', '', '', ''];
+    if (Array.isArray(h.images) && h.images.length > 0) {
+      initialImgs = [h.images[0] || '', h.images[1] || '', h.images[2] || '', h.images[3] || ''];
+    } else if (typeof h.images === 'string' && h.images.trim()) {
+      const parts = h.images.split(',').map(s => s.trim()).filter(Boolean);
+      initialImgs = [parts[0] || '', parts[1] || '', parts[2] || '', parts[3] || ''];
+    } else if (h.thumbnailUrl) {
+      initialImgs = [h.thumbnailUrl, '', '', ''];
+    }
+
+    setHotelForm({ 
+      name: h.name, 
+      city: h.city, 
+      address: h.address, 
+      starRating: h.starRating, 
+      pricePerNight: h.minPrice || h.rooms?.[0]?.pricePerNight || h.pricePerNight || 1000000, 
+      description: h.description || '', 
+      thumbnailUrl: initialImgs[0] || h.thumbnailUrl || '', 
+      images: initialImgs 
+    }); 
+    setShowHotelModal(true); 
+  };
+
+  // Thay đổi URL ảnh tại index cụ thể (0..3)
+  const handleHotelImageUrlChange = (index, value) => {
+    setHotelForm(prev => {
+      const nextImgs = Array.isArray(prev.images) ? [...prev.images] : ['', '', '', ''];
+      nextImgs[index] = value;
+      return {
+        ...prev,
+        thumbnailUrl: index === 0 ? value : (prev.thumbnailUrl || value),
+        images: nextImgs
+      };
+    });
+  };
+
+  // Kích hoạt upload ảnh cho vị trí index cụ thể (0..3)
+  const triggerHotelImageUpload = (index) => {
+    activeUploadImageIndexRef.current = index;
+    hotelImageInputRef.current?.click();
+  };
+
+  // Xử lý upload ảnh khách sạn (MultipartFile) lên Cloudinary theo index
   const handleHotelImageUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('Vui lòng chọn tập tin hình ảnh hợp lệ (JPG, PNG, WEBP)');
+      showAlert({
+        title: 'Tập tin không hợp lệ',
+        message: 'Vui lòng chọn tập tin hình ảnh hợp lệ (JPG, PNG, WEBP).',
+        type: 'error'
+      });
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      alert('Dung lượng hình ảnh tối đa là 5MB');
+      showAlert({
+        title: 'Tập tin quá lớn',
+        message: 'Dung lượng hình ảnh tối đa là 5MB.',
+        type: 'warning'
+      });
       return;
     }
 
+    const targetIdx = activeUploadImageIndexRef.current || 0;
     try {
-      setIsUploadingHotelImage(true);
-      showToast('Đang tải ảnh đại diện lên Cloudinary...');
+      setUploadingImageIndex(targetIdx);
+      showToast(`Đang tải ảnh ${targetIdx + 1} lên Cloudinary...`);
 
       const formData = new FormData();
       formData.append('file', file);
 
-      let uploadedUrl = '';
-      if (editingHotel?.id) {
-        // Cập nhật ảnh trực tiếp vào khách sạn theo ID trong database
-        const res = await apiFetch(`/admin/hotels/${editingHotel.id}/thumbnail`, {
-          method: 'PUT',
-          body: formData
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(getFriendlyErrorMessage(data, 'Tải ảnh đại diện khách sạn thất bại'));
-        }
-        uploadedUrl = data.result?.thumbnailUrl || data.result;
-        // Đồng bộ cập nhật ngay vào danh sách khách sạn
-        updateHotels(hotels.map(h => h.id === editingHotel.id ? { ...h, thumbnailUrl: uploadedUrl } : h));
-      } else {
-        // Tạo mới: tải ảnh qua Backend lấy link Cloudinary an toàn
-        const res = await apiFetch('/admin/hotels/upload-thumbnail', {
-          method: 'POST',
-          body: formData
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(getFriendlyErrorMessage(data, 'Tải ảnh đại diện khách sạn thất bại'));
-        }
-        uploadedUrl = data.result;
+      // Tải ảnh qua Backend lấy link Cloudinary an toàn
+      const res = await apiFetch('/admin/hotels/upload-thumbnail', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(getFriendlyErrorMessage(data, 'Tải ảnh khách sạn thất bại'));
       }
+      const uploadedUrl = data.result;
 
-      setHotelForm(prev => ({ ...prev, thumbnailUrl: uploadedUrl }));
-      showToast('Tải ảnh đại diện lên Cloudinary thành công!');
+      setHotelForm(prev => {
+        const nextImgs = Array.isArray(prev.images) ? [...prev.images] : ['', '', '', ''];
+        nextImgs[targetIdx] = uploadedUrl;
+        return {
+          ...prev,
+          thumbnailUrl: targetIdx === 0 ? uploadedUrl : (prev.thumbnailUrl || uploadedUrl),
+          images: nextImgs
+        };
+      });
+      showToast('Tải ảnh thành công');
     } catch (err) {
       console.error('Lỗi khi tải ảnh khách sạn lên Cloudinary:', err);
       showToast('Lỗi tải ảnh lên Cloudinary: ' + sanitizeErrorMessage(err));
     } finally {
-      setIsUploadingHotelImage(false);
+      setUploadingImageIndex(null);
       if (hotelImageInputRef.current) {
         hotelImageInputRef.current.value = '';
       }
@@ -451,6 +508,12 @@ export default function AdminDashboardPage() {
   const saveHotel = async (e) => {
     e.preventDefault();
     try {
+      const cleanImages = (Array.isArray(hotelForm.images) ? hotelForm.images : [])
+        .map(img => (typeof img === 'string' ? img.trim() : ''))
+        .filter(Boolean);
+      const mainThumb = cleanImages[0] || (typeof hotelForm.thumbnailUrl === 'string' ? hotelForm.thumbnailUrl.trim() : '');
+      const imagesString = cleanImages.length > 0 ? cleanImages.join(',') : mainThumb;
+
       if (editingHotel) {
         const res = await apiFetch(`/admin/hotels/${editingHotel.id}`, {
           method: 'PUT',
@@ -461,14 +524,15 @@ export default function AdminDashboardPage() {
             starRating: Number(hotelForm.starRating),
             pricePerNight: Number(hotelForm.pricePerNight),
             description: hotelForm.description,
-            thumbnailUrl: hotelForm.thumbnailUrl,
+            thumbnailUrl: mainThumb,
+            images: imagesString,
             amenities: editingHotel.amenities || 'WiFi, Bữa sáng, Hồ bơi'
           })
         });
         if (res.ok) {
           const json = await res.json();
           updateHotels(hotels.map(h => h.id === editingHotel.id ? json.result : h));
-          showToast('Cập nhật khách sạn lên máy chủ thành công!');
+          showToast('Cập nhật thành công');
         } else {
           const errJson = await res.json().catch(() => ({}));
           showToast('Lỗi cập nhật: ' + getFriendlyErrorMessage(errJson, 'Cập nhật thất bại'));
@@ -483,14 +547,15 @@ export default function AdminDashboardPage() {
             starRating: Number(hotelForm.starRating),
             pricePerNight: Number(hotelForm.pricePerNight),
             description: hotelForm.description,
-            thumbnailUrl: hotelForm.thumbnailUrl,
+            thumbnailUrl: mainThumb,
+            images: imagesString,
             amenities: 'WiFi miễn phí, Bữa sáng buffet, Hồ bơi ngoài trời'
           })
         });
         if (res.ok) {
           const json = await res.json();
           updateHotels([json.result, ...hotels]);
-          showToast('Thêm khách sạn mới lên cơ sở dữ liệu thành công!');
+          showToast('Thêm mới thành công');
         } else {
           const errJson = await res.json().catch(() => ({}));
           showToast('Lỗi thêm khách sạn: ' + getFriendlyErrorMessage(errJson, 'Thêm thất bại'));
@@ -504,18 +569,78 @@ export default function AdminDashboardPage() {
   };
 
   const deleteHotel = async (id) => {
-    if (!window.confirm('Bạn có chắc muốn xóa khách sạn này khỏi hệ thống không?')) return;
-    try {
-      const res = await apiFetch(`/admin/hotels/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        showToast('Đã xóa khách sạn khỏi máy chủ');
-      }
-    } catch (e) {
-      console.warn('Delete hotel API error, updating state:', e);
+    const hotelToDelete = hotels.find(h => h.id === id);
+    if (!hotelToDelete) return;
+
+    // 1. Kiểm tra chặn xóa nếu khách sạn có phòng đang có khách ở hoặc được đặt
+    const hotelRooms = roomsList.filter(r => String(r.hotelId) === String(id));
+    const occupiedRoom = hotelRooms.find(r => {
+      const s = (r.status || '').toUpperCase();
+      return s === 'OCCUPIED' || s === 'BOOKED';
+    });
+    if (occupiedRoom) {
+      showAlert({
+        title: 'Không thể xóa khách sạn',
+        message: `Khách sạn "${hotelToDelete.name}" có phòng "${occupiedRoom.name}" đang có khách lưu trú hoặc đang được đặt trước!`,
+        type: 'warning',
+        confirmText: 'Đã hiểu'
+      });
+      return;
     }
-    updateHotels(hotels.filter(h => h.id !== id));
-    const nextRooms = roomsList.filter(r => r.hotelId !== id);
-    updateRooms(nextRooms);
+
+    // Kiểm tra các đơn đặt phòng đang hoạt động thuộc khách sạn này
+    const activeBooking = bookings.find(b => {
+      const bHotelId = b.hotelId || b.raw?.room?.hotel?.id;
+      const bStatus = (b.rawStatus || b.status || '').toUpperCase();
+      return String(bHotelId) === String(id) && ['CHECKED_IN', 'CONFIRMED', 'PENDING'].includes(bStatus);
+    });
+    if (activeBooking) {
+      showAlert({
+        title: 'Không thể xóa khách sạn',
+        message: `Khách sạn "${hotelToDelete.name}" đang có đơn đặt phòng hoạt động (Mã đơn: ${activeBooking.bookingCode || activeBooking.id})!`,
+        type: 'warning',
+        confirmText: 'Đã hiểu'
+      });
+      return;
+    }
+
+    const confirmed = await showConfirm({
+      title: 'Xóa khách sạn',
+      message: `Bạn có chắc chắn muốn xóa khách sạn "${hotelToDelete?.name || ''}" không?\nThao tác này sẽ xóa toàn bộ các loại phòng thuộc khách sạn này.`,
+      type: 'warning',
+      confirmText: 'Xóa khách sạn',
+      cancelText: 'Hủy'
+    });
+    if (!confirmed) return;
+
+    try {
+      if (typeof id === 'number' || !String(id).startsWith('h-')) {
+        const res = await apiFetch(`/admin/hotels/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          const errMsg = getFriendlyErrorMessage(errData, 'Xóa khách sạn thất bại');
+          showAlert({
+            title: 'Không thể xóa khách sạn',
+            message: errMsg,
+            type: 'error',
+            confirmText: 'Đóng'
+          });
+          return;
+        }
+      }
+      updateHotels(hotels.filter(h => h.id !== id));
+      const nextRooms = roomsList.filter(r => String(r.hotelId) !== String(id));
+      updateRooms(nextRooms);
+      showToast('Xóa thành công');
+    } catch (e) {
+      console.error('Delete hotel error:', e);
+      showAlert({
+        title: 'Lỗi xóa khách sạn',
+        message: sanitizeErrorMessage(e, 'Không thể xóa khách sạn do lỗi kết nối.'),
+        type: 'error',
+        confirmText: 'Đóng'
+      });
+    }
   };
 
   // ── Room modal (FR-14) ──
@@ -541,12 +666,20 @@ export default function AdminDashboardPage() {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('Vui lòng chọn tập tin hình ảnh hợp lệ (JPG, PNG, WEBP)');
+      showAlert({
+        title: 'Tập tin không hợp lệ',
+        message: 'Vui lòng chọn tập tin hình ảnh hợp lệ (JPG, PNG, WEBP).',
+        type: 'error'
+      });
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      alert('Dung lượng hình ảnh tối đa là 5MB');
+      showAlert({
+        title: 'Tập tin quá lớn',
+        message: 'Dung lượng hình ảnh tối đa là 5MB.',
+        type: 'warning'
+      });
       return;
     }
 
@@ -590,7 +723,7 @@ export default function AdminDashboardPage() {
       }
 
       setRoomForm(prev => ({ ...prev, imageUrl: uploadedUrl }));
-      showToast('Tải ảnh loại phòng lên Cloudinary thành công!');
+      showToast('Tải ảnh thành công');
     } catch (err) {
       console.error('Lỗi khi tải ảnh loại phòng lên Cloudinary:', err);
       showToast('Lỗi tải ảnh lên Cloudinary: ' + sanitizeErrorMessage(err));
@@ -615,7 +748,7 @@ export default function AdminDashboardPage() {
       BOOKED: 'Đang Có Khách (Booked)',
       MAINTENANCE: 'Đang Bảo Trì (Maintenance)'
     };
-    showToast(`Đã đổi trạng thái phòng thành: ${statusLabels[newStatus] || newStatus}`);
+    showToast('Cập nhật thành công');
 
     try {
       if (typeof roomId === 'number' || !String(roomId).startsWith('r-')) {
@@ -695,10 +828,10 @@ export default function AdminDashboardPage() {
         if (res.ok) {
           const json = await res.json();
           savedRoomObj = { ...json.result, hotelName: targetHotel?.name };
-          showToast('Cập nhật loại phòng trên máy chủ thành công!');
+          showToast('Cập nhật thành công');
         } else {
           savedRoomObj = { ...editingRoom, ...roomForm, hotelId: targetHotel?.id, hotelName: targetHotel?.name };
-          showToast('Đã lưu thay đổi loại phòng');
+          showToast('Cập nhật thành công');
         }
         const updated = roomsList.map(r => r.id === editingRoom.id ? savedRoomObj : r);
         updateRooms(updated);
@@ -725,7 +858,7 @@ export default function AdminDashboardPage() {
             hotelId: json.result?.hotelId || Number(roomForm.hotelId),
             hotelName: json.result?.hotelName || targetHotel?.name
           };
-          showToast('Tạo mới loại phòng trên máy chủ thành công!');
+          showToast('Thêm mới thành công');
         } else {
           savedRoomObj = {
             id: `r-${Date.now()}`,
@@ -733,7 +866,7 @@ export default function AdminDashboardPage() {
             hotelId: targetHotel ? targetHotel.id : (Number(roomForm.hotelId) || hotels[0]?.id),
             hotelName: targetHotel?.name
           };
-          showToast('Đã tạo loại phòng mới');
+          showToast('Thêm mới thành công');
         }
         const updated = [savedRoomObj, ...roomsList];
         updateRooms(updated);
@@ -750,7 +883,7 @@ export default function AdminDashboardPage() {
         const updated = roomsList.map(r => r.id === editingRoom.id ? savedRoomObj : r);
         updateRooms(updated);
         syncHotelWithRooms(roomForm.hotelId, updated);
-        showToast('Đã lưu loại phòng');
+        showToast('Cập nhật thành công');
       } else {
         savedRoomObj = {
           id: `r-${Date.now()}`,
@@ -764,7 +897,7 @@ export default function AdminDashboardPage() {
         setRoomSearchQuery('');
         setRoomHotelFilter('ALL');
         setRoomStatusFilter('ALL');
-        showToast('Đã lưu loại phòng mới');
+        showToast('Thêm mới thành công');
       }
     }
     setShowRoomModal(false);
@@ -772,23 +905,75 @@ export default function AdminDashboardPage() {
 
   const deleteRoom = async (id) => {
     const targetRoom = roomsList.find(r => r.id === id);
-    if (!window.confirm(`Bạn có chắc muốn xóa loại phòng "${targetRoom?.name || ''}" không?`)) return;
+    if (!targetRoom) return;
+
+    // 1. Kiểm tra chặn xóa nếu phòng đang có khách ở hoặc được đặt
+    const s = (targetRoom.status || '').toUpperCase();
+    if (s === 'OCCUPIED' || s === 'BOOKED') {
+      showAlert({
+        title: 'Không thể xóa loại phòng',
+        message: `Phòng "${targetRoom.name}" đang có khách lưu trú hoặc đang được đặt trước!`,
+        type: 'warning',
+        confirmText: 'Đã hiểu'
+      });
+      return;
+    }
+
+    // Kiểm tra đơn đặt phòng đang hoạt động của loại phòng này
+    const activeBooking = bookings.find(b => {
+      const bRoomId = b.roomId || b.raw?.room?.id;
+      const bStatus = (b.rawStatus || b.status || '').toUpperCase();
+      return String(bRoomId) === String(id) && ['CHECKED_IN', 'CONFIRMED', 'PENDING'].includes(bStatus);
+    });
+    if (activeBooking) {
+      showAlert({
+        title: 'Không thể xóa loại phòng',
+        message: `Loại phòng "${targetRoom.name}" đang có đơn đặt phòng hoạt động (Mã đơn: ${activeBooking.bookingCode || activeBooking.id})!`,
+        type: 'warning',
+        confirmText: 'Đã hiểu'
+      });
+      return;
+    }
+
+    const confirmed = await showConfirm({
+      title: 'Xóa loại phòng',
+      message: `Bạn có chắc muốn xóa loại phòng "${targetRoom?.name || ''}" không?\nThao tác này không thể hoàn tác.`,
+      type: 'warning',
+      confirmText: 'Xóa loại phòng',
+      cancelText: 'Hủy'
+    });
+    if (!confirmed) return;
+
     try {
       if (typeof id === 'number' || !String(id).startsWith('r-')) {
         const res = await apiFetch(`/admin/rooms/${id}`, { method: 'DELETE' });
-        if (res.ok) {
-          showToast('Đã xóa loại phòng khỏi máy chủ');
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          const errMsg = getFriendlyErrorMessage(errData, 'Xóa loại phòng thất bại');
+          showAlert({
+            title: 'Không thể xóa loại phòng',
+            message: errMsg,
+            type: 'error',
+            confirmText: 'Đóng'
+          });
+          return;
         }
       }
+      const updated = roomsList.filter(r => r.id !== id);
+      updateRooms(updated);
+      if (targetRoom) {
+        syncHotelWithRooms(targetRoom.hotelId, updated);
+      }
+      showToast('Xóa thành công');
     } catch (e) {
-      console.warn('Delete room error:', e);
+      console.error('Delete room error:', e);
+      showAlert({
+        title: 'Lỗi xóa loại phòng',
+        message: sanitizeErrorMessage(e, 'Không thể xóa loại phòng do lỗi kết nối.'),
+        type: 'error',
+        confirmText: 'Đóng'
+      });
     }
-    const updated = roomsList.filter(r => r.id !== id);
-    updateRooms(updated);
-    if (targetRoom) {
-      syncHotelWithRooms(targetRoom.hotelId, updated);
-    }
-    showToast('Đã xóa loại phòng khỏi hệ thống');
   };
 
   // ── Bookings logic (FR-15) ──
@@ -823,13 +1008,23 @@ export default function AdminDashboardPage() {
   const handleConfirmBooking = async (b) => {
     // 1. Chặn duyệt đơn quá hạn
     if (b.isExpired || (b.rawStatus || b.status || '').toUpperCase() === 'EXPIRED') {
-      alert(`Không thể duyệt đơn: Đơn đặt phòng [${b.bookingCode || b.id}] đã quá ngày nhận phòng (${b.checkInDate})!\nBạn có thể nhấn nút "Xóa đơn" để dọn dẹp hệ thống.`);
+      showAlert({
+        title: 'Không thể duyệt đơn',
+        message: `Đơn đặt phòng [${b.bookingCode || b.id}] đã quá ngày nhận phòng (${b.checkInDate})!\nBạn có thể nhấn nút "Xóa đơn" để dọn dẹp.`,
+        type: 'warning',
+        confirmText: 'Đã hiểu'
+      });
       return;
     }
 
     // 2. Chặn duyệt đơn nếu khách chọn chuyển khoản mà chưa thanh toán
     if (b.paymentMethod === 'vnpay' && b.paymentStatus !== 'paid') {
-      alert(`Không thể duyệt đơn: Khách hàng chưa thanh toán bằng phương thức chuyển khoản/VNPay!\nVui lòng đợi khách thanh toán hoàn tất trước khi duyệt.`);
+      showAlert({
+        title: 'Chưa thanh toán VNPay',
+        message: 'Khách hàng chưa thanh toán bằng phương thức chuyển khoản/VNPay!\nVui lòng đợi khách thanh toán hoàn tất trước khi duyệt.',
+        type: 'warning',
+        confirmText: 'Đã hiểu'
+      });
       return;
     }
 
@@ -845,7 +1040,7 @@ export default function AdminDashboardPage() {
           throw new Error(getFriendlyErrorMessage(data, 'Duyệt đơn đặt phòng thất bại'));
         }
       }
-      showToast('Duyệt đơn đặt phòng thành công!');
+      showToast('Cập nhật thành công');
       await fetchBookings();
     } catch (err) {
       console.error('Confirm booking error:', err);
@@ -853,10 +1048,17 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // Xóa đơn đặt phòng khỏi hệ thống
+  // Xóa đơn đặt phòng
   const handleDeleteBooking = async (b) => {
     const code = b.bookingCode || b.id;
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa vĩnh viễn đơn đặt phòng [${code}] khỏi hệ thống không?`)) {
+    const confirmed = await showConfirm({
+      title: 'Xóa đơn đặt phòng',
+      message: `Bạn có chắc chắn muốn xóa vĩnh viễn đơn đặt phòng [${code}] không?\nThao tác này sẽ xóa dữ liệu đơn.`,
+      type: 'warning',
+      confirmText: 'Xóa vĩnh viễn',
+      cancelText: 'Hủy'
+    });
+    if (!confirmed) {
       return;
     }
     const bookingId = b.raw?.id || (typeof b.id === 'number' ? b.id : null);
@@ -873,7 +1075,7 @@ export default function AdminDashboardPage() {
       }
       const updated = bookings.filter(item => item.id !== b.id && item.bookingCode !== code);
       updateBookings(updated);
-      showToast(`Đã xóa đơn đặt phòng [${code}] thành công!`);
+      showToast('Xóa thành công');
     } catch (err) {
       console.error('Delete booking error:', err);
       showToast(sanitizeErrorMessage(err, 'Xóa đơn đặt phòng thất bại'));
@@ -884,10 +1086,22 @@ export default function AdminDashboardPage() {
   const handleCleanupExpiredBookings = async () => {
     const expiredBookings = bookings.filter(b => b.isExpired || (b.rawStatus || b.status || '').toUpperCase() === 'EXPIRED');
     if (expiredBookings.length === 0) {
-      alert('Hiện tại không có đơn đặt phòng nào bị quá hạn!');
+      showAlert({
+        title: 'Thông báo',
+        message: 'Hiện tại không có đơn đặt phòng nào bị quá hạn!',
+        type: 'info',
+        confirmText: 'Đã hiểu'
+      });
       return;
     }
-    if (!window.confirm(`Tìm thấy ${expiredBookings.length} đơn đặt phòng đã quá ngày nhận phòng.\nBạn có chắc chắn muốn dọn dẹp và xóa các đơn này khỏi hệ thống không?`)) {
+    const confirmed = await showConfirm({
+      title: 'Dọn dẹp đơn quá hạn',
+      message: `Tìm thấy ${expiredBookings.length} đơn đặt phòng đã quá ngày nhận phòng.\nBạn có chắc chắn muốn xóa các đơn này không?`,
+      type: 'warning',
+      confirmText: 'Dọn dẹp ngay',
+      cancelText: 'Hủy'
+    });
+    if (!confirmed) {
       return;
     }
     try {
@@ -899,7 +1113,7 @@ export default function AdminDashboardPage() {
       if (!res.ok) {
         throw new Error(getFriendlyErrorMessage(data, 'Dọn dẹp đơn quá hạn thất bại'));
       }
-      showToast(data.message || `Đã dọn dẹp thành công các đơn quá hạn!`);
+      showToast('Xóa thành công');
       await fetchBookings();
     } catch (err) {
       console.error('Cleanup expired bookings error:', err);
@@ -910,7 +1124,14 @@ export default function AdminDashboardPage() {
   // Hủy đơn đặt phòng bởi Admin
   const handleCancelBooking = async (b, reason = 'Admin hủy đơn') => {
     const bookingId = b.raw?.id || b.id;
-    if (!window.confirm(`Bạn có chắc chắn muốn hủy đơn đặt phòng [${b.bookingCode || bookingId}] không?`)) return;
+    const confirmed = await showConfirm({
+      title: 'Hủy đơn đặt phòng',
+      message: `Bạn có chắc chắn muốn hủy đơn đặt phòng [${b.bookingCode || bookingId}] không?`,
+      type: 'warning',
+      confirmText: 'Xác nhận hủy',
+      cancelText: 'Đóng'
+    });
+    if (!confirmed) return;
     try {
       showToast('Đang xử lý hủy đơn đặt phòng...');
       const res = await apiFetch(`/admin/bookings/${bookingId}/cancel?reason=${encodeURIComponent(reason)}`, {
@@ -920,7 +1141,7 @@ export default function AdminDashboardPage() {
       if (!res.ok) {
         throw new Error(getFriendlyErrorMessage(data, 'Hủy đơn đặt phòng thất bại'));
       }
-      showToast('Đã hủy đơn đặt phòng thành công!');
+      showToast('Cập nhật thành công');
       await fetchBookings();
     } catch (err) {
       console.error('Cancel booking error:', err);
@@ -934,10 +1155,13 @@ export default function AdminDashboardPage() {
 
     // Khi chuyển sang COMPLETED (Hoàn thành/Trả phòng) với đơn tiền mặt: Xác nhận đã thu tiền
     if (newStatus === 'COMPLETED' && b.paymentMethod === 'pay_at_hotel' && b.paymentStatus !== 'paid') {
-      const confirmedCash = window.confirm(
-        `Đơn phòng [${b.bookingCode || bookingId}] chọn thanh toán tiền mặt tại khách sạn.\n\n` +
-        `Bạn có xác nhận đã thu đủ số tiền (${(b.totalAmount || 0).toLocaleString('vi-VN')} đ) từ khách trước khi hoàn tất trả phòng không?`
-      );
+      const confirmedCash = await showConfirm({
+        title: 'Xác nhận thu tiền mặt',
+        message: `Đơn phòng [${b.bookingCode || bookingId}] chọn thanh toán tiền mặt tại khách sạn.\n\nBạn có xác nhận đã thu đủ số tiền (${(b.totalAmount || 0).toLocaleString('vi-VN')} đ) từ khách trước khi hoàn tất trả phòng không?`,
+        type: 'info',
+        confirmText: 'Đã thu tiền đủ',
+        cancelText: 'Chưa thu'
+      });
       if (!confirmedCash) return;
     }
 
@@ -950,7 +1174,7 @@ export default function AdminDashboardPage() {
       if (!res.ok) {
         throw new Error(getFriendlyErrorMessage(data, 'Cập nhật trạng thái thất bại'));
       }
-      showToast(newStatus === 'COMPLETED' ? 'Đã hoàn tất đơn! Đơn đã chuyển sang mục Hoàn thành.' : 'Cập nhật trạng thái đơn thành công!');
+      showToast('Cập nhật thành công');
       await fetchBookings();
     } catch (err) {
       console.error('Update status error:', err);
@@ -967,7 +1191,7 @@ export default function AdminDashboardPage() {
         return item;
       });
       updateBookings(updated);
-      showToast(newStatus === 'COMPLETED' ? 'Đã hoàn tất đơn! Đơn đã chuyển sang mục Hoàn thành.' : sanitizeErrorMessage(err, 'Đã cập nhật trạng thái đơn!'));
+      showToast('Cập nhật thành công');
     }
   };
 
@@ -990,7 +1214,7 @@ export default function AdminDashboardPage() {
       if (bookingId) {
         const res = await apiFetch(`/admin/bookings/${bookingId}/pay-cash`, { method: 'PUT' });
         if (res.ok) {
-          showToast('Đã xác nhận thu tiền mặt thành công!');
+          showToast('Cập nhật thành công');
           await fetchBookings();
           return;
         }
@@ -1000,7 +1224,7 @@ export default function AdminDashboardPage() {
     }
     const next = bookings.map(b => b.id === id ? { ...b, paymentStatus: 'paid', paidAt: new Date().toLocaleString('vi-VN') } : b);
     updateBookings(next);
-    showToast('Đã xác nhận thu tiền mặt cho đơn!');
+    showToast('Cập nhật thành công');
   };
 
   // ── Flexible Check-in Modal state & handlers ──
@@ -1023,7 +1247,11 @@ export default function AdminDashboardPage() {
     const bookingId = b.raw?.id || (typeof b.id === 'number' ? b.id : null);
 
     if (b.checkOutDate && /^\d{4}-\d{2}-\d{2}$/.test(b.checkOutDate) && actualCheckInDate > b.checkOutDate) {
-      alert(`Ngày nhận phòng thực tế (${actualCheckInDate}) không thể sau ngày trả phòng (${b.checkOutDate})!`);
+      showAlert({
+        title: 'Ngày không hợp lệ',
+        message: `Ngày nhận phòng thực tế (${actualCheckInDate}) không thể sau ngày trả phòng (${b.checkOutDate})!`,
+        type: 'error'
+      });
       return;
     }
 
@@ -1039,7 +1267,7 @@ export default function AdminDashboardPage() {
           throw new Error(getFriendlyErrorMessage(data, 'Nhận phòng thất bại'));
         }
       }
-      showToast('Đã hoàn tất nhận phòng và cập nhật lịch lưu trú thành công!');
+      showToast('Cập nhật thành công');
       setCheckinModalBooking(null);
       await fetchBookings();
     } catch (err) {
@@ -1067,7 +1295,7 @@ export default function AdminDashboardPage() {
       });
       updateBookings(updated);
       setCheckinModalBooking(null);
-      showToast(sanitizeErrorMessage(err, 'Đã hoàn tất nhận phòng và cập nhật lịch lưu trú!'));
+      showToast('Cập nhật thành công');
     } finally {
       setIsSubmittingCheckin(false);
     }
@@ -1093,7 +1321,11 @@ export default function AdminDashboardPage() {
     const bookingId = b.raw?.id || (typeof b.id === 'number' ? b.id : null);
 
     if (b.checkInDate && /^\d{4}-\d{2}-\d{2}$/.test(b.checkInDate) && actualCheckOutDate < b.checkInDate) {
-      alert(`Ngày trả phòng thực tế (${actualCheckOutDate}) không thể trước ngày nhận phòng (${b.checkInDate})!`);
+      showAlert({
+        title: 'Ngày không hợp lệ',
+        message: `Ngày trả phòng thực tế (${actualCheckOutDate}) không thể trước ngày nhận phòng (${b.checkInDate})!`,
+        type: 'error'
+      });
       return;
     }
 
@@ -1109,7 +1341,7 @@ export default function AdminDashboardPage() {
           throw new Error(getFriendlyErrorMessage(data, 'Trả phòng thất bại'));
         }
       }
-      showToast('Đã hoàn tất trả phòng và quyết toán hóa đơn! Đơn đã được chuyển qua mục Hoàn thành.');
+      showToast('Cập nhật thành công');
       setCheckoutModalBooking(null);
       await fetchBookings();
     } catch (err) {
@@ -1139,7 +1371,7 @@ export default function AdminDashboardPage() {
       });
       updateBookings(updated);
       setCheckoutModalBooking(null);
-      showToast('Đã hoàn tất trả phòng và quyết toán hóa đơn! Đơn đã được chuyển qua mục Hoàn thành.');
+      showToast('Cập nhật thành công');
     } finally {
       setIsSubmittingCheckout(false);
     }
@@ -1263,18 +1495,9 @@ export default function AdminDashboardPage() {
             <h3 className="fw-bold text-dark mb-2">Khu Vực Quản Trị Viên</h3>
             <p className="text-secondary mb-4">Bạn cần đăng nhập bằng tài khoản có quyền Quản trị viên để truy cập vào hệ thống này.</p>
             <div className="d-flex flex-column gap-2">
-              <button 
-                onClick={async () => {
-                  try {
-                    await login('admin@traveloka.vn', 'admin123');
-                  } catch (e) {
-                    alert('Lỗi đăng nhập: ' + e.message);
-                  }
-                }} 
-                className="btn btn-primary btn-lg fw-bold rounded-pill shadow-sm"
-              >
-                ⚡ Đăng nhập nhanh với quyền Admin mẫu
-              </button>
+              <Link to="/login" state={{ from: '/admin' }} className="btn btn-primary btn-lg fw-bold rounded-pill shadow-sm">
+                Đăng nhập tài khoản Quản trị viên
+              </Link>
               <Link to="/" className="btn btn-light rounded-pill py-2 text-secondary">Quay lại trang chủ</Link>
             </div>
           </div>
@@ -1436,7 +1659,7 @@ export default function AdminDashboardPage() {
 
           {/* ══ TAB: KHÁCH SẠN (FR-13) ══ */}
           {activeTab === 'hotels' && (
-            <SectionCard title={`Danh Sách Khách Sạn & Khu Nghỉ Dưỡng (${hotels.length} cơ sở)`} sub="Thêm mới, cập nhật hoặc xóa khách sạn khỏi hệ thống"
+            <SectionCard title={`Danh Sách Khách Sạn & Khu Nghỉ Dưỡng (${hotels.length} cơ sở)`} sub="Thêm mới, cập nhật hoặc xóa khách sạn"
               action={<ActionBtn onClick={openAddHotel} icon={<Plus size={16} />}>Thêm Khách Sạn Mới</ActionBtn>}>
               <div className="table-responsive">
                 <table className="table table-hover align-middle mb-0" style={{ fontSize: 13 }}>
@@ -1471,7 +1694,7 @@ export default function AdminDashboardPage() {
                   iconBg="#eef2ff"
                   value={roomStats.total}
                   label="Tổng Số Loại Phòng"
-                  sub={<span style={{ color: '#6366f1', fontWeight: 600, fontSize: 13 }}>Đang quản lý trong hệ thống</span>}
+                  sub={<span style={{ color: '#6366f1', fontWeight: 600, fontSize: 13 }}>Đang quản lý</span>}
                 />
                 <KpiCard
                   icon={<CheckCircle2 size={26} color="#22c55e" />}
@@ -1606,7 +1829,7 @@ export default function AdminDashboardPage() {
                       text={
                         roomSearchQuery || roomHotelFilter !== 'ALL' || roomStatusFilter !== 'ALL'
                           ? 'Không tìm thấy loại phòng nào phù hợp với bộ lọc hiện tại'
-                          : 'Chưa có loại phòng nào trong hệ thống'
+                          : 'Chưa có loại phòng nào'
                       }
                     />
                     {(roomSearchQuery || roomHotelFilter !== 'ALL' || roomStatusFilter !== 'ALL') ? (
@@ -1721,7 +1944,7 @@ export default function AdminDashboardPage() {
                   </div>
                 ))}
               </div>
-              <SectionCard title="Danh Sách Tiện Nghi Khách Sạn" sub="Các tiện ích đã được đăng ký trong hệ thống">
+              <SectionCard title="Danh Sách Tiện Nghi Khách Sạn" sub="Các tiện ích đã được đăng ký">
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
                   {AMENITIES_DATA.map(a => (
                     <div key={a.id} style={{ background: '#f8fafc', borderRadius: 12, padding: 16, border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -1972,7 +2195,12 @@ export default function AdminDashboardPage() {
                                   {b.paymentMethod === 'vnpay' && b.paymentStatus !== 'paid' ? (
                                     <button
                                       type="button"
-                                      onClick={() => alert(`Không thể duyệt đơn thủ công: Khách hàng chưa thanh toán bằng phương thức chuyển khoản/VNPay!\n\n• Hệ thống áp dụng thời hạn 30 phút để thanh toán.\n• Khi khách thanh toán thành công, hệ thống sẽ TỰ ĐỘNG DUYỆT ĐƠN.\n• Nếu quá 30 phút chưa thanh toán, hệ thống sẽ tự động hủy đơn.`)}
+                                      onClick={() => showAlert({
+                                        title: 'Chờ thanh toán VNPay',
+                                        message: `Không thể duyệt đơn thủ công: Khách hàng chưa thanh toán bằng phương thức chuyển khoản/VNPay!\n\n• Thời hạn thanh toán là 30 phút.\n• Khi khách thanh toán thành công, đơn sẽ TỰ ĐỘNG ĐƯỢC DUYỆT.\n• Nếu quá 30 phút chưa thanh toán, đơn sẽ tự động bị hủy.`,
+                                        type: 'info',
+                                        confirmText: 'Đã hiểu'
+                                      })}
                                       style={{
                                         background: '#fef3c7',
                                         color: '#92400e',
@@ -2067,7 +2295,7 @@ export default function AdminDashboardPage() {
             <div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 20 }}>
                 <KpiCard icon={<Users size={26} color="#3b82f6" />} iconBg="#eff6ff" value={customerList.length} label="Tổng Khách Hàng" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Đã từng đặt phòng</span>} />
-                <KpiCard icon={<Award size={26} color="#f59e0b" />} iconBg="#fffbeb" value={customerList.filter(c => !c.isGuest).length} label="Thành Viên Đăng Ký" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Có tài khoản hệ thống</span>} />
+                <KpiCard icon={<Award size={26} color="#f59e0b" />} iconBg="#fffbeb" value={customerList.filter(c => !c.isGuest).length} label="Thành Viên Đăng Ký" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Đã có tài khoản</span>} />
                 <KpiCard icon={<Users size={26} color="#8b5cf6" />} iconBg="#f5f3ff" value={customerList.filter(c => c.isGuest).length} label="Khách Vãng Lai" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Đặt không cần tài khoản</span>} />
                 <KpiCard icon={<DollarSign size={26} color="#22c55e" />} iconBg="#f0fdf4" value={customerList.length > 0 ? Math.round(customerList.reduce((s, c) => s + c.totalSpent, 0) / customerList.length).toLocaleString('vi-VN') + ' đ' : '0 đ'} label="Chi Tiêu TB/Khách" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Trên đơn đã xác nhận</span>} />
               </div>
@@ -2127,7 +2355,7 @@ export default function AdminDashboardPage() {
                   </ResponsiveContainer>
                 </ChartCard>
               </div>
-              <SectionCard title="Lịch Sử Giao Dịch" sub="Tất cả giao dịch thanh toán trong hệ thống">
+              <SectionCard title="Lịch Sử Giao Dịch" sub="Tất cả giao dịch thanh toán">
                 {bookings.length === 0 ? <Empty text="Chưa có giao dịch thanh toán nào" /> : (
                   <div className="table-responsive">
                     <table className="table table-hover align-middle mb-0" style={{ fontSize: 13 }}>
@@ -2192,7 +2420,7 @@ export default function AdminDashboardPage() {
             <div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 20 }}>
                 <KpiCard icon={<MessageSquare size={26} color="#f59e0b" />} iconBg="#fffbeb" value={allReviews.length} label="Tổng Đánh Giá" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Từ khách lưu trú</span>} />
-                <KpiCard icon={<Star size={26} color="#f59e0b" />} iconBg="#fffbeb" value={stats.avgRating + '/10'} label="Điểm TB Hệ Thống" sub={<span style={{ color: '#22c55e', fontWeight: 600, fontSize: 13 }}>⭐ Xuất sắc</span>} />
+                <KpiCard icon={<Star size={26} color="#f59e0b" />} iconBg="#fffbeb" value={stats.avgRating + '/10'} label="Điểm TB Đánh Giá" sub={<span style={{ color: '#22c55e', fontWeight: 600, fontSize: 13 }}>⭐ Xuất sắc</span>} />
                 <KpiCard icon={<TrendingUp size={26} color="#22c55e" />} iconBg="#f0fdf4" value={allReviews.filter(r => r.rating >= 9).length} label="Đánh Giá Xuất Sắc" sub={<span style={{ color: '#22c55e', fontWeight: 600, fontSize: 13 }}>Điểm ≥ 9/10</span>} />
                 <KpiCard icon={<Building size={26} color="#3b82f6" />} iconBg="#eff6ff" value={hotels.reduce((s, h) => s + (h.reviewCount || 0), 0)} label="Tổng Lượt Đánh Giá" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Trên nền tảng Traveloka</span>} />
               </div>
@@ -2277,44 +2505,23 @@ export default function AdminDashboardPage() {
 
       {/* ════ MODAL THÊM / SỬA KHÁCH SẠN (FR-13) ════ */}
       {showHotelModal && (
-        <Modal onClose={() => setShowHotelModal(false)} title={editingHotel ? 'Chỉnh Sửa Thông Tin Khách Sạn' : 'Thêm Khách Sạn Mới Vào Hệ Thống'}>
+        <Modal onClose={() => setShowHotelModal(false)} title={editingHotel ? 'Chỉnh Sửa Thông Tin Khách Sạn' : 'Thêm Khách Sạn Mới'}>
           <form onSubmit={saveHotel}>
             <div style={{ padding: 24, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div style={{ gridColumn: '1/2' }}><FL>Tên khách sạn *</FL><input className="form-control" value={hotelForm.name} onChange={e => setHotelForm({ ...hotelForm, name: e.target.value })} required placeholder="VD: Khách Sạn New World Sài Gòn" /></div>
-              <div><FL>Thành phố *</FL><select className="form-select" value={hotelForm.city} onChange={e => setHotelForm({ ...hotelForm, city: e.target.value })}>{['Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Nha Trang', 'Đà Lạt', 'Phú Quốc'].map(c => <option key={c}>{c}</option>)}</select></div>
+              <div><FL>Thành phố *</FL><select className="form-select" value={hotelForm.city} onChange={e => setHotelForm({ ...hotelForm, city: e.target.value })}>{['Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Sa Pa', 'Nha Trang', 'Đà Lạt', 'Phú Quốc'].map(c => <option key={c}>{c}</option>)}</select></div>
               <div style={{ gridColumn: '1/-1' }}><FL>Địa chỉ chi tiết *</FL><input className="form-control" value={hotelForm.address} onChange={e => setHotelForm({ ...hotelForm, address: e.target.value })} required placeholder="VD: 76 Lê Lai, Phường Bến Thành, Quận 1" /></div>
               <div><FL>Hạng sao</FL><select className="form-select" value={hotelForm.starRating} onChange={e => setHotelForm({ ...hotelForm, starRating: e.target.value })}>{[5,4,3,2].map(s => <option key={s} value={s}>{s} sao</option>)}</select></div>
               <div><FL>Giá phòng khởi điểm / đêm (VNĐ) *</FL><input type="number" step="50000" className="form-control" value={hotelForm.pricePerNight} onChange={e => setHotelForm({ ...hotelForm, pricePerNight: e.target.value })} required /></div>
               <div style={{ gridColumn: '1/-1' }}>
-                <FL>URL hình ảnh đại diện</FL>
-                <div className="input-group">
-                  <input
-                    type="url"
-                    className="form-control"
-                    value={hotelForm.thumbnailUrl}
-                    onChange={e => setHotelForm({ ...hotelForm, thumbnailUrl: e.target.value })}
-                    placeholder="https://... hoặc bấm nút Upload để chọn ảnh"
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-primary d-flex align-items-center gap-2 fw-semibold px-3"
-                    onClick={() => hotelImageInputRef.current?.click()}
-                    disabled={isUploadingHotelImage}
-                    title="Tải ảnh từ máy tính (MultipartFile) lên Cloudinary"
-                  >
-                    {isUploadingHotelImage ? (
-                      <>
-                        <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
-                        <span>Đang tải lên...</span>
-                      </>
-                    ) : (
-                      <>
-                        <UploadCloud size={16} />
-                        <span>Upload Ảnh</span>
-                      </>
-                    )}
-                  </button>
+                <div className="d-flex justify-content-between align-items-center mb-2">
+                  <FL style={{ margin: 0 }}>Quản lý 4 Hình Ảnh Khách Sạn (Hiển thị Trang Chủ & Trang Chi Tiết)</FL>
+                  <span className="badge bg-primary-subtle text-primary fw-medium" style={{ fontSize: '11px' }}>
+                    Cloudinary CDN Hỗ Trợ
+                  </span>
                 </div>
+
+                {/* Ẩn file input dùng chung cho cả 4 vị trí ảnh */}
                 <input
                   type="file"
                   ref={hotelImageInputRef}
@@ -2322,21 +2529,122 @@ export default function AdminDashboardPage() {
                   accept="image/png, image/jpeg, image/jpg, image/webp"
                   onChange={handleHotelImageUpload}
                 />
-                {hotelForm.thumbnailUrl && (
-                  <div className="d-flex align-items-center gap-3 mt-2 p-2 bg-light rounded-3 border">
-                    <img
-                      src={hotelForm.thumbnailUrl}
-                      alt="Xem trước ảnh khách sạn"
-                      className="rounded-2 object-fit-cover shadow-sm border"
-                      style={{ width: 70, height: 50 }}
-                      onError={(e) => { e.target.style.display = 'none'; }}
-                    />
-                    <div className="small text-secondary" style={{ fontSize: '12px' }}>
-                      <div className="fw-semibold text-dark">Xem trước ảnh đại diện khách sạn</div>
-                      <div className="text-truncate" style={{ maxWidth: 380 }}>{hotelForm.thumbnailUrl}</div>
+
+                {/* 4 ô nhập link hoặc Upload ảnh */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  {[
+                    { label: 'Ảnh 1: Ảnh bìa chính (Bắt buộc)', badge: 'Đại diện', required: true },
+                    { label: 'Ảnh 2: Phòng ngủ / Nội thất', badge: 'Không gian', required: false },
+                    { label: 'Ảnh 3: Tiện ích / Hồ bơi / View', badge: 'Tiện ích', required: false },
+                    { label: 'Ảnh 4: Nhà hàng / Sảnh / Toàn cảnh', badge: 'Toàn cảnh', required: false }
+                  ].map((slot, index) => (
+                    <div key={index} className="p-2 border rounded-3 bg-white shadow-xs">
+                      <div className="d-flex justify-content-between align-items-center mb-1">
+                        <span className="fw-semibold text-dark" style={{ fontSize: '12px' }}>
+                          {slot.label}
+                        </span>
+                        <span className={`badge ${index === 0 ? 'bg-primary' : 'bg-secondary-subtle text-secondary'}`} style={{ fontSize: '10px' }}>
+                          {slot.badge}
+                        </span>
+                      </div>
+                      <div className="input-group input-group-sm">
+                        <input
+                          type="url"
+                          className="form-control"
+                          value={hotelForm.images?.[index] || ''}
+                          onChange={e => handleHotelImageUrlChange(index, e.target.value)}
+                          placeholder={`URL ảnh ${index + 1} hoặc bấm Upload`}
+                          required={slot.required && !hotelForm.images?.[0] && !hotelForm.thumbnailUrl}
+                        />
+                        {hotelForm.images?.[index] && (
+                          <button
+                            type="button"
+                            className="btn btn-outline-secondary px-2"
+                            onClick={() => handleHotelImageUrlChange(index, '')}
+                            title="Xóa link ảnh này"
+                          >
+                            <X size={13} />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="btn btn-primary d-flex align-items-center gap-1 fw-semibold px-2"
+                          onClick={() => triggerHotelImageUpload(index)}
+                          disabled={uploadingImageIndex !== null}
+                          title={`Tải ảnh ${index + 1} từ máy tính lên Cloudinary`}
+                        >
+                          {uploadingImageIndex === index ? (
+                            <>
+                              <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" style={{ width: 12, height: 12 }} />
+                              <span style={{ fontSize: '11px' }}>Tải...</span>
+                            </>
+                          ) : (
+                            <>
+                              <UploadCloud size={13} />
+                              <span style={{ fontSize: '11px' }}>Upload</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Khung Live Preview 4 ảnh theo đúng bố cục Trang chủ & Chi tiết */}
+                <div className="mt-3 p-3 bg-light rounded-3 border">
+                  <div className="d-flex justify-content-between align-items-center mb-2">
+                    <div className="fw-semibold text-dark" style={{ fontSize: '12.5px' }}>
+                      📸 Xem Trước Bố Cục Thẻ Khách Sạn (1 Ảnh Lớn + 3 Ảnh Nhỏ)
+                    </div>
+                    <span className="badge bg-secondary-subtle text-secondary" style={{ fontSize: '11px' }}>
+                      {(hotelForm.images || []).filter(Boolean).length}/4 ảnh đã nhập
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 8, height: 170, borderRadius: 8, overflow: 'hidden' }}>
+                    {/* Ảnh lớn bên trái */}
+                    <div style={{ position: 'relative', width: '100%', height: '100%', backgroundColor: '#e2e8f0', borderRadius: 6, overflow: 'hidden' }}>
+                      {hotelForm.images?.[0] ? (
+                        <img
+                          src={hotelForm.images[0]}
+                          alt="Ảnh 1 (Bìa chính)"
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          onError={(e) => { e.target.style.opacity = '0.3'; }}
+                        />
+                      ) : (
+                        <div className="d-flex flex-column align-items-center justify-content-center h-100 text-muted small p-2 text-center">
+                          <UploadCloud size={24} className="mb-1 text-secondary opacity-50" />
+                          <span style={{ fontSize: '11px' }}>Chưa có Ảnh bìa chính (Ảnh 1)</span>
+                        </div>
+                      )}
+                      <span style={{ position: 'absolute', bottom: 6, left: 6, background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: '10px', padding: '2px 6px', borderRadius: 4, fontWeight: 500 }}>
+                        Ảnh 1 (Bìa)
+                      </span>
+                    </div>
+
+                    {/* 3 ảnh nhỏ bên phải */}
+                    <div style={{ display: 'grid', gridTemplateRows: '1fr 1fr 1fr', gap: 6, height: '100%' }}>
+                      {[1, 2, 3].map(idx => (
+                        <div key={idx} style={{ position: 'relative', width: '100%', height: '100%', backgroundColor: '#e2e8f0', borderRadius: 4, overflow: 'hidden' }}>
+                          {hotelForm.images?.[idx] ? (
+                            <img
+                              src={hotelForm.images[idx]}
+                              alt={`Ảnh ${idx + 1}`}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              onError={(e) => { e.target.style.opacity = '0.3'; }}
+                            />
+                          ) : (
+                            <div className="d-flex align-items-center justify-content-center h-100 text-muted" style={{ fontSize: '10px' }}>
+                              Ảnh {idx + 1} (Trống)
+                            </div>
+                          )}
+                          <span style={{ position: 'absolute', bottom: 2, left: 4, background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: '9px', padding: '1px 4px', borderRadius: 3 }}>
+                            Ảnh {idx + 1}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                )}
+                </div>
               </div>
               <div style={{ gridColumn: '1/-1' }}><FL>Mô tả giới thiệu</FL><textarea rows={3} className="form-control" value={hotelForm.description} onChange={e => setHotelForm({ ...hotelForm, description: e.target.value })} placeholder="Nêu các điểm nổi bật..." /></div>
             </div>
@@ -2464,7 +2772,7 @@ export default function AdminDashboardPage() {
                     ) : (
                       <>
                         <UploadCloud size={16} />
-                        <span>Upload Ảnh (Cloudinary)</span>
+                        <span>Upload Ảnh</span>
                       </>
                     )}
                   </button>
@@ -2685,7 +2993,7 @@ export default function AdminDashboardPage() {
                   required
                 />
                 <span style={{ fontSize: 12.5, color: '#64748b' }}>
-                  (Hệ thống tự động tính toán lại số đêm và quyết toán hóa đơn)
+                  (Tự động tính toán lại số đêm và quyết toán hóa đơn)
                 </span>
               </div>
             </div>

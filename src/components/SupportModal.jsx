@@ -3,8 +3,10 @@ import {
   Headphones, Phone, MessageCircle, Mail, Clock, 
   HelpCircle, ChevronDown, ChevronUp, CheckCircle2, Send, X, ShieldCheck 
 } from 'lucide-react';
+import { useAlert } from '../context/AlertContext';
 
 export default function SupportModal({ isOpen, onClose }) {
+  const { showAlert } = useAlert();
   // State form gửi yêu cầu
   const [bookingCode, setBookingCode] = useState('');
   const [issueType, setIssueType] = useState('cancel_refund');
@@ -112,7 +114,11 @@ export default function SupportModal({ isOpen, onClose }) {
                   </div>
                   <button 
                     type="button" 
-                    onClick={() => alert('Đang kết nối tới chuyên viên CSKH Traveloka... Vui lòng chờ trong giây lát!')}
+                    onClick={() => showAlert({
+                      title: 'Kết nối CSKH Trực Tuyến',
+                      message: 'Đang kết nối tới chuyên viên CSKH Traveloka... Vui lòng chờ trong giây lát!',
+                      type: 'info'
+                    })}
                     className="btn btn-outline-success btn-sm rounded-pill mt-3 fw-semibold"
                   >
                     Bắt đầu chat

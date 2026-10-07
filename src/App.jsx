@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import { AuthProvider } from './context/AuthContext';
+import { AlertProvider } from './context/AlertContext';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import HomePage from './pages/HomePage';
@@ -15,6 +16,8 @@ import RegisterPage from './pages/RegisterPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import ProfilePage from './pages/ProfilePage';
 import PaymentCallbackPage from './pages/PaymentCallbackPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 
 // Các route không hiển thị Navbar & Footer (trang Admin có layout riêng)
 const ADMIN_ROUTES = ['/admin'];
@@ -63,6 +66,14 @@ function AppLayout() {
 
           {/* 11. Trang Tiếp nhận phản hồi từ Cổng thanh toán VNPay Sandbox */}
           <Route path="/payment-callback" element={<PaymentCallbackPage />} />
+        
+          {/*12.  Quên mật khẩu */}
+          <Route path="/forgot-password" element={<ForgotPasswordPage />}
+          />
+
+          {/*13. Đặt lại mật khẩu */}
+          <Route path="/reset-password/:token" element={<ResetPasswordPage />}
+          />
         </Routes>
       </main>
 
@@ -75,9 +86,11 @@ function AppLayout() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <AppLayout />
-      </BrowserRouter>
+      <AlertProvider>
+        <BrowserRouter>
+          <AppLayout />
+        </BrowserRouter>
+      </AlertProvider>
     </AuthProvider>
   );
 }
