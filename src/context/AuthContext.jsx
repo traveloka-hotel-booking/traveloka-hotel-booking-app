@@ -100,27 +100,29 @@ export const AuthProvider = ({ children }) => {
     return updated;
   };
 
-  // Hàm đăng xuất: xóa phiên local ngay để giao diện không bị treo
-  const logout = () => {
+  // Hàm đăng xuất: gửi accessToken để đưa vào blacklist và refreshToken để hủy phiên trên Backend
+  const logout = async () => {
     const refreshToken = localStorage.getItem('refreshToken');
 
-    // Xóa thông tin đăng nhập ngay lập tức
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('traveloka_auth_user');
-    setUser(null);
-
-    // Gửi yêu cầu thu hồi refresh token ở nền
-    if (refreshToken) {
-      apiFetch('/auth/logout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ refreshToken }),
-      }).catch((error) => {
-        console.error('Logout API error:', error);
-      });
+    try {
+      if (refreshToken) {
+        // apiFetch sẽ tự động gửi Authorization: Bearer <accessToken> vì accessToken chưa bị xóa khỏi localStorage
+        await apiFetch('/auth/logout', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ refreshToken }),
+        });
+      }
+    } catch (error) {
+      console.error('Logout API error:', error);
+    } finally {
+      // Dọn dẹp phiên đăng nhập ở local sau khi API đã gửi xong
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('traveloka_auth_user');
+      setUser(null);
     }
   };
 
