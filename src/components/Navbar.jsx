@@ -69,6 +69,7 @@ export default function Navbar() {
         message: 'Đăng xuất không thành công. Vui lòng thử lại!',
         type: 'error'
       });
+    } finally {
       setIsLoggingOut(false);
     }
   };
