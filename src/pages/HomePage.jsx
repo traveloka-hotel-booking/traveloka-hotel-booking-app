@@ -180,7 +180,7 @@ export default function HomePage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Tải danh sách khách sạn thật từ Backend khi mở trang chủ
+  // Tải danh sách khách sạn thật từ Backend khi mở trang chủ và tự động đồng bộ khi Admin thay đổi dữ liệu
   useEffect(() => {
     const fetchInitialHotels = async () => {
       try {
@@ -193,6 +193,20 @@ export default function HomePage() {
       }
     };
     fetchInitialHotels();
+
+    const handleSync = () => {
+      fetchInitialHotels();
+    };
+
+    window.addEventListener('traveloka_hotels_updated', handleSync);
+    window.addEventListener('traveloka_rooms_updated', handleSync);
+    window.addEventListener('storage', handleSync);
+
+    return () => {
+      window.removeEventListener('traveloka_hotels_updated', handleSync);
+      window.removeEventListener('traveloka_rooms_updated', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
   }, []);
 
   // Gọi API FR-06 tìm kiếm phòng trống theo ngày và số khách

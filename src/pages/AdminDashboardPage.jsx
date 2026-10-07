@@ -570,6 +570,40 @@ export default function AdminDashboardPage() {
 
   const deleteHotel = async (id) => {
     const hotelToDelete = hotels.find(h => h.id === id);
+    if (!hotelToDelete) return;
+
+    // 1. Kiểm tra chặn xóa nếu khách sạn có phòng đang có khách ở hoặc được đặt
+    const hotelRooms = roomsList.filter(r => String(r.hotelId) === String(id));
+    const occupiedRoom = hotelRooms.find(r => {
+      const s = (r.status || '').toUpperCase();
+      return s === 'OCCUPIED' || s === 'BOOKED';
+    });
+    if (occupiedRoom) {
+      showAlert({
+        title: 'Không thể xóa khách sạn',
+        message: `Khách sạn "${hotelToDelete.name}" có phòng "${occupiedRoom.name}" đang có khách lưu trú hoặc đang được đặt trước!`,
+        type: 'warning',
+        confirmText: 'Đã hiểu'
+      });
+      return;
+    }
+
+    // Kiểm tra các đơn đặt phòng đang hoạt động thuộc khách sạn này
+    const activeBooking = bookings.find(b => {
+      const bHotelId = b.hotelId || b.raw?.room?.hotel?.id;
+      const bStatus = (b.rawStatus || b.status || '').toUpperCase();
+      return String(bHotelId) === String(id) && ['CHECKED_IN', 'CONFIRMED', 'PENDING'].includes(bStatus);
+    });
+    if (activeBooking) {
+      showAlert({
+        title: 'Không thể xóa khách sạn',
+        message: `Khách sạn "${hotelToDelete.name}" đang có đơn đặt phòng hoạt động (Mã đơn: ${activeBooking.bookingCode || activeBooking.id})!`,
+        type: 'warning',
+        confirmText: 'Đã hiểu'
+      });
+      return;
+    }
+
     const confirmed = await showConfirm({
       title: 'Xóa khách sạn',
       message: `Bạn có chắc chắn muốn xóa khách sạn "${hotelToDelete?.name || ''}" không?\nThao tác này sẽ xóa toàn bộ các loại phòng thuộc khách sạn này.`,
@@ -578,15 +612,35 @@ export default function AdminDashboardPage() {
       cancelText: 'Hủy'
     });
     if (!confirmed) return;
+
     try {
-      await apiFetch(`/admin/hotels/${id}`, { method: 'DELETE' });
+      if (typeof id === 'number' || !String(id).startsWith('h-')) {
+        const res = await apiFetch(`/admin/hotels/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          const errMsg = getFriendlyErrorMessage(errData, 'Xóa khách sạn thất bại');
+          showAlert({
+            title: 'Không thể xóa khách sạn',
+            message: errMsg,
+            type: 'error',
+            confirmText: 'Đóng'
+          });
+          return;
+        }
+      }
+      updateHotels(hotels.filter(h => h.id !== id));
+      const nextRooms = roomsList.filter(r => String(r.hotelId) !== String(id));
+      updateRooms(nextRooms);
+      showToast('Xóa thành công');
     } catch (e) {
-      console.warn('Delete hotel API error, updating state:', e);
+      console.error('Delete hotel error:', e);
+      showAlert({
+        title: 'Lỗi xóa khách sạn',
+        message: sanitizeErrorMessage(e, 'Không thể xóa khách sạn do lỗi kết nối.'),
+        type: 'error',
+        confirmText: 'Đóng'
+      });
     }
-    updateHotels(hotels.filter(h => h.id !== id));
-    const nextRooms = roomsList.filter(r => r.hotelId !== id);
-    updateRooms(nextRooms);
-    showToast('Xóa thành công');
   };
 
   // ── Room modal (FR-14) ──
@@ -851,6 +905,36 @@ export default function AdminDashboardPage() {
 
   const deleteRoom = async (id) => {
     const targetRoom = roomsList.find(r => r.id === id);
+    if (!targetRoom) return;
+
+    // 1. Kiểm tra chặn xóa nếu phòng đang có khách ở hoặc được đặt
+    const s = (targetRoom.status || '').toUpperCase();
+    if (s === 'OCCUPIED' || s === 'BOOKED') {
+      showAlert({
+        title: 'Không thể xóa loại phòng',
+        message: `Phòng "${targetRoom.name}" đang có khách lưu trú hoặc đang được đặt trước!`,
+        type: 'warning',
+        confirmText: 'Đã hiểu'
+      });
+      return;
+    }
+
+    // Kiểm tra đơn đặt phòng đang hoạt động của loại phòng này
+    const activeBooking = bookings.find(b => {
+      const bRoomId = b.roomId || b.raw?.room?.id;
+      const bStatus = (b.rawStatus || b.status || '').toUpperCase();
+      return String(bRoomId) === String(id) && ['CHECKED_IN', 'CONFIRMED', 'PENDING'].includes(bStatus);
+    });
+    if (activeBooking) {
+      showAlert({
+        title: 'Không thể xóa loại phòng',
+        message: `Loại phòng "${targetRoom.name}" đang có đơn đặt phòng hoạt động (Mã đơn: ${activeBooking.bookingCode || activeBooking.id})!`,
+        type: 'warning',
+        confirmText: 'Đã hiểu'
+      });
+      return;
+    }
+
     const confirmed = await showConfirm({
       title: 'Xóa loại phòng',
       message: `Bạn có chắc muốn xóa loại phòng "${targetRoom?.name || ''}" không?\nThao tác này không thể hoàn tác.`,
@@ -859,19 +943,37 @@ export default function AdminDashboardPage() {
       cancelText: 'Hủy'
     });
     if (!confirmed) return;
+
     try {
       if (typeof id === 'number' || !String(id).startsWith('r-')) {
-        await apiFetch(`/admin/rooms/${id}`, { method: 'DELETE' });
+        const res = await apiFetch(`/admin/rooms/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          const errMsg = getFriendlyErrorMessage(errData, 'Xóa loại phòng thất bại');
+          showAlert({
+            title: 'Không thể xóa loại phòng',
+            message: errMsg,
+            type: 'error',
+            confirmText: 'Đóng'
+          });
+          return;
+        }
       }
+      const updated = roomsList.filter(r => r.id !== id);
+      updateRooms(updated);
+      if (targetRoom) {
+        syncHotelWithRooms(targetRoom.hotelId, updated);
+      }
+      showToast('Xóa thành công');
     } catch (e) {
-      console.warn('Delete room error:', e);
+      console.error('Delete room error:', e);
+      showAlert({
+        title: 'Lỗi xóa loại phòng',
+        message: sanitizeErrorMessage(e, 'Không thể xóa loại phòng do lỗi kết nối.'),
+        type: 'error',
+        confirmText: 'Đóng'
+      });
     }
-    const updated = roomsList.filter(r => r.id !== id);
-    updateRooms(updated);
-    if (targetRoom) {
-      syncHotelWithRooms(targetRoom.hotelId, updated);
-    }
-    showToast('Xóa thành công');
   };
 
   // ── Bookings logic (FR-15) ──
@@ -2670,7 +2772,7 @@ export default function AdminDashboardPage() {
                     ) : (
                       <>
                         <UploadCloud size={16} />
-                        <span>Upload Ảnh (Cloudinary)</span>
+                        <span>Upload Ảnh</span>
                       </>
                     )}
                   </button>

@@ -77,6 +77,20 @@ export default function HotelsPage() {
 
   useEffect(() => {
     loadHotels();
+
+    const handleSync = () => {
+      loadHotels();
+    };
+
+    window.addEventListener('traveloka_hotels_updated', handleSync);
+    window.addEventListener('traveloka_rooms_updated', handleSync);
+    window.addEventListener('storage', handleSync);
+
+    return () => {
+      window.removeEventListener('traveloka_hotels_updated', handleSync);
+      window.removeEventListener('traveloka_rooms_updated', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
   }, [loadHotels]);
 
   // Danh sách các thành phố có trong dữ liệu
