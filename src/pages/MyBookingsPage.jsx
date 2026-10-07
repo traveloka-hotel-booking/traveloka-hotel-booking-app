@@ -6,7 +6,6 @@ import {
   Luggage, Calendar, MapPin, BedDouble, ArrowRight, Eye, 
   XCircle, CheckCircle, Clock, AlertTriangle, RotateCcw, Building, Info, Sparkles, RefreshCw
 } from 'lucide-react';
-import { MOCK_HOTELS } from '../data/mockData';
 import AlertModal from '../components/AlertModal';
 
 export default function MyBookingsPage() {
@@ -216,38 +215,6 @@ export default function MyBookingsPage() {
     loadBookings();
   }, [isAuthenticated]);
 
-  // Tạo đơn mẫu để trải nghiệm nhanh nếu chưa có đơn
-  const handleSeedDemoBooking = () => {
-    const demoBooking = normalizeBooking({
-      id: `TVLK-${Math.floor(100000 + Math.random() * 900000)}`,
-      createdAt: new Date().toLocaleDateString('vi-VN') + ' 09:30',
-      hotelId: MOCK_HOTELS[1].id,
-      hotelName: MOCK_HOTELS[1].name,
-      hotelCity: MOCK_HOTELS[1].city,
-      hotelAddress: MOCK_HOTELS[1].address,
-      hotelThumbnail: MOCK_HOTELS[1].thumbnailUrl,
-      roomId: MOCK_HOTELS[1].rooms[0].id,
-      roomName: MOCK_HOTELS[1].rooms[0].name,
-      roomImage: MOCK_HOTELS[1].rooms[0].imageUrl,
-      roomBed: MOCK_HOTELS[1].rooms[0].bedType,
-      checkInDate: '2026-10-15',
-      checkOutDate: '2026-10-17',
-      nights: 2,
-      guestCount: 4,
-      contactName: 'Nguyễn Văn A',
-      guestName: 'Nguyễn Văn A',
-      contactEmail: 'nguyenvana@gmail.com',
-      contactPhone: '0912 345 678',
-      specialRequests: ['Phòng ở tầng cao', 'Phòng không hút thuốc'],
-      paymentMethod: 'vnpay',
-      totalAmount: 7700000,
-      status: 'CONFIRMED'
-    });
-
-    const updated = [demoBooking, ...bookings];
-    localStorage.setItem('traveloka_bookings', JSON.stringify(updated));
-    setBookings(updated);
-  };
 
   // Xử lý xác nhận hủy đặt phòng
   const handleConfirmCancel = async (bookingItem) => {
@@ -349,14 +316,7 @@ export default function MyBookingsPage() {
               {loading ? 'Đang tải...' : 'Làm mới'}
             </button>
 
-            {bookings.length === 0 ? (
-              <button 
-                onClick={handleSeedDemoBooking} 
-                className="btn btn-outline-primary btn-sm rounded-pill fw-semibold px-3"
-              >
-                + Thêm đơn mẫu trải nghiệm
-              </button>
-            ) : (
+            {bookings.length > 0 && (
               <button 
                 onClick={handleClearAll} 
                 className="btn btn-outline-danger btn-sm rounded-pill px-3"
@@ -433,14 +393,6 @@ export default function MyBookingsPage() {
                 <Link to="/hotels" className="btn btn-primary px-4 py-2 fw-semibold rounded-pill">
                   Tìm khách sạn ngay
                 </Link>
-                {bookings.length === 0 && (
-                  <button 
-                    onClick={handleSeedDemoBooking} 
-                    className="btn btn-outline-secondary px-4 py-2 rounded-pill"
-                  >
-                    Tạo đơn mẫu
-                  </button>
-                )}
               </div>
             </div>
           </div>

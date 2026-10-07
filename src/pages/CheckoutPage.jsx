@@ -3,7 +3,6 @@ import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../services/api';
 import { getFriendlyErrorMessage, sanitizeErrorMessage } from '../utils/errorHandler';
-import { MOCK_HOTELS } from '../data/mockData';
 import AlertModal from '../components/AlertModal';
 
 import { 
@@ -25,11 +24,11 @@ export default function CheckoutPage() {
     }
   })();
   const passedData = location.state || pendingBooking || {};
-  const hotel = passedData.hotel || MOCK_HOTELS[0];
-  const room = passedData.room || hotel.rooms[0];
+  const hotel = passedData.hotel;
+  const room = passedData.room || hotel?.rooms?.[0];
   const isAdminUser = Boolean(isAuthenticated && user && (user.role === 'ROLE_ADMIN' || user.role === 'admin'));
 
-  // Bắt buộc đăng nhập: Nếu chưa đăng nhập tài khoản Khách hàng -> Chuyển hướng sang /login
+  // Bắt buộc đăng nhập & phải chọn phòng trước
   useEffect(() => {
     if (!isAuthenticated) {
       navigate('/login', { 
@@ -39,13 +38,28 @@ export default function CheckoutPage() {
         },
         replace: true 
       });
-    } else {
-      // Dọn dẹp pending booking sau khi đã vào trang thành công
-      try {
-        localStorage.removeItem('traveloka_pending_booking');
-      } catch {}
+      return;
     }
-  }, [isAuthenticated, navigate, location]);
+
+    if (!hotel || !room) {
+      navigate('/hotels', { replace: true });
+      return;
+    }
+
+    // Dọn dẹp pending booking sau khi đã vào trang thành công
+    try {
+      localStorage.removeItem('traveloka_pending_booking');
+    } catch {}
+  }, [isAuthenticated, navigate, location, hotel, room]);
+
+  if (!hotel || !room) {
+    return (
+      <div className="min-vh-100 d-flex flex-column align-items-center justify-content-center bg-light">
+        <div className="spinner-border text-primary mb-3" role="status"></div>
+        <p className="text-secondary fw-semibold">Đang chuẩn bị thông tin đặt phòng...</p>
+      </div>
+    );
+  }
 
   // State thông tin khách hàng: Tự động điền nếu đã đăng nhập, hoặc để trống nếu là khách vãng lai
   const [fullName, setFullName] = useState(user?.name || '');
