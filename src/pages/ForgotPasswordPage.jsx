@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Hotel, Mail, ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react';
 import { apiFetch } from '../services/api';
 import { getFriendlyErrorMessage } from '../utils/errorHandler';
 
 export default function ForgotPasswordPage() {
-  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -25,7 +24,7 @@ export default function ForgotPasswordPage() {
     setErrorMsg('');
 
     try {
-      const response = await apiFetch('/auth/forgot-password', {
+      await apiFetch('/auth/forgot-password', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -34,12 +33,6 @@ export default function ForgotPasswordPage() {
           email: email.trim(),
         }),
       });
-
-      const resetToken = response?.result;
-      if (resetToken) {
-        navigate(`/reset-password/${resetToken}`);
-        return;
-      }
 
       setSubmitted(true);
     } catch (error) {
