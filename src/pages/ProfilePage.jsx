@@ -412,6 +412,7 @@ export default function ProfilePage() {
       address: current.address || ''
     });
 
+    setErrorMessage('');
     setAddressSuggestions([]);
     setShowAddressSuggestions(false);
     setModalType('edit_profile');
@@ -958,7 +959,6 @@ const handleSaveProfile = async (e) => {
                           phone: e.target.value
                         })
                       }
-                      placeholder="0912345678"
                     />
                   </div>
 
