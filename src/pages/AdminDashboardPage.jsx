@@ -374,6 +374,20 @@ export default function AdminDashboardPage() {
     }
   }, [isAdmin]);
 
+  // ── Tiện ích chuẩn hóa giá tiền: Không âm, không chữ cái/ký tự đặc biệt, không số 0 ở đầu ──
+  const sanitizePriceInput = (val) => {
+    if (val === undefined || val === null) return '';
+    const digitsOnly = String(val).replace(/\D/g, ''); // Loại bỏ toàn bộ ký tự không phải chữ số
+    return digitsOnly.replace(/^0+/, ''); // Xóa toàn bộ số 0 ở đầu (VD: '0222' -> '222', '0' -> '')
+  };
+
+  const handlePriceKeyDown = (e) => {
+    // Chặn gõ trực tiếp dấu âm (-), dấu cộng (+), ký hiệu số mũ (e, E), dấu chấm, phẩy
+    if (['-', '+', 'e', 'E', '.', ','].includes(e.key)) {
+      e.preventDefault();
+    }
+  };
+
   // ── Hotel modal (FR-13) ──
   const [showHotelModal, setShowHotelModal] = useState(false);
   const [editingHotel, setEditingHotel] = useState(null);
@@ -382,7 +396,7 @@ export default function AdminDashboardPage() {
     city: 'Hồ Chí Minh', 
     address: '', 
     starRating: 5, 
-    pricePerNight: 1200000, 
+    pricePerNight: '', 
     description: '', 
     thumbnailUrl: '', 
     images: ['', '', '', ''] 
@@ -398,7 +412,7 @@ export default function AdminDashboardPage() {
       city: 'Hồ Chí Minh', 
       address: '', 
       starRating: 5, 
-      pricePerNight: 1200000, 
+      pricePerNight: '', 
       description: '', 
       thumbnailUrl: '', 
       images: ['', '', '', ''] 
@@ -460,7 +474,7 @@ export default function AdminDashboardPage() {
       city: h.city, 
       address: h.address, 
       starRating: h.starRating, 
-      pricePerNight: h.minPrice || h.rooms?.[0]?.pricePerNight || h.pricePerNight || 1000000, 
+      pricePerNight: sanitizePriceInput(h.minPrice || h.rooms?.[0]?.pricePerNight || h.pricePerNight || ''), 
       description: h.description || '', 
       thumbnailUrl: initialImgs[0] || h.thumbnailUrl || '', 
       images: initialImgs 
@@ -541,7 +555,7 @@ export default function AdminDashboardPage() {
       showToast('Tải ảnh thành công');
     } catch (err) {
       console.error('Lỗi khi tải ảnh khách sạn lên Cloudinary:', err);
-      showToast('Lỗi tải ảnh lên Cloudinary: ' + sanitizeErrorMessage(err));
+      showToast('Lỗi tải ảnh lên  ' + sanitizeErrorMessage(err));
     } finally {
       setUploadingImageIndex(null);
       if (hotelImageInputRef.current) {
@@ -552,6 +566,11 @@ export default function AdminDashboardPage() {
 
   const saveHotel = async (e) => {
     e.preventDefault();
+    const hotelPrice = Number(hotelForm.pricePerNight);
+    if (!hotelPrice || hotelPrice <= 0) {
+      showToast('Vui lòng nhập giá phòng khởi điểm hợp lệ (phải lớn hơn 0 VNĐ)!');
+      return;
+    }
     try {
       const cleanImages = (Array.isArray(hotelForm.images) ? hotelForm.images : [])
         .map(img => (typeof img === 'string' ? img.trim() : ''))
@@ -567,11 +586,11 @@ export default function AdminDashboardPage() {
             city: hotelForm.city,
             address: hotelForm.address,
             starRating: Number(hotelForm.starRating),
-            pricePerNight: Number(hotelForm.pricePerNight),
+            pricePerNight: Number(hotelForm.pricePerNight) || '',
             description: hotelForm.description,
             thumbnailUrl: mainThumb,
             images: imagesString,
-            amenities: editingHotel.amenities || 'WiFi, Bữa sáng, Hồ bơi'
+            amenities: editingHotel.amenities || ''
           })
         });
         if (res.ok) {
@@ -583,7 +602,7 @@ export default function AdminDashboardPage() {
             city: hotelForm.city,
             address: hotelForm.address,
             starRating: Number(hotelForm.starRating),
-            pricePerNight: Number(hotelForm.pricePerNight),
+            pricePerNight: Number(hotelForm.pricePerNight) || '',
             description: hotelForm.description,
             thumbnailUrl: mainThumb,
             images: cleanImages.length > 0 ? cleanImages : (json.result?.images || [mainThumb])
@@ -602,11 +621,11 @@ export default function AdminDashboardPage() {
             city: hotelForm.city,
             address: hotelForm.address,
             starRating: Number(hotelForm.starRating),
-            pricePerNight: Number(hotelForm.pricePerNight),
+            pricePerNight: Number(hotelForm.pricePerNight) || '',
             description: hotelForm.description,
             thumbnailUrl: mainThumb,
             images: imagesString,
-            amenities: 'WiFi miễn phí, Bữa sáng buffet, Hồ bơi ngoài trời'
+            amenities: ''
           })
         });
         if (res.ok) {
@@ -617,7 +636,7 @@ export default function AdminDashboardPage() {
             city: hotelForm.city,
             address: hotelForm.address,
             starRating: Number(hotelForm.starRating),
-            pricePerNight: Number(hotelForm.pricePerNight),
+            pricePerNight: Number(hotelForm.pricePerNight) || '',
             description: hotelForm.description,
             thumbnailUrl: mainThumb,
             images: cleanImages.length > 0 ? cleanImages : (json.result?.images || [mainThumb])
@@ -717,14 +736,14 @@ export default function AdminDashboardPage() {
   const [roomForm, setRoomForm] = useState({
     hotelId: '',
     name: '',
-    pricePerNight: 1200000,
-    maxGuests: 2,
-    bedType: '1 Giường đôi lớn (King Size)',
-    roomSize: '35 m²',
+    pricePerNight: '',
+    maxGuests: '',
+    bedType: '',
+    roomSize: '',
     status: 'AVAILABLE',
-    imageUrl: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60',
-    description: 'Phòng đầy đủ tiện nghi tiêu chuẩn cao cấp, nội thất hiện đại và view thoáng đãng.',
-    amenities: 'WiFi miễn phí, Điều hòa nhiệt độ, Smart TV, Tủ lạnh mini, Bồn tắm nằm, Máy sấy tóc'
+    imageUrl: '',
+    description: '',
+    amenities: ''
   });
   const roomImageInputRef = useRef(null);
   const [isUploadingRoomImage, setIsUploadingRoomImage] = useState(false);
@@ -754,7 +773,7 @@ export default function AdminDashboardPage() {
 
     try {
       setIsUploadingRoomImage(true);
-      showToast('Đang tải ảnh loại phòng lên Cloudinary...');
+      showToast('Đang tải ảnh loại phòng lên ');
 
       const formData = new FormData();
       formData.append('file', file);
@@ -795,7 +814,7 @@ export default function AdminDashboardPage() {
       showToast('Tải ảnh thành công');
     } catch (err) {
       console.error('Lỗi khi tải ảnh loại phòng lên Cloudinary:', err);
-      showToast('Lỗi tải ảnh lên Cloudinary: ' + sanitizeErrorMessage(err));
+      showToast('Lỗi tải ảnh lên  ' + sanitizeErrorMessage(err));
     } finally {
       setIsUploadingRoomImage(false);
       if (roomImageInputRef.current) {
@@ -846,14 +865,14 @@ export default function AdminDashboardPage() {
     setRoomForm({
       hotelId: hotels[0]?.id || '',
       name: '',
-      pricePerNight: 1200000,
-      maxGuests: 2,
-      bedType: '1 Giường đôi lớn (King Size)',
-      roomSize: '35 m²',
+      pricePerNight: '',
+      maxGuests: '',
+      bedType: '',
+      roomSize: '',
       status: 'AVAILABLE',
-      imageUrl: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60',
-      description: 'Phòng đầy đủ tiện nghi cao cấp, nội thất gỗ sang trọng.',
-      amenities: 'WiFi miễn phí, Điều hòa nhiệt độ, Smart TV, Tủ lạnh mini, Bồn tắm nằm, Máy sấy tóc'
+      imageUrl: '',
+      description: '',
+      amenities: ''
     });
     setShowRoomModal(true);
   };
@@ -863,20 +882,25 @@ export default function AdminDashboardPage() {
     setRoomForm({
       hotelId: r.hotelId || hotels[0]?.id,
       name: r.name,
-      pricePerNight: r.pricePerNight,
-      maxGuests: r.maxGuests || 2,
-      bedType: r.bedType || '1 Giường đôi lớn (King Size)',
-      roomSize: r.roomSize || '35 m²',
+      pricePerNight: sanitizePriceInput(r.pricePerNight || ''),
+      maxGuests: r.maxGuests || '',
+      bedType: r.bedType || '',
+      roomSize: r.roomSize || '',
       status: r.status || 'AVAILABLE',
-      imageUrl: r.imageUrl || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60',
+      imageUrl: r.imageUrl || '',
       description: r.description || '',
-      amenities: r.amenities || 'WiFi miễn phí, Điều hòa nhiệt độ, Smart TV, Tủ lạnh mini'
+      amenities: r.amenities || ''
     });
     setShowRoomModal(true);
   };
 
   const saveRoom = async (e) => {
     e.preventDefault();
+    const roomPrice = Number(roomForm.pricePerNight);
+    if (!roomPrice || roomPrice <= 0) {
+      showToast('Vui lòng nhập giá phòng 1 đêm hợp lệ (phải lớn hơn 0 VNĐ)!');
+      return;
+    }
     const targetHotel = hotels.find(h => String(h.id) === String(roomForm.hotelId)) || hotels[0];
     let savedRoomObj = null;
 
@@ -2610,7 +2634,22 @@ export default function AdminDashboardPage() {
               <div><FL>Thành phố *</FL><select className="form-select" value={hotelForm.city} onChange={e => setHotelForm({ ...hotelForm, city: e.target.value })}>{['Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Sa Pa', 'Nha Trang', 'Đà Lạt', 'Phú Quốc'].map(c => <option key={c}>{c}</option>)}</select></div>
               <div style={{ gridColumn: '1/-1' }}><FL>Địa chỉ chi tiết *</FL><input className="form-control" value={hotelForm.address} onChange={e => setHotelForm({ ...hotelForm, address: e.target.value })} required placeholder="VD: 76 Lê Lai, Phường Bến Thành, Quận 1" /></div>
               <div><FL>Hạng sao</FL><select className="form-select" value={hotelForm.starRating} onChange={e => setHotelForm({ ...hotelForm, starRating: e.target.value })}>{[5,4,3,2].map(s => <option key={s} value={s}>{s} sao</option>)}</select></div>
-              <div><FL>Giá phòng khởi điểm / đêm (VNĐ) *</FL><input type="number" step="50000" className="form-control" value={hotelForm.pricePerNight} onChange={e => setHotelForm({ ...hotelForm, pricePerNight: e.target.value })} required /></div>
+              <div>
+                <FL>Giá phòng khởi điểm / đêm (VNĐ) *</FL>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="form-control"
+                  placeholder="VD: 500000"
+                  value={hotelForm.pricePerNight}
+                  onKeyDown={handlePriceKeyDown}
+                  onChange={e => setHotelForm({ ...hotelForm, pricePerNight: sanitizePriceInput(e.target.value) })}
+                  required
+                />
+                <div style={{ fontSize: 12, color: '#2563eb', fontWeight: 600, marginTop: 4 }}>
+                  💰 Xem nhanh: {Number(hotelForm.pricePerNight || 0).toLocaleString('vi-VN')} VNĐ / đêm
+                </div>
+              </div>
               <div style={{ gridColumn: '1/-1' }}>
                 <div className="d-flex justify-content-between align-items-center mb-2">
                   <FL style={{ margin: 0 }}>Quản lý 4 Hình Ảnh Khách Sạn (Hiển thị Trang Chủ & Trang Chi Tiết)</FL>
@@ -2849,12 +2888,13 @@ export default function AdminDashboardPage() {
               <div>
                 <FL>Giá phòng 1 đêm (VNĐ) *</FL>
                 <input
-                  type="number"
-                  step="50000"
-                  min="50000"
+                  type="text"
+                  inputMode="numeric"
                   className="form-control"
+                  placeholder="VD: 500000"
                   value={roomForm.pricePerNight}
-                  onChange={e => setRoomForm({ ...roomForm, pricePerNight: e.target.value })}
+                  onKeyDown={handlePriceKeyDown}
+                  onChange={e => setRoomForm({ ...roomForm, pricePerNight: sanitizePriceInput(e.target.value) })}
                   required
                 />
                 <div style={{ fontSize: 12, color: '#2563eb', fontWeight: 600, marginTop: 4 }}>
