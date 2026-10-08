@@ -513,49 +513,62 @@ export default function AdminDashboardPage() {
 
   // Xử lý chọn ảnh khách sạn từ máy tính (chỉ lưu file & xem trước, CHƯA upload lên Cloudinary)
   const handleHotelImageUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
-    if (!file.type.startsWith('image/')) {
-      showAlert({
-        title: 'Tập tin không hợp lệ',
-        message: 'Vui lòng chọn tập tin hình ảnh hợp lệ (JPG, PNG, WEBP).',
-        type: 'error'
-      });
-      return;
-    }
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) {
+        showAlert({
+          title: 'Tập tin không hợp lệ',
+          message: 'Vui lòng chọn tập tin hình ảnh hợp lệ (JPG, PNG, WEBP).',
+          type: 'error'
+        });
+        return;
+      }
 
-    if (file.size > 5 * 1024 * 1024) {
-      showAlert({
-        title: 'Tập tin quá lớn',
-        message: 'Dung lượng hình ảnh tối đa là 5MB.',
-        type: 'warning'
-      });
-      return;
+      if (file.size > 5 * 1024 * 1024) {
+        showAlert({
+          title: 'Tập tin quá lớn',
+          message: 'Dung lượng mỗi hình ảnh tối đa là 5MB.',
+          type: 'warning'
+        });
+        return;
+      }
     }
 
     const targetIdx = activeUploadImageIndexRef.current || 0;
 
-    // 1. Lưu file vào state để upload đồng loạt lên Cloudinary khi bấm Tạo/Lưu khách sạn
+    // 1. Lưu file vào state để upload đồng loạt 4 ảnh lên Cloudinary khi bấm Tạo khách sạn
     setHotelSelectedFiles(prev => {
       const next = [...prev];
-      next[targetIdx] = file;
+      if (files.length > 1) {
+        files.slice(0, 4).forEach((f, i) => {
+          next[i] = f;
+        });
+      } else {
+        next[targetIdx] = files[0];
+      }
       return next;
     });
 
     // 2. Tạo URL xem trước từ file máy tính để hiển thị ngay trên thẻ
-    const previewUrl = URL.createObjectURL(file);
     setHotelForm(prev => {
       const nextImgs = Array.isArray(prev.images) ? [...prev.images] : ['', '', '', ''];
-      nextImgs[targetIdx] = previewUrl;
+      if (files.length > 1) {
+        files.slice(0, 4).forEach((f, i) => {
+          nextImgs[i] = URL.createObjectURL(f);
+        });
+      } else {
+        nextImgs[targetIdx] = URL.createObjectURL(files[0]);
+      }
       return {
         ...prev,
-        thumbnailUrl: targetIdx === 0 ? previewUrl : (prev.thumbnailUrl || previewUrl),
+        thumbnailUrl: nextImgs[0] || prev.thumbnailUrl,
         images: nextImgs
       };
     });
 
-    showToast(`Đã chọn ảnh ${targetIdx + 1} (${file.name}). Ảnh sẽ được tải lên Cloudinary khi ấn Lưu!`);
+    showToast(files.length > 1 ? `Đã chọn ${Math.min(files.length, 4)} ảnh! Nhấn Tạo khách sạn để tải 4 ảnh lên Cloudinary cùng lúc.` : `Đã chọn ảnh ${targetIdx + 1}!`);
 
     if (hotelImageInputRef.current) {
       hotelImageInputRef.current.value = '';
@@ -576,10 +589,10 @@ export default function AdminDashboardPage() {
       // 1. Upload các file ảnh chọn từ máy tính lên Cloudinary cùng 1 lúc (nếu có)
       const hasFilesToUpload = hotelSelectedFiles.some(f => f instanceof File);
       if (hasFilesToUpload) {
-        showToast('Đang tải các ảnh lên Cloudinary...');
+        showToast('Đang tải 4 ảnh lên Cloudinary cùng 1 lúc...');
       }
 
-      const uploadPromises = (hotelForm.images || []).map(async (currentImg, idx) => {
+      const uploadPromises = [0, 1, 2, 3].map(async (idx) => {
         const file = hotelSelectedFiles[idx];
         if (file instanceof File) {
           const formData = new FormData();
@@ -594,7 +607,7 @@ export default function AdminDashboardPage() {
           }
           return data.result; // URL thực tế trả về từ Cloudinary
         }
-        return currentImg;
+        return hotelForm.images?.[idx] || '';
       });
 
       const finalImages = await Promise.all(uploadPromises);
@@ -810,7 +823,7 @@ export default function AdminDashboardPage() {
     // 2. Tạo URL xem trước từ file máy tính để hiển thị ngay
     const previewUrl = URL.createObjectURL(file);
     setRoomForm(prev => ({ ...prev, imageUrl: previewUrl }));
-    showToast(`Đã chọn ảnh phòng (${file.name}). Ảnh sẽ được tải lên Cloudinary khi ấn Lưu!`);
+    showToast(`Đã chọn ảnh phòng (${file.name}).`);
 
     if (roomImageInputRef.current) {
       roomImageInputRef.current.value = '';
@@ -906,7 +919,7 @@ export default function AdminDashboardPage() {
       // 1. Nếu có file ảnh chọn từ máy tính, upload lên Cloudinary
       let finalImageUrl = roomForm.imageUrl;
       if (roomSelectedFile instanceof File) {
-        showToast('Đang tải ảnh loại phòng lên Cloudinary...');
+        showToast('Đang tải ảnh ');
         const formData = new FormData();
         formData.append('file', roomSelectedFile);
 
@@ -2659,6 +2672,7 @@ export default function AdminDashboardPage() {
                   type="file"
                   ref={hotelImageInputRef}
                   style={{ display: 'none' }}
+                  multiple
                   accept="image/png, image/jpeg, image/jpg, image/webp"
                   onChange={handleHotelImageUpload}
                 />
@@ -2720,7 +2734,7 @@ export default function AdminDashboardPage() {
                             className={`btn ${hotelSelectedFiles[index] ? 'btn-success text-white' : 'btn-primary'} d-flex align-items-center gap-1 fw-semibold px-2`}
                             onClick={() => triggerHotelImageUpload(index)}
                             disabled={isSavingHotel}
-                            title={hotelSelectedFiles[index] ? `Đã chọn: ${hotelSelectedFiles[index].name} (sẽ tải lên Cloudinary khi nhấn Lưu)` : `Tải ảnh ${index + 1} từ máy tính lên`}
+                            title={hotelSelectedFiles[index] ? `Đã chọn: ${hotelSelectedFiles[index].name} ` : `Tải ảnh ${index + 1} từ máy tính lên`}
                           >
                             {hotelSelectedFiles[index] ? (
                               <>
