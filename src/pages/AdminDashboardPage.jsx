@@ -15,7 +15,8 @@ import {
   BarChart2, CreditCard, Tag, MessageSquare, FileBarChart,
   Wifi, Coffee, Car, Dumbbell, Waves, UtensilsCrossed, Shield,
   TrendingUp, TrendingDown, Award, Clock, LogIn, LogOut as LogOutIcon,
-  AlertCircle, UploadCloud, Filter, RotateCcw, Check
+  AlertCircle, UploadCloud, Filter, RotateCcw, Check,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -328,6 +329,40 @@ export default function AdminDashboardPage() {
     const maintenance = roomsList.filter(r => r.status === 'MAINTENANCE').length;
     return { total, available, booked, maintenance };
   }, [roomsList]);
+
+  // ── Phân trang Tab Khách Sạn (5 phần tử / trang) ──
+  const HOTELS_PER_PAGE = 5;
+  const [hotelCurrentPage, setHotelCurrentPage] = useState(1);
+  const hotelTotalPages = Math.max(1, Math.ceil(hotels.length / HOTELS_PER_PAGE));
+  const paginatedHotels = useMemo(() => {
+    const start = (hotelCurrentPage - 1) * HOTELS_PER_PAGE;
+    return hotels.slice(start, start + HOTELS_PER_PAGE);
+  }, [hotels, hotelCurrentPage]);
+
+  useEffect(() => {
+    if (hotelCurrentPage > hotelTotalPages) {
+      setHotelCurrentPage(hotelTotalPages);
+    }
+  }, [hotelTotalPages, hotelCurrentPage]);
+
+  // ── Phân trang Tab Loại Phòng (5 phần tử / trang) ──
+  const ROOMS_PER_PAGE = 5;
+  const [roomCurrentPage, setRoomCurrentPage] = useState(1);
+  const roomTotalPages = Math.max(1, Math.ceil(filteredRoomsList.length / ROOMS_PER_PAGE));
+  const paginatedRooms = useMemo(() => {
+    const start = (roomCurrentPage - 1) * ROOMS_PER_PAGE;
+    return filteredRoomsList.slice(start, start + ROOMS_PER_PAGE);
+  }, [filteredRoomsList, roomCurrentPage]);
+
+  useEffect(() => {
+    setRoomCurrentPage(1);
+  }, [roomSearchQuery, roomHotelFilter, roomStatusFilter]);
+
+  useEffect(() => {
+    if (roomCurrentPage > roomTotalPages) {
+      setRoomCurrentPage(roomTotalPages);
+    }
+  }, [roomTotalPages, roomCurrentPage]);
 
   // Tải dữ liệu thật từ Backend nếu Backend online và đã đăng nhập
   useEffect(() => {
@@ -1775,7 +1810,7 @@ export default function AdminDashboardPage() {
               <div className="table-responsive">
                 <table className="table table-hover align-middle mb-0" style={{ fontSize: 13 }}>
                   <thead style={{ background: '#f8fafc' }}><tr>{['Hình Ảnh', 'Tên Khách Sạn', 'Thành Phố', 'Hạng Sao', 'Điểm Đánh Giá', 'Giá Khởi Điểm', 'Số Phòng', 'Thao Tác'].map(h => <Th key={h}>{h}</Th>)}</tr></thead>
-                  <tbody>{hotels.map(h => (
+                  <tbody>{paginatedHotels.map(h => (
                     <tr key={h.id}>
                       <td>
                         <div style={{ position: 'relative', width: 64, height: 48, borderRadius: 8, overflow: 'hidden', backgroundColor: '#f1f5f9' }}>
@@ -1812,6 +1847,14 @@ export default function AdminDashboardPage() {
                   ))}</tbody>
                 </table>
               </div>
+              <TablePagination
+                currentPage={hotelCurrentPage}
+                totalPages={hotelTotalPages}
+                totalItems={hotels.length}
+                itemsPerPage={HOTELS_PER_PAGE}
+                onPageChange={setHotelCurrentPage}
+                label="khách sạn"
+              />
             </SectionCard>
           )}
 
@@ -1941,9 +1984,7 @@ export default function AdminDashboardPage() {
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                  <span style={{ fontSize: 12.5, color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                    Hiển thị <span className="text-primary">{filteredRoomsList.length}</span> / {roomsList.length} loại phòng
-                  </span>
+               
                 </div>
               </div>
 
@@ -1976,93 +2017,103 @@ export default function AdminDashboardPage() {
                     )}
                   </div>
                 ) : (
-                  <div className="table-responsive">
-                    <table className="table table-hover align-middle mb-0" style={{ fontSize: 13 }}>
-                      <thead style={{ background: '#f8fafc' }}>
-                        <tr>
-                          {['Hình Ảnh', 'Tên Loại Phòng', 'Khách Sạn', 'Loại Giường & DT', 'Sức Chứa', 'Giá / Đêm', 'Trạng Thái (Đổi Nhanh)', 'Thao Tác'].map(h => (
-                            <Th key={h}>{h}</Th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredRoomsList.map(r => (
-                          <tr key={r.id}>
-                            <td>
-                              <img
-                                src={r.imageUrl || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60'}
-                                alt={r.name}
-                                style={{ width: 72, height: 48, borderRadius: 8, objectFit: 'cover', border: '1px solid #e2e8f0' }}
-                                onError={(e) => {
-                                  e.target.src = 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60';
-                                }}
-                              />
-                            </td>
-                            <td>
-                              <div style={{ fontWeight: 700, color: '#1e293b', maxWidth: 220 }}>{r.name}</div>
-                              {r.description && (
-                                <div style={{ fontSize: 11, color: '#94a3b8', maxWidth: 220 }} className="text-truncate" title={r.description}>
-                                  {r.description}
-                                </div>
-                              )}
-                              {r.amenities && (
-                                <div style={{ fontSize: 11, color: '#059669', maxWidth: 220, fontWeight: 500, marginTop: 2 }} className="text-truncate" title={r.amenities}>
-                                  ✨ {r.amenities}
-                                </div>
-                              )}
-                            </td>
-                            <td>
-                              <span style={{ background: '#eff6ff', color: '#2563eb', padding: '4px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600 }}>
-                                {r.hotelName || 'Khách sạn'}
-                              </span>
-                            </td>
-                            <td>
-                              <div style={{ fontSize: 12.5, fontWeight: 500, color: '#334155' }}>{r.bedType || 'Giường đôi'}</div>
-                              <span style={{ fontSize: 11, color: '#64748b' }}>📐 {r.roomSize || '35 m²'}</span>
-                            </td>
-                            <td>
-                              <span style={{ background: '#f1f5f9', color: '#475569', padding: '3px 8px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
-                                👥 {r.maxGuests || 2} khách
-                              </span>
-                            </td>
-                            <td style={{ fontWeight: 800, color: '#dc2626', fontSize: 14 }}>
-                              {Number(r.pricePerNight || 0).toLocaleString('vi-VN')} đ
-                              <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 400, display: 'block' }}>/ đêm</span>
-                            </td>
-                            <td>
-                              {/* Dropdown Đổi Trạng Thái Nhanh */}
-                              <select
-                                value={r.status || 'AVAILABLE'}
-                                onChange={(e) => handleQuickChangeRoomStatus(r.id, e.target.value)}
-                                style={{
-                                  fontSize: 12,
-                                  fontWeight: 700,
-                                  padding: '5px 8px',
-                                  borderRadius: 8,
-                                  cursor: 'pointer',
-                                  border: '1px solid ' + (r.status === 'AVAILABLE' ? '#86efac' : r.status === 'BOOKED' ? '#fde047' : '#fca5a5'),
-                                  background: r.status === 'AVAILABLE' ? '#dcfce7' : r.status === 'BOOKED' ? '#fef9c3' : '#fee2e2',
-                                  color: r.status === 'AVAILABLE' ? '#16a34a' : r.status === 'BOOKED' ? '#92400e' : '#dc2626',
-                                  outline: 'none'
-                                }}
-                                title="Click để chuyển nhanh trạng thái phòng"
-                              >
-                                <option value="AVAILABLE" style={{ background: '#fff', color: '#16a34a' }}>✓ Sẵn Sàng</option>
-                                <option value="BOOKED" style={{ background: '#fff', color: '#92400e' }}>⏳ Có Khách</option>
-                                <option value="MAINTENANCE" style={{ background: '#fff', color: '#dc2626' }}>🛠️ Bảo Trì</option>
-                              </select>
-                            </td>
-                            <td>
-                              <div style={{ display: 'flex', gap: 6 }}>
-                                <SmBtn color="blue" onClick={() => openEditRoom(r)} icon={<Edit2 size={12} />}>Sửa</SmBtn>
-                                <SmBtn color="red" onClick={() => deleteRoom(r.id)} icon={<Trash2 size={12} />}>Xóa</SmBtn>
-                              </div>
-                            </td>
+                  <>
+                    <div className="table-responsive">
+                      <table className="table table-hover align-middle mb-0" style={{ fontSize: 13 }}>
+                        <thead style={{ background: '#f8fafc' }}>
+                          <tr>
+                            {['Hình Ảnh', 'Tên Loại Phòng', 'Khách Sạn', 'Loại Giường & DT', 'Sức Chứa', 'Giá / Đêm', 'Trạng Thái (Đổi Nhanh)', 'Thao Tác'].map(h => (
+                              <Th key={h}>{h}</Th>
+                            ))}
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody>
+                          {paginatedRooms.map(r => (
+                            <tr key={r.id}>
+                              <td>
+                                <img
+                                  src={r.imageUrl || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60'}
+                                  alt={r.name}
+                                  style={{ width: 72, height: 48, borderRadius: 8, objectFit: 'cover', border: '1px solid #e2e8f0' }}
+                                  onError={(e) => {
+                                    e.target.src = 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60';
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <div style={{ fontWeight: 700, color: '#1e293b', maxWidth: 220 }}>{r.name}</div>
+                                {r.description && (
+                                  <div style={{ fontSize: 11, color: '#94a3b8', maxWidth: 220 }} className="text-truncate" title={r.description}>
+                                    {r.description}
+                                  </div>
+                                )}
+                                {r.amenities && (
+                                  <div style={{ fontSize: 11, color: '#059669', maxWidth: 220, fontWeight: 500, marginTop: 2 }} className="text-truncate" title={r.amenities}>
+                                    ✨ {r.amenities}
+                                  </div>
+                                )}
+                              </td>
+                              <td>
+                                <span style={{ background: '#eff6ff', color: '#2563eb', padding: '4px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600 }}>
+                                  {r.hotelName || 'Khách sạn'}
+                                </span>
+                              </td>
+                              <td>
+                                <div style={{ fontSize: 12.5, fontWeight: 500, color: '#334155' }}>{r.bedType || 'Giường đôi'}</div>
+                                <span style={{ fontSize: 11, color: '#64748b' }}>📐 {r.roomSize || '35 m²'}</span>
+                              </td>
+                              <td>
+                                <span style={{ background: '#f1f5f9', color: '#475569', padding: '3px 8px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
+                                  👥 {r.maxGuests || 2} khách
+                                </span>
+                              </td>
+                              <td style={{ fontWeight: 800, color: '#dc2626', fontSize: 14 }}>
+                                {Number(r.pricePerNight || 0).toLocaleString('vi-VN')} đ
+                                <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 400, display: 'block' }}>/ đêm</span>
+                              </td>
+                              <td>
+                                {/* Dropdown Đổi Trạng Thái Nhanh */}
+                                <select
+                                  value={r.status || 'AVAILABLE'}
+                                  onChange={(e) => handleQuickChangeRoomStatus(r.id, e.target.value)}
+                                  style={{
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    padding: '5px 8px',
+                                    borderRadius: 8,
+                                    cursor: 'pointer',
+                                    border: '1px solid ' + (r.status === 'AVAILABLE' ? '#86efac' : r.status === 'BOOKED' ? '#fde047' : '#fca5a5'),
+                                    background: r.status === 'AVAILABLE' ? '#dcfce7' : r.status === 'BOOKED' ? '#fef9c3' : '#fee2e2',
+                                    color: r.status === 'AVAILABLE' ? '#16a34a' : r.status === 'BOOKED' ? '#92400e' : '#dc2626',
+                                    outline: 'none'
+                                  }}
+                                  title="Click để chuyển nhanh trạng thái phòng"
+                                >
+                                  <option value="AVAILABLE" style={{ background: '#fff', color: '#16a34a' }}>✓ Sẵn Sàng</option>
+                                  <option value="BOOKED" style={{ background: '#fff', color: '#92400e' }}>⏳ Có Khách</option>
+                                  <option value="MAINTENANCE" style={{ background: '#fff', color: '#dc2626' }}>🛠️ Bảo Trì</option>
+                                </select>
+                              </td>
+                              <td>
+                                <div style={{ display: 'flex', gap: 6 }}>
+                                  <SmBtn color="blue" onClick={() => openEditRoom(r)} icon={<Edit2 size={12} />}>Sửa</SmBtn>
+                                  <SmBtn color="red" onClick={() => deleteRoom(r.id)} icon={<Trash2 size={12} />}>Xóa</SmBtn>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <TablePagination
+                      currentPage={roomCurrentPage}
+                      totalPages={roomTotalPages}
+                      totalItems={filteredRoomsList.length}
+                      itemsPerPage={ROOMS_PER_PAGE}
+                      onPageChange={setRoomCurrentPage}
+                      label="loại phòng"
+                    />
+                  </>
                 )}
               </SectionCard>
             </div>
@@ -3397,6 +3448,118 @@ function SectionCard({ title, sub, action, children }) {
         {action}
       </div>}
       {children}
+    </div>
+  );
+}
+function TablePagination({ currentPage, totalPages, totalItems, itemsPerPage, onPageChange, label = 'mục' }) {
+  if (totalItems === 0) return null;
+  const startIdx = (currentPage - 1) * itemsPerPage + 1;
+  const endIdx = Math.min(currentPage * itemsPerPage, totalItems);
+
+  const getPages = () => {
+    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+    if (currentPage <= 4) return [1, 2, 3, 4, 5, '...', totalPages];
+    if (currentPage >= totalPages - 3) return [1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+    return [1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages];
+  };
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingTop: 16,
+      marginTop: 16,
+      borderTop: '1px solid #f1f5f9',
+      flexWrap: 'wrap',
+      gap: 12
+    }}>
+      <div style={{ fontSize: 13, color: '#64748b' }}>
+        Hiển thị <span style={{ fontWeight: 600, color: '#1e293b' }}>{startIdx} - {endIdx}</span> trên <span style={{ fontWeight: 600, color: '#1e293b' }}>{totalItems}</span> {label}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <button
+          type="button"
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={currentPage <= 1}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '6px 12px',
+            fontSize: 13,
+            fontWeight: 500,
+            borderRadius: 8,
+            border: '1px solid #e2e8f0',
+            background: currentPage <= 1 ? '#f8fafc' : '#fff',
+            color: currentPage <= 1 ? '#94a3b8' : '#334155',
+            cursor: currentPage <= 1 ? 'not-allowed' : 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <ChevronLeft size={15} />
+          <span>Trước</span>
+        </button>
+
+        {getPages().map((p, idx) => {
+          if (p === '...') {
+            return (
+              <span key={`ellipsis-${idx}`} style={{ padding: '0 6px', color: '#94a3b8', fontSize: 13 }}>
+                ...
+              </span>
+            );
+          }
+          const isActive = p === currentPage;
+          return (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onPageChange(p)}
+              style={{
+                minWidth: 34,
+                height: 34,
+                padding: '0 8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 13,
+                fontWeight: isActive ? 700 : 500,
+                borderRadius: 8,
+                border: isActive ? '1px solid #2563eb' : '1px solid #e2e8f0',
+                background: isActive ? '#2563eb' : '#fff',
+                color: isActive ? '#fff' : '#334155',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              {p}
+            </button>
+          );
+        })}
+
+        <button
+          type="button"
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage >= totalPages}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '6px 12px',
+            fontSize: 13,
+            fontWeight: 500,
+            borderRadius: 8,
+            border: '1px solid #e2e8f0',
+            background: currentPage >= totalPages ? '#f8fafc' : '#fff',
+            color: currentPage >= totalPages ? '#94a3b8' : '#334155',
+            cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <span>Sau</span>
+          <ChevronRight size={15} />
+        </button>
+      </div>
     </div>
   );
 }
