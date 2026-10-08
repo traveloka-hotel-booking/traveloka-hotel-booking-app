@@ -68,6 +68,16 @@ export default function AdminUserManagement() {
 
   
   const changeAccountStatus = async (user) => {
+    const roleName = user.role?.name || user.role || '';
+    if (roleName === 'ROLE_ADMIN' || roleName === 'ADMIN') {
+      showAlert({
+        title: 'Thông báo',
+        message: 'Không thể khóa tài khoản Quản trị viên!',
+        type: 'warning'
+      });
+      return;
+    }
+
     const currentlyEnabled = user.isEnabled === true;
     const actionLabel = currentlyEnabled ? 'khóa' : 'mở khóa';
 
@@ -99,17 +109,35 @@ export default function AdminUserManagement() {
         const message =
           data?.result?.errors ||
           data?.message ||
+          data?.errors ||
           `Không thể ${actionLabel} tài khoản (HTTP ${response.status}).`;
 
         setError(message);
+        showAlert({
+          title: 'Thao tác thất bại',
+          message: message,
+          type: 'error'
+        });
         return;
       }
 
-      setNotice('Cập nhật thành công');
+      const successMsg = currentlyEnabled ? 'Khóa tài khoản thành công!' : 'Mở khóa tài khoản thành công!';
+      setNotice(successMsg);
+      showAlert({
+        title: 'Thành công',
+        message: successMsg,
+        type: 'success'
+      });
 
       await loadUsers();
     } catch (e) {
-      setError(e.message || `Có lỗi khi ${actionLabel} tài khoản.`);
+      const errText = e.message || `Có lỗi khi ${actionLabel} tài khoản.`;
+      setError(errText);
+      showAlert({
+        title: 'Lỗi',
+        message: errText,
+        type: 'error'
+      });
     } finally {
       setProcessingId(null);
     }
@@ -164,25 +192,33 @@ export default function AdminUserManagement() {
               ) : users.map((user, index) => {
                 const isEnabled = user.isEnabled === true;
                 const displayName = user.fullName || user.name || user.username || '—';
+                const roleName = user.role?.name || user.role || '—';
+                const isAdminAccount = roleName === 'ROLE_ADMIN' || roleName === 'ADMIN';
                 return (
                   <tr key={user.id ?? `${user.email}-${index}`}>
                     <td style={{ color: '#94a3b8', fontWeight: 600 }}>{page * size + index + 1}</td>
                     <td style={{ color: '#1e293b', fontWeight: 700 }}>{displayName}</td>
                     <td style={{ color: '#475569' }}>{user.email || '—'}</td>
                     <td style={{ color: '#475569' }}>{user.phone || user.phoneNumber || '—'}</td>
-                    <td><span style={{ background: '#f1f5f9', color: '#475569', borderRadius: 20, padding: '4px 9px', fontSize: 11, fontWeight: 600 }}>{user.role?.name || user.role || '—'}</span></td>
+                    <td><span style={{ background: '#f1f5f9', color: '#475569', borderRadius: 20, padding: '4px 9px', fontSize: 11, fontWeight: 600 }}>{roleName}</span></td>
                     <td>
                       <span style={{ background: isEnabled ? '#dcfce7' : '#fee2e2', color: isEnabled ? '#166534' : '#b91c1c', borderRadius: 20, padding: '4px 10px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>
                         {isEnabled ? 'Đang hoạt động' : 'Đã khóa'}
                       </span>
                     </td>
                     <td>
-                      <button type="button" onClick={() => changeAccountStatus(user)}
-                        disabled={processingId === user.id || user.id == null}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', borderRadius: 8, padding: '7px 10px', background: isEnabled ? '#fef2f2' : '#f0fdf4', color: isEnabled ? '#b91c1c' : '#166534', fontSize: 12, fontWeight: 700, cursor: processingId === user.id ? 'wait' : 'pointer', opacity: processingId === user.id ? 0.6 : 1, whiteSpace: 'nowrap' }}>
-                        {isEnabled ? <Lock size={14} /> : <Unlock size={14} />}
-                        {processingId === user.id ? 'Đang xử lý...' : isEnabled ? 'Khóa' : 'Mở khóa'}
-                      </button>
+                      {isAdminAccount ? (
+                        <span style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>
+                          Quản trị viên
+                        </span>
+                      ) : (
+                        <button type="button" onClick={() => changeAccountStatus(user)}
+                          disabled={processingId === user.id || user.id == null}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', borderRadius: 8, padding: '7px 10px', background: isEnabled ? '#fef2f2' : '#f0fdf4', color: isEnabled ? '#b91c1c' : '#166534', fontSize: 12, fontWeight: 700, cursor: processingId === user.id ? 'wait' : 'pointer', opacity: processingId === user.id ? 0.6 : 1, whiteSpace: 'nowrap' }}>
+                          {isEnabled ? <Lock size={14} /> : <Unlock size={14} />}
+                          {processingId === user.id ? 'Đang xử lý...' : isEnabled ? 'Khóa' : 'Mở khóa'}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
