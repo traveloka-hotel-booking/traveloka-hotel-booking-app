@@ -1854,17 +1854,16 @@ export default function AdminDashboardPage() {
               <div style={{
                 background: '#fff',
                 borderRadius: 14,
-                padding: '16px 20px',
+                padding: '14px 20px',
                 marginBottom: 20,
                 boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
                 border: '1px solid #e2e8f0',
                 display: 'flex',
-                flexWrap: 'wrap',
-                gap: 14,
                 alignItems: 'center',
-                justifyContent: 'space-between'
+                justifyContent: 'space-between',
+                gap: 12
               }}>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', flex: 1 }}>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', flex: 1, minWidth: 0 }}>
                   {/* Ô tìm kiếm */}
                   <div style={{
                     display: 'flex',
@@ -1874,8 +1873,8 @@ export default function AdminDashboardPage() {
                     border: '1px solid #cbd5e1',
                     borderRadius: 10,
                     padding: '8px 14px',
-                    minWidth: 260,
-                    flex: 1
+                    flex: 1,
+                    minWidth: 200
                   }}>
                     <Search size={16} color="#64748b" />
                     <input
@@ -1893,13 +1892,13 @@ export default function AdminDashboardPage() {
                   </div>
 
                   {/* Lọc theo khách sạn */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                     <Building size={16} color="#64748b" />
                     <select
                       value={roomHotelFilter}
                       onChange={e => setRoomHotelFilter(e.target.value)}
                       className="form-select form-select-sm"
-                      style={{ fontSize: 13, minWidth: 200, borderRadius: 8, borderColor: '#cbd5e1' }}
+                      style={{ fontSize: 13, width: 200, borderRadius: 8, borderColor: '#cbd5e1' }}
                     >
                       <option value="ALL">Tất cả khách sạn ({hotels.length})</option>
                       {hotels.map(h => (
@@ -1908,14 +1907,14 @@ export default function AdminDashboardPage() {
                     </select>
                   </div>
 
-                  {/* Lọc theo trạng thái */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {/* Lọc theo trạng thái (CÙNG HÀNG VỚI TÌM KIẾM VÀ KHÁCH SẠN) */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                     <Filter size={16} color="#64748b" />
                     <select
                       value={roomStatusFilter}
                       onChange={e => setRoomStatusFilter(e.target.value)}
                       className="form-select form-select-sm"
-                      style={{ fontSize: 13, minWidth: 160, borderRadius: 8, borderColor: '#cbd5e1' }}
+                      style={{ fontSize: 13, width: 175, borderRadius: 8, borderColor: '#cbd5e1' }}
                     >
                       <option value="ALL">Tất cả trạng thái</option>
                       <option value="AVAILABLE">✓ Sẵn Sàng (Available)</option>
@@ -1933,7 +1932,7 @@ export default function AdminDashboardPage() {
                         setRoomStatusFilter('ALL');
                       }}
                       className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
-                      style={{ borderRadius: 8, fontSize: 12.5 }}
+                      style={{ borderRadius: 8, fontSize: 12.5, whiteSpace: 'nowrap', flexShrink: 0 }}
                     >
                       <RotateCcw size={13} />
                       <span>Xóa bộ lọc</span>
@@ -1941,11 +1940,10 @@ export default function AdminDashboardPage() {
                   )}
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 12.5, color: '#64748b', fontWeight: 600 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                  <span style={{ fontSize: 12.5, color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>
                     Hiển thị <span className="text-primary">{filteredRoomsList.length}</span> / {roomsList.length} loại phòng
                   </span>
-                  <ActionBtn onClick={openAddRoom} icon={<Plus size={16} />}>Thêm Loại Phòng Mới</ActionBtn>
                 </div>
               </div>
 
@@ -1953,6 +1951,7 @@ export default function AdminDashboardPage() {
               <SectionCard
                 title="Danh Sách Loại Phòng Lưu Trú"
                 sub="Quản lý chi tiết từng loại phòng, cập nhật đơn giá, tải ảnh Cloudinary và đổi trạng thái phòng nhanh"
+                action={<ActionBtn onClick={openAddRoom} icon={<Plus size={16} />}>Thêm Loại Phòng Mới</ActionBtn>}
               >
                 {filteredRoomsList.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '40px 20px' }}>
