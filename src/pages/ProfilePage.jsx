@@ -203,7 +203,7 @@ export default function ProfilePage() {
     return clean;
   };
 
-  // Tìm kiếm địa chỉ giới hạn 100% tại Việt Nam (Nominatim OSM + Photon Bounding Box VN)
+  // Tìm kiếm địa chỉ giới hạn 100% tại Việt Nam (Ưu tiên Photon Komoot siêu nhanh, hỗ trợ CORS trình duyệt)
   const searchAddressSuggestions = async (value) => {
     const keyword = value.trim();
 
@@ -211,7 +211,7 @@ export default function ProfilePage() {
       addressSearchAbortRef.current.abort();
     }
 
-    if (keyword.length < 3) {
+    if (keyword.length < 2) {
       setAddressSuggestions([]);
       setShowAddressSuggestions(false);
       setIsLoadingAddressSuggestions(false);
@@ -225,40 +225,17 @@ export default function ProfilePage() {
 
     const queryToSearch = normalizeAddressQuery(keyword);
 
+    // Timeout an toàn 4 giây cho mỗi phiên tìm kiếm
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 4000);
+
     try {
-      // 1. Thử tìm kiếm với Nominatim OpenStreetMap (chỉ lấy tại Việt Nam)
-      const nominatimUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(queryToSearch)}&countrycodes=vn&format=json&addressdetails=1&limit=6`;
-      const response = await fetch(nominatimUrl, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-          'Accept-Language': 'vi'
-        },
-        signal: controller.signal
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (Array.isArray(data) && data.length > 0) {
-          const vnResults = data
-            .filter((item) => item.display_name && (item.display_name.includes('Việt Nam') || item.display_name.includes('Vietnam')))
-            .map((item) => ({
-              id: `nom-${item.place_id}`,
-              text: item.display_name
-            }));
-
-          if (vnResults.length > 0) {
-            setAddressSuggestions(vnResults);
-            return;
-          }
-        }
-      }
-
-      // 2. Fallback: Nếu Nominatim không ra hoặc lỗi mạng, tìm qua Photon với Bounding Box giới hạn trong Việt Nam
+      // 1. NGUỒN CHÍNH: Photon Komoot (Tốc độ cực nhanh, hỗ trợ CORS, Bounding Box toàn lãnh thổ Việt Nam)
       const photonParams = new URLSearchParams({
         q: queryToSearch,
-        limit: '6',
-        bbox: '102.14,8.18,109.46,23.39' // Toàn bộ lãnh thổ Việt Nam
+        limit: '8',
+        bbox: '102.14,8.18,109.46,23.39' // Lãnh thổ Việt Nam
       });
 
       const photonResponse = await fetch(
@@ -282,40 +259,100 @@ export default function ProfilePage() {
             const country = (props.country || '').toLowerCase();
             return code === 'VN' || country.includes('việt nam') || country.includes('vietnam');
           })
-          .map((f) => {
+          .map((f, idx) => {
             const props = f?.properties || {};
-            const parts = [
-              props.name,
-              props.housenumber && props.street ? `${props.housenumber} ${props.street}` : props.street,
+            const streetPart = props.housenumber && props.street
+              ? `${props.housenumber} ${props.street}`
+              : (props.street || props.housenumber || '');
+
+            const namePart = props.name || '';
+            const initialParts = [];
+            if (namePart) initialParts.push(namePart);
+            if (streetPart && streetPart.toLowerCase() !== namePart.toLowerCase()) {
+              initialParts.push(streetPart);
+            }
+
+            const otherParts = [
               props.locality,
               props.district,
               props.city,
               props.state,
               'Việt Nam'
             ].filter(Boolean);
-            const text = [...new Set(parts)].join(', ');
+
+            const allParts = [...initialParts, ...otherParts];
+            const uniqueParts = [];
+            allParts.forEach((part) => {
+              const trimmed = (part || '').trim();
+              if (trimmed && !uniqueParts.some((p) => p.toLowerCase() === trimmed.toLowerCase())) {
+                uniqueParts.push(trimmed);
+              }
+            });
+
+            const text = uniqueParts.join(', ');
             return {
-              id: `photon-${props.osm_type || 'osm'}-${props.osm_id || text}`,
+              id: `photon-${props.osm_type || 'osm'}-${props.osm_id || idx}-${text}`,
               text
             };
-          });
+          })
+          .filter((item) => item.text.length > 0);
 
-        setAddressSuggestions(vnPhotonResults);
-      } else {
-        setAddressSuggestions([]);
+        if (vnPhotonResults.length > 0) {
+          clearTimeout(timeoutId);
+          setAddressSuggestions(vnPhotonResults);
+          setIsLoadingAddressSuggestions(false);
+          return;
+        }
       }
-    } catch (error) {
-      if (error.name !== 'AbortError') {
-        setAddressSuggestions([]);
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      console.warn('Photon lookup warning:', err);
+    }
+
+    // 2. DỰ PHÒNG: Thử tìm kiếm với Nominatim OpenStreetMap (độc lập trong try-catch riêng)
+    try {
+      const nominatimUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(queryToSearch)}&countrycodes=vn&format=json&addressdetails=1&limit=6`;
+      const response = await fetch(nominatimUrl, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'Accept-Language': 'vi'
+        },
+        signal: controller.signal
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (Array.isArray(data) && data.length > 0) {
+          const vnResults = data
+            .filter((item) => item.display_name && (item.display_name.includes('Việt Nam') || item.display_name.includes('Vietnam')))
+            .map((item) => ({
+              id: `nom-${item.place_id}`,
+              text: item.display_name
+            }));
+
+          if (vnResults.length > 0) {
+            clearTimeout(timeoutId);
+            setAddressSuggestions(vnResults);
+            setIsLoadingAddressSuggestions(false);
+            return;
+          }
+        }
       }
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      console.warn('Nominatim lookup warning:', err);
     } finally {
+      clearTimeout(timeoutId);
       if (!controller.signal.aborted) {
         setIsLoadingAddressSuggestions(false);
       }
     }
+
+    setAddressSuggestions([]);
   };
 
-  // Debounce 350ms giúp phản hồi gợi ý nhanh và mượt mà
+  // Debounce 300ms giúp phản hồi gợi ý nhanh và mượt mà
   const handleAddressChange = (e) => {
     const value = e.target.value;
 
@@ -328,7 +365,7 @@ export default function ProfilePage() {
       clearTimeout(addressSearchTimeoutRef.current);
     }
 
-    if (value.trim().length < 3) {
+    if (value.trim().length < 2) {
       setAddressSuggestions([]);
       setShowAddressSuggestions(false);
       return;
@@ -338,7 +375,7 @@ export default function ProfilePage() {
 
     addressSearchTimeoutRef.current = setTimeout(() => {
       searchAddressSuggestions(value);
-    }, 350);
+    }, 300);
   };
 
   const handleSelectAddress = (item) => {
@@ -974,7 +1011,7 @@ const handleSaveProfile = async (e) => {
                       value={profileForm.address}
                       onChange={handleAddressChange}
                       onFocus={() => {
-                        if (profileForm.address.trim().length >= 3) {
+                        if (profileForm.address.trim().length >= 2) {
                           setShowAddressSuggestions(true);
                         }
                       }}
@@ -985,7 +1022,7 @@ const handleSaveProfile = async (e) => {
                       autoComplete="off"
                     ></textarea>
 
-                    {showAddressSuggestions && profileForm.address.trim().length >= 3 && (
+                    {showAddressSuggestions && profileForm.address.trim().length >= 2 && (
                       <div
                         className="position-absolute start-0 end-0 bg-white border rounded-3 shadow-sm mt-1 overflow-hidden"
                         style={{ zIndex: 1056, maxHeight: '240px', overflowY: 'auto' }}
@@ -1026,7 +1063,7 @@ const handleSaveProfile = async (e) => {
                     )}
 
                     <small className="text-secondary d-block mt-1">
-                      Nhập ít nhất 3 ký tự để tìm và chọn địa chỉ gợi ý.
+                      Nhập ít nhất 2 ký tự để tìm và chọn địa chỉ gợi ý.
                     </small>
                     <small className="text-secondary d-block mt-1" style={{ fontSize: '11px' }}>
                       Dữ liệu địa chỉ © OpenStreetMap contributors
