@@ -401,12 +401,16 @@ export default function AdminDashboardPage() {
     thumbnailUrl: '', 
     images: ['', '', '', ''] 
   });
+  // Lưu danh sách file ảnh chọn từ máy tính chờ upload đồng thời khi bấm Tạo/Lưu (0..3)
+  const [hotelSelectedFiles, setHotelSelectedFiles] = useState([null, null, null, null]);
+  const [isSavingHotel, setIsSavingHotel] = useState(false);
   const hotelImageInputRef = useRef(null);
   const activeUploadImageIndexRef = useRef(0);
   const [uploadingImageIndex, setUploadingImageIndex] = useState(null);
 
   const openAddHotel = () => { 
     setEditingHotel(null); 
+    setHotelSelectedFiles([null, null, null, null]);
     setHotelForm({ 
       name: '', 
       city: 'Hồ Chí Minh', 
@@ -422,6 +426,7 @@ export default function AdminDashboardPage() {
 
   const openEditHotel = (h) => { 
     setEditingHotel(h); 
+    setHotelSelectedFiles([null, null, null, null]); 
     let initialImgs = ['', '', '', ''];
     if (Array.isArray(h.images) && h.images.length > 0) {
       const filtered = h.images.map(s => typeof s === 'string' ? s.trim() : '').filter(Boolean);
@@ -484,6 +489,11 @@ export default function AdminDashboardPage() {
 
   // Thay đổi URL ảnh tại index cụ thể (0..3)
   const handleHotelImageUrlChange = (index, value) => {
+    setHotelSelectedFiles(prev => {
+      const next = [...prev];
+      next[index] = null; // Xóa file chọn từ máy tính nếu người dùng nhập hoặc xóa link
+      return next;
+    });
     setHotelForm(prev => {
       const nextImgs = Array.isArray(prev.images) ? [...prev.images] : ['', '', '', ''];
       nextImgs[index] = value;
@@ -501,8 +511,8 @@ export default function AdminDashboardPage() {
     hotelImageInputRef.current?.click();
   };
 
-  // Xử lý upload ảnh khách sạn (MultipartFile) lên Cloudinary theo index
-  const handleHotelImageUpload = async (e) => {
+  // Xử lý chọn ảnh khách sạn từ máy tính (chỉ lưu file & xem trước, CHƯA upload lên Cloudinary)
+  const handleHotelImageUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -525,42 +535,30 @@ export default function AdminDashboardPage() {
     }
 
     const targetIdx = activeUploadImageIndexRef.current || 0;
-    try {
-      setUploadingImageIndex(targetIdx);
-      showToast(`Đang tải ảnh ${targetIdx + 1} lên Cloudinary...`);
 
-      const formData = new FormData();
-      formData.append('file', file);
+    // 1. Lưu file vào state để upload đồng loạt lên Cloudinary khi bấm Tạo/Lưu khách sạn
+    setHotelSelectedFiles(prev => {
+      const next = [...prev];
+      next[targetIdx] = file;
+      return next;
+    });
 
-      // Tải ảnh qua Backend lấy link Cloudinary an toàn
-      const res = await apiFetch('/admin/hotels/upload-thumbnail', {
-        method: 'POST',
-        body: formData
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(getFriendlyErrorMessage(data, 'Tải ảnh khách sạn thất bại'));
-      }
-      const uploadedUrl = data.result;
+    // 2. Tạo URL xem trước từ file máy tính để hiển thị ngay trên thẻ
+    const previewUrl = URL.createObjectURL(file);
+    setHotelForm(prev => {
+      const nextImgs = Array.isArray(prev.images) ? [...prev.images] : ['', '', '', ''];
+      nextImgs[targetIdx] = previewUrl;
+      return {
+        ...prev,
+        thumbnailUrl: targetIdx === 0 ? previewUrl : (prev.thumbnailUrl || previewUrl),
+        images: nextImgs
+      };
+    });
 
-      setHotelForm(prev => {
-        const nextImgs = Array.isArray(prev.images) ? [...prev.images] : ['', '', '', ''];
-        nextImgs[targetIdx] = uploadedUrl;
-        return {
-          ...prev,
-          thumbnailUrl: targetIdx === 0 ? uploadedUrl : (prev.thumbnailUrl || uploadedUrl),
-          images: nextImgs
-        };
-      });
-      showToast('Tải ảnh thành công');
-    } catch (err) {
-      console.error('Lỗi khi tải ảnh khách sạn lên Cloudinary:', err);
-      showToast('Lỗi tải ảnh lên  ' + sanitizeErrorMessage(err));
-    } finally {
-      setUploadingImageIndex(null);
-      if (hotelImageInputRef.current) {
-        hotelImageInputRef.current.value = '';
-      }
+    showToast(`Đã chọn ảnh ${targetIdx + 1} (${file.name}). Ảnh sẽ được tải lên Cloudinary khi ấn Lưu!`);
+
+    if (hotelImageInputRef.current) {
+      hotelImageInputRef.current.value = '';
     }
   };
 
@@ -571,8 +569,37 @@ export default function AdminDashboardPage() {
       showToast('Vui lòng nhập giá phòng khởi điểm hợp lệ (phải lớn hơn 0 VNĐ)!');
       return;
     }
+
     try {
-      const cleanImages = (Array.isArray(hotelForm.images) ? hotelForm.images : [])
+      setIsSavingHotel(true);
+
+      // 1. Upload các file ảnh chọn từ máy tính lên Cloudinary cùng 1 lúc (nếu có)
+      const hasFilesToUpload = hotelSelectedFiles.some(f => f instanceof File);
+      if (hasFilesToUpload) {
+        showToast('Đang tải các ảnh lên Cloudinary...');
+      }
+
+      const uploadPromises = (hotelForm.images || []).map(async (currentImg, idx) => {
+        const file = hotelSelectedFiles[idx];
+        if (file instanceof File) {
+          const formData = new FormData();
+          formData.append('file', file);
+          const res = await apiFetch('/admin/hotels/upload-thumbnail', {
+            method: 'POST',
+            body: formData
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(getFriendlyErrorMessage(data, `Tải ảnh ${idx + 1} lên Cloudinary thất bại`));
+          }
+          return data.result; // URL thực tế trả về từ Cloudinary
+        }
+        return currentImg;
+      });
+
+      const finalImages = await Promise.all(uploadPromises);
+
+      const cleanImages = finalImages
         .map(img => (typeof img === 'string' ? img.trim() : ''))
         .filter(Boolean);
       const mainThumb = cleanImages[0] || (typeof hotelForm.thumbnailUrl === 'string' ? hotelForm.thumbnailUrl.trim() : '');
@@ -612,6 +639,7 @@ export default function AdminDashboardPage() {
         } else {
           const errJson = await res.json().catch(() => ({}));
           showToast('Lỗi cập nhật: ' + getFriendlyErrorMessage(errJson, 'Cập nhật thất bại'));
+          return;
         }
       } else {
         const res = await apiFetch('/admin/hotels', {
@@ -642,17 +670,21 @@ export default function AdminDashboardPage() {
             images: cleanImages.length > 0 ? cleanImages : (json.result?.images || [mainThumb])
           };
           updateHotels([newHotel, ...hotels]);
-          showToast('Thêm mới thành công');
+          showToast('Cập nhật thành công');
         } else {
           const errJson = await res.json().catch(() => ({}));
           showToast('Lỗi thêm khách sạn: ' + getFriendlyErrorMessage(errJson, 'Thêm thất bại'));
+          return;
         }
       }
+      setHotelSelectedFiles([null, null, null, null]);
+      setShowHotelModal(false);
     } catch (err) {
       console.warn('Lỗi kết nối API khách sạn:', err);
       showToast(sanitizeErrorMessage(err, 'Lỗi kết nối máy chủ'));
+    } finally {
+      setIsSavingHotel(false);
     }
-    setShowHotelModal(false);
   };
 
   const deleteHotel = async (id) => {
@@ -746,10 +778,11 @@ export default function AdminDashboardPage() {
     amenities: ''
   });
   const roomImageInputRef = useRef(null);
-  const [isUploadingRoomImage, setIsUploadingRoomImage] = useState(false);
+  const [roomSelectedFile, setRoomSelectedFile] = useState(null);
+  const [isSavingRoom, setIsSavingRoom] = useState(false);
 
-  // Xử lý upload ảnh loại phòng (MultipartFile) lên Cloudinary
-  const handleRoomImageUpload = async (e) => {
+  // Xử lý chọn ảnh loại phòng từ máy tính (chỉ lưu file & xem trước, CHƯA upload lên Cloudinary)
+  const handleRoomImageUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -771,55 +804,16 @@ export default function AdminDashboardPage() {
       return;
     }
 
-    try {
-      setIsUploadingRoomImage(true);
-      showToast('Đang tải ảnh loại phòng lên ');
+    // 1. Lưu file vào state để upload khi ấn Lưu loại phòng
+    setRoomSelectedFile(file);
 
-      const formData = new FormData();
-      formData.append('file', file);
+    // 2. Tạo URL xem trước từ file máy tính để hiển thị ngay
+    const previewUrl = URL.createObjectURL(file);
+    setRoomForm(prev => ({ ...prev, imageUrl: previewUrl }));
+    showToast(`Đã chọn ảnh phòng (${file.name}). Ảnh sẽ được tải lên Cloudinary khi ấn Lưu!`);
 
-      let uploadedUrl = '';
-      if (editingRoom?.id && !String(editingRoom.id).startsWith('r-')) {
-        // Cập nhật ảnh trực tiếp vào loại phòng theo ID trong database
-        const res = await apiFetch(`/admin/rooms/${editingRoom.id}/image`, {
-          method: 'PUT',
-          body: formData
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(getFriendlyErrorMessage(data, 'Tải ảnh loại phòng thất bại'));
-        }
-        uploadedUrl = data.result?.imageUrl || data.result;
-        // Đồng bộ cập nhật ngay vào danh sách loại phòng
-        const updated = roomsList.map(r => r.id === editingRoom.id ? { ...r, imageUrl: uploadedUrl } : r);
-        updateRooms(updated);
-        const targetHotelId = editingRoom?.hotelId || roomForm.hotelId;
-        if (targetHotelId) {
-          syncHotelWithRooms(targetHotelId, updated);
-        }
-      } else {
-        // Tạo mới: tải ảnh qua Backend lấy link Cloudinary an toàn
-        const res = await apiFetch('/admin/rooms/upload-image', {
-          method: 'POST',
-          body: formData
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(getFriendlyErrorMessage(data, 'Tải ảnh loại phòng thất bại'));
-        }
-        uploadedUrl = data.result;
-      }
-
-      setRoomForm(prev => ({ ...prev, imageUrl: uploadedUrl }));
-      showToast('Tải ảnh thành công');
-    } catch (err) {
-      console.error('Lỗi khi tải ảnh loại phòng lên Cloudinary:', err);
-      showToast('Lỗi tải ảnh lên  ' + sanitizeErrorMessage(err));
-    } finally {
-      setIsUploadingRoomImage(false);
-      if (roomImageInputRef.current) {
-        roomImageInputRef.current.value = '';
-      }
+    if (roomImageInputRef.current) {
+      roomImageInputRef.current.value = '';
     }
   };
 
@@ -862,6 +856,7 @@ export default function AdminDashboardPage() {
 
   const openAddRoom = () => {
     setEditingRoom(null);
+    setRoomSelectedFile(null);
     setRoomForm({
       hotelId: hotels[0]?.id || '',
       name: '',
@@ -879,6 +874,7 @@ export default function AdminDashboardPage() {
 
   const openEditRoom = (r) => {
     setEditingRoom(r);
+    setRoomSelectedFile(null);
     setRoomForm({
       hotelId: r.hotelId || hotels[0]?.id,
       name: r.name,
@@ -905,6 +901,26 @@ export default function AdminDashboardPage() {
     let savedRoomObj = null;
 
     try {
+      setIsSavingRoom(true);
+
+      // 1. Nếu có file ảnh chọn từ máy tính, upload lên Cloudinary
+      let finalImageUrl = roomForm.imageUrl;
+      if (roomSelectedFile instanceof File) {
+        showToast('Đang tải ảnh loại phòng lên Cloudinary...');
+        const formData = new FormData();
+        formData.append('file', roomSelectedFile);
+
+        const res = await apiFetch('/admin/rooms/upload-image', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(getFriendlyErrorMessage(data, 'Tải ảnh loại phòng lên Cloudinary thất bại'));
+        }
+        finalImageUrl = data.result;
+      }
+
       if (editingRoom) {
         const res = await apiFetch(`/admin/rooms/${editingRoom.id}`, {
           method: 'PUT',
@@ -916,17 +932,17 @@ export default function AdminDashboardPage() {
             bedType: roomForm.bedType,
             roomSize: roomForm.roomSize,
             status: roomForm.status,
-            imageUrl: roomForm.imageUrl,
+            imageUrl: finalImageUrl,
             description: roomForm.description,
             amenities: roomForm.amenities
           })
         });
         if (res.ok) {
           const json = await res.json();
-          savedRoomObj = { ...json.result, hotelName: targetHotel?.name };
+          savedRoomObj = { ...json.result, hotelName: targetHotel?.name, imageUrl: finalImageUrl };
           showToast('Cập nhật thành công');
         } else {
-          savedRoomObj = { ...editingRoom, ...roomForm, hotelId: targetHotel?.id, hotelName: targetHotel?.name };
+          savedRoomObj = { ...editingRoom, ...roomForm, hotelId: targetHotel?.id, hotelName: targetHotel?.name, imageUrl: finalImageUrl };
           showToast('Cập nhật thành công');
         }
         const updated = roomsList.map(r => r.id === editingRoom.id ? savedRoomObj : r);
@@ -943,7 +959,7 @@ export default function AdminDashboardPage() {
             bedType: roomForm.bedType,
             roomSize: roomForm.roomSize,
             status: roomForm.status,
-            imageUrl: roomForm.imageUrl,
+            imageUrl: finalImageUrl,
             description: roomForm.description,
             amenities: roomForm.amenities
           })
@@ -953,17 +969,19 @@ export default function AdminDashboardPage() {
           savedRoomObj = {
             ...json.result,
             hotelId: json.result?.hotelId || Number(roomForm.hotelId),
-            hotelName: json.result?.hotelName || targetHotel?.name
+            hotelName: json.result?.hotelName || targetHotel?.name,
+            imageUrl: finalImageUrl
           };
-          showToast('Thêm mới thành công');
+          showToast('Cập nhật thành công');
         } else {
           savedRoomObj = {
             id: `r-${Date.now()}`,
             ...roomForm,
+            imageUrl: finalImageUrl,
             hotelId: targetHotel ? targetHotel.id : (Number(roomForm.hotelId) || hotels[0]?.id),
             hotelName: targetHotel?.name
           };
-          showToast('Thêm mới thành công');
+          showToast('Cập nhật thành công');
         }
         const updated = [savedRoomObj, ...roomsList];
         updateRooms(updated);
@@ -973,31 +991,14 @@ export default function AdminDashboardPage() {
         setRoomHotelFilter('ALL');
         setRoomStatusFilter('ALL');
       }
+      setRoomSelectedFile(null);
+      setShowRoomModal(false);
     } catch (err) {
       console.warn('API room save fallback:', err);
-      if (editingRoom) {
-        savedRoomObj = { ...editingRoom, ...roomForm, hotelId: targetHotel?.id, hotelName: targetHotel?.name };
-        const updated = roomsList.map(r => r.id === editingRoom.id ? savedRoomObj : r);
-        updateRooms(updated);
-        syncHotelWithRooms(roomForm.hotelId, updated);
-        showToast('Cập nhật thành công');
-      } else {
-        savedRoomObj = {
-          id: `r-${Date.now()}`,
-          ...roomForm,
-          hotelId: targetHotel ? targetHotel.id : (Number(roomForm.hotelId) || hotels[0]?.id),
-          hotelName: targetHotel?.name
-        };
-        const updated = [savedRoomObj, ...roomsList];
-        updateRooms(updated);
-        syncHotelWithRooms(roomForm.hotelId, updated);
-        setRoomSearchQuery('');
-        setRoomHotelFilter('ALL');
-        setRoomStatusFilter('ALL');
-        showToast('Thêm mới thành công');
-      }
+      showToast(sanitizeErrorMessage(err, 'Lỗi kết nối máy chủ'));
+    } finally {
+      setIsSavingRoom(false);
     }
-    setShowRoomModal(false);
   };
 
   const deleteRoom = async (id) => {
@@ -1662,7 +1663,7 @@ export default function AdminDashboardPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <button onClick={() => setSidebarOpen(!sidebarOpen)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex' }}><Menu size={22} /></button>
             <span style={{ color: '#1e293b', fontWeight: 700, fontSize: 16 }}>
-              {{ dashboard: 'Tổng Quan', hotels: 'Quản Lý Khách Sạn (FR-13)', rooms: 'Quản Lý Loại Phòng (FR-14)', amenities: 'Tiện Nghi Khách Sạn', bookings: 'Quản Lý Đặt Phòng & Lễ Tân', customers: 'Quản Lý Khách Hàng', users: 'Quản Lý Người Dùng', payments: 'Quản Lý Thanh Toán', coupons: 'Quản Lý Khuyến Mãi', reviews: 'Đánh Giá Từ Khách Lưu Trú', reports: 'Báo Cáo & Thống Kê' }[activeTab]}
+              {{ dashboard: 'Tổng Quan', hotels: 'Quản Lý Khách Sạn ', rooms: 'Quản Lý Loại Phòng ', amenities: 'Tiện Nghi Khách Sạn', bookings: 'Quản Lý Đặt Phòng & Lễ Tân', customers: 'Quản Lý Khách Hàng', users: 'Quản Lý Người Dùng', payments: 'Quản Lý Thanh Toán', coupons: 'Quản Lý Khuyến Mãi', reviews: 'Đánh Giá Từ Khách Lưu Trú', reports: 'Báo Cáo & Thống Kê' }[activeTab]}
             </span>
           </div>
 
@@ -1778,7 +1779,7 @@ export default function AdminDashboardPage() {
                             else if (h.thumbnailUrl) count = 1;
                             return count > 0 ? (
                               <span style={{ position: 'absolute', bottom: 2, right: 2, background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '9px', padding: '1px 4px', borderRadius: 3, fontWeight: 600 }}>
-                                {count} ảnh
+                             
                               </span>
                             ) : null;
                           })()}
@@ -2630,9 +2631,9 @@ export default function AdminDashboardPage() {
         <Modal onClose={() => setShowHotelModal(false)} title={editingHotel ? 'Chỉnh Sửa Thông Tin Khách Sạn' : 'Thêm Khách Sạn Mới'}>
           <form onSubmit={saveHotel}>
             <div style={{ padding: 24, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <div style={{ gridColumn: '1/2' }}><FL>Tên khách sạn *</FL><input className="form-control" value={hotelForm.name} onChange={e => setHotelForm({ ...hotelForm, name: e.target.value })} required placeholder="VD: Khách Sạn New World Sài Gòn" /></div>
+              <div style={{ gridColumn: '1/2' }}><FL>Tên khách sạn *</FL><input className="form-control" value={hotelForm.name} onChange={e => setHotelForm({ ...hotelForm, name: e.target.value })} required placeholder="" /></div>
               <div><FL>Thành phố *</FL><select className="form-select" value={hotelForm.city} onChange={e => setHotelForm({ ...hotelForm, city: e.target.value })}>{['Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Sa Pa', 'Nha Trang', 'Đà Lạt', 'Phú Quốc'].map(c => <option key={c}>{c}</option>)}</select></div>
-              <div style={{ gridColumn: '1/-1' }}><FL>Địa chỉ chi tiết *</FL><input className="form-control" value={hotelForm.address} onChange={e => setHotelForm({ ...hotelForm, address: e.target.value })} required placeholder="VD: 76 Lê Lai, Phường Bến Thành, Quận 1" /></div>
+              <div style={{ gridColumn: '1/-1' }}><FL>Địa chỉ chi tiết *</FL><input className="form-control" value={hotelForm.address} onChange={e => setHotelForm({ ...hotelForm, address: e.target.value })} required placeholder="" /></div>
               <div><FL>Hạng sao</FL><select className="form-select" value={hotelForm.starRating} onChange={e => setHotelForm({ ...hotelForm, starRating: e.target.value })}>{[5,4,3,2].map(s => <option key={s} value={s}>{s} sao</option>)}</select></div>
               <div>
                 <FL>Giá phòng khởi điểm / đêm (VNĐ) *</FL>
@@ -2640,22 +2641,17 @@ export default function AdminDashboardPage() {
                   type="text"
                   inputMode="numeric"
                   className="form-control"
-                  placeholder="VD: 500000"
                   value={hotelForm.pricePerNight}
                   onKeyDown={handlePriceKeyDown}
                   onChange={e => setHotelForm({ ...hotelForm, pricePerNight: sanitizePriceInput(e.target.value) })}
                   required
                 />
-                <div style={{ fontSize: 12, color: '#2563eb', fontWeight: 600, marginTop: 4 }}>
-                  💰 Xem nhanh: {Number(hotelForm.pricePerNight || 0).toLocaleString('vi-VN')} VNĐ / đêm
-                </div>
+             
               </div>
               <div style={{ gridColumn: '1/-1' }}>
                 <div className="d-flex justify-content-between align-items-center mb-2">
-                  <FL style={{ margin: 0 }}>Quản lý 4 Hình Ảnh Khách Sạn (Hiển thị Trang Chủ & Trang Chi Tiết)</FL>
-                  <span className="badge bg-primary-subtle text-primary fw-medium" style={{ fontSize: '11px' }}>
-                    Cloudinary CDN Hỗ Trợ
-                  </span>
+                 
+                
                 </div>
 
                 {/* Ẩn file input dùng chung cho cả 4 vị trí ảnh */}
@@ -2721,15 +2717,15 @@ export default function AdminDashboardPage() {
                           )}
                           <button
                             type="button"
-                            className="btn btn-primary d-flex align-items-center gap-1 fw-semibold px-2"
+                            className={`btn ${hotelSelectedFiles[index] ? 'btn-success text-white' : 'btn-primary'} d-flex align-items-center gap-1 fw-semibold px-2`}
                             onClick={() => triggerHotelImageUpload(index)}
-                            disabled={uploadingImageIndex !== null}
-                            title={`Tải ảnh ${index + 1} từ máy tính lên Cloudinary`}
+                            disabled={isSavingHotel}
+                            title={hotelSelectedFiles[index] ? `Đã chọn: ${hotelSelectedFiles[index].name} (sẽ tải lên Cloudinary khi nhấn Lưu)` : `Tải ảnh ${index + 1} từ máy tính lên`}
                           >
-                            {uploadingImageIndex === index ? (
+                            {hotelSelectedFiles[index] ? (
                               <>
-                                <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" style={{ width: 12, height: 12 }} />
-                                <span style={{ fontSize: '11px' }}>Tải...</span>
+                                <CheckCircle2 size={13} />
+                                <span style={{ fontSize: '11px' }}>Đã chọn</span>
                               </>
                             ) : (
                               <>
@@ -2772,17 +2768,15 @@ export default function AdminDashboardPage() {
                           <span style={{ fontSize: '11px' }}>Chưa có Ảnh bìa chính (Ảnh 1)</span>
                         </div>
                       )}
-                      <span style={{ position: 'absolute', bottom: 6, left: 6, background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '10.5px', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>
-                        ⭐ Ảnh 1 (Bìa chính)
-                      </span>
+                    
                     </div>
 
                     {/* 3 ảnh nhỏ bên phải - Flex column với height: 0 đảm bảo chia đều chính xác 56px mỗi ảnh */}
                     <div style={{ flex: '1 1 0', minWidth: 0, height: 180, display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {[
-                        { idx: 1, title: 'Ảnh 2 (Không gian)' },
-                        { idx: 2, title: 'Ảnh 3 (Tiện ích)' },
-                        { idx: 3, title: 'Ảnh 4 (Toàn cảnh)' }
+                        { idx: 1,},
+                        { idx: 2,},
+                        { idx: 3,}
                       ].map(({ idx, title }) => (
                         <div
                           key={idx}
@@ -2816,54 +2810,20 @@ export default function AdminDashboardPage() {
                     </div>
                   </div>
 
-                  {/* Thanh hiển thị đầy đủ cả 4 ảnh theo hàng ngang độc lập */}
-                  <div className="mt-2 pt-2 border-top">
-                    <div className="text-secondary small fw-semibold mb-1" style={{ fontSize: '11px' }}>
-                      Danh mục 4 ảnh của khách sạn:
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-                      {[
-                        { idx: 0, name: 'Ảnh 1 (Bìa)' },
-                        { idx: 1, name: 'Ảnh 2 (Phòng)' },
-                        { idx: 2, name: 'Ảnh 3 (Tiện ích)' },
-                        { idx: 3, name: 'Ảnh 4 (Sảnh/Cảnh)' }
-                      ].map(({ idx, name }) => (
-                        <div
-                          key={idx}
-                          style={{
-                            height: 48,
-                            borderRadius: 6,
-                            overflow: 'hidden',
-                            position: 'relative',
-                            backgroundColor: '#f1f5f9',
-                            border: hotelForm.images?.[idx] ? '1.5px solid #3b82f6' : '1px dashed #cbd5e1'
-                          }}
-                        >
-                          {hotelForm.images?.[idx] ? (
-                            <img
-                              src={hotelForm.images[idx]}
-                              alt=""
-                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                            />
-                          ) : (
-                            <div className="d-flex align-items-center justify-content-center h-100 text-muted" style={{ fontSize: '10px' }}>
-                              Chưa nhập
-                            </div>
-                          )}
-                          <span style={{ position: 'absolute', bottom: 1, left: 3, background: 'rgba(0,0,0,0.75)', color: '#fff', fontSize: '8.5px', padding: '0 4px', borderRadius: 2 }}>
-                            {name}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
                 </div>
               </div>
               <div style={{ gridColumn: '1/-1' }}><FL>Mô tả giới thiệu</FL><textarea rows={3} className="form-control" value={hotelForm.description} onChange={e => setHotelForm({ ...hotelForm, description: e.target.value })} placeholder="Nêu các điểm nổi bật..." /></div>
             </div>
             <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
               <button type="button" onClick={() => setShowHotelModal(false)} style={{ background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: 10, padding: '10px 24px', fontWeight: 600, cursor: 'pointer' }}>Hủy Bỏ</button>
-              <button type="submit" style={{ background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 24px', fontWeight: 700, cursor: 'pointer' }}>{editingHotel ? 'Lưu Thay Đổi' : 'Tạo Khách Sạn'}</button>
+              <button
+                type="submit"
+                disabled={isSavingHotel}
+                style={{ background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 24px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+              >
+                {isSavingHotel && <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />}
+                {isSavingHotel ? 'Đang tải ảnh & Lưu...' : (editingHotel ? 'Lưu Thay Đổi' : 'Tạo Khách Sạn')}
+              </button>
             </div>
           </form>
         </Modal>
@@ -2883,7 +2843,7 @@ export default function AdminDashboardPage() {
               </div>
               <div style={{ gridColumn: '1/2' }}>
                 <FL>Tên loại phòng *</FL>
-                <input className="form-control" value={roomForm.name} onChange={e => setRoomForm({ ...roomForm, name: e.target.value })} required placeholder="VD: Phòng Deluxe Giường Đôi Hướng Biển" />
+                <input className="form-control" value={roomForm.name} onChange={e => setRoomForm({ ...roomForm, name: e.target.value })} required placeholder="" />
               </div>
               <div>
                 <FL>Giá phòng 1 đêm (VNĐ) *</FL>
@@ -2891,15 +2851,13 @@ export default function AdminDashboardPage() {
                   type="text"
                   inputMode="numeric"
                   className="form-control"
-                  placeholder="VD: 500000"
+                  placeholder=""
                   value={roomForm.pricePerNight}
                   onKeyDown={handlePriceKeyDown}
                   onChange={e => setRoomForm({ ...roomForm, pricePerNight: sanitizePriceInput(e.target.value) })}
                   required
                 />
-                <div style={{ fontSize: 12, color: '#2563eb', fontWeight: 600, marginTop: 4 }}>
-                  💰 Xem nhanh: {Number(roomForm.pricePerNight || 0).toLocaleString('vi-VN')} VNĐ / đêm
-                </div>
+             
               </div>
               <div>
                 <FL>Số lượng khách tối đa *</FL>
@@ -2915,7 +2873,7 @@ export default function AdminDashboardPage() {
               </div>
               <div>
                 <FL>Loại giường</FL>
-                <input className="form-control" value={roomForm.bedType} onChange={e => setRoomForm({ ...roomForm, bedType: e.target.value })} placeholder="VD: 1 Giường King hoặc 2 Giường đơn" />
+                <input className="form-control" value={roomForm.bedType} onChange={e => setRoomForm({ ...roomForm, bedType: e.target.value })} placeholder="" />
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
                   {['1 Giường King', '2 Giường đơn', '1 King & 1 Đơn', '2 Giường đôi'].map(b => (
                     <button
@@ -2939,7 +2897,7 @@ export default function AdminDashboardPage() {
               </div>
               <div>
                 <FL>Diện tích phòng</FL>
-                <input className="form-control" value={roomForm.roomSize} onChange={e => setRoomForm({ ...roomForm, roomSize: e.target.value })} placeholder="VD: 45 m²" />
+                <input className="form-control" value={roomForm.roomSize} onChange={e => setRoomForm({ ...roomForm, roomSize: e.target.value })} placeholder="" />
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
                   {['28 m²', '35 m²', '45 m²', '65 m²'].map(s => (
                     <button
@@ -2967,21 +2925,24 @@ export default function AdminDashboardPage() {
                   <input
                     type="url"
                     className="form-control"
+                    placeholder="Dán link ảnh hoặc bấm nút Upload..."
                     value={roomForm.imageUrl}
-                    onChange={e => setRoomForm({ ...roomForm, imageUrl: e.target.value })}
-                    placeholder="https://... hoặc bấm nút Upload để chọn ảnh"
+                    onChange={e => {
+                      setRoomSelectedFile(null);
+                      setRoomForm({ ...roomForm, imageUrl: e.target.value });
+                    }}
                   />
                   <button
                     type="button"
-                    className="btn btn-primary d-flex align-items-center gap-2 fw-semibold px-3"
+                    className={`btn ${roomSelectedFile ? 'btn-success text-white' : 'btn-primary'} d-flex align-items-center gap-2 fw-semibold px-3`}
                     onClick={() => roomImageInputRef.current?.click()}
-                    disabled={isUploadingRoomImage}
-                    title="Tải ảnh loại phòng từ máy tính lên Cloudinary"
+                    disabled={isSavingRoom}
+                    title={roomSelectedFile ? `Đã chọn: ${roomSelectedFile.name} (sẽ tải lên Cloudinary khi ấn Lưu)` : "Chọn ảnh loại phòng từ máy tính"}
                   >
-                    {isUploadingRoomImage ? (
+                    {roomSelectedFile ? (
                       <>
-                        <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
-                        <span>Đang tải lên...</span>
+                        <CheckCircle2 size={16} />
+                        <span>Đã chọn file</span>
                       </>
                     ) : (
                       <>
@@ -3008,8 +2969,17 @@ export default function AdminDashboardPage() {
                       onError={(e) => { e.target.style.display = 'none'; }}
                     />
                     <div className="small text-secondary" style={{ fontSize: '12px' }}>
-                      <div className="fw-semibold text-dark">Xem trước ảnh phòng</div>
-                      <div className="text-truncate" style={{ maxWidth: 380 }}>{roomForm.imageUrl}</div>
+                      <div className="d-flex align-items-center gap-2">
+                        <span className="fw-semibold text-dark">Xem trước ảnh phòng</span>
+                        {roomSelectedFile && (
+                          <span className="badge bg-warning text-dark" style={{ fontSize: '10px' }}>
+                            File máy tính • Sẽ tải lên khi Lưu
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-truncate" style={{ maxWidth: 380 }}>
+                        {roomSelectedFile ? roomSelectedFile.name : roomForm.imageUrl}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -3029,7 +2999,7 @@ export default function AdminDashboardPage() {
                   className="form-control mb-2"
                   value={roomForm.amenities || ''}
                   onChange={e => setRoomForm({ ...roomForm, amenities: e.target.value })}
-                  placeholder="VD: WiFi miễn phí, Điều hòa, Smart TV, Bồn tắm nằm, Tủ lạnh mini... (cách nhau bằng dấu phẩy)"
+                
                 />
                 
                 {/* Gợi ý tiện nghi phòng phổ biến để click chọn nhanh */}
@@ -3095,12 +3065,19 @@ export default function AdminDashboardPage() {
               </div>
               <div style={{ gridColumn: '1/-1' }}>
                 <FL>Mô tả chi tiết phòng</FL>
-                <textarea rows={3} className="form-control" value={roomForm.description} onChange={e => setRoomForm({ ...roomForm, description: e.target.value })} placeholder="Nêu các đặc điểm nổi bật, view phòng, tiện ích..." />
+                <textarea rows={3} className="form-control" value={roomForm.description} onChange={e => setRoomForm({ ...roomForm, description: e.target.value })} placeholder="" />
               </div>
             </div>
             <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
               <button type="button" onClick={() => setShowRoomModal(false)} style={{ background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: 10, padding: '10px 24px', fontWeight: 600, cursor: 'pointer' }}>Hủy Bỏ</button>
-              <button type="submit" style={{ background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 24px', fontWeight: 700, cursor: 'pointer' }}>{editingRoom ? 'Lưu Thay Đổi' : 'Tạo Loại Phòng'}</button>
+              <button
+                type="submit"
+                disabled={isSavingRoom}
+                style={{ background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 24px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+              >
+                {isSavingRoom && <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />}
+                {isSavingRoom ? 'Đang tải ảnh & Lưu...' : (editingRoom ? 'Lưu Thay Đổi' : 'Tạo Loại Phòng')}
+              </button>
             </div>
           </form>
         </Modal>
