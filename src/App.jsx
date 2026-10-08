@@ -18,6 +18,7 @@ import ProfilePage from './pages/ProfilePage';
 import PaymentCallbackPage from './pages/PaymentCallbackPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
+import ScrollToTop from './components/ScrollToTop';
 
 // Các route không hiển thị Navbar & Footer (trang Admin có layout riêng)
 const ADMIN_ROUTES = ['/admin'];
@@ -28,6 +29,9 @@ function AppLayout() {
 
   return (
     <div className="d-flex flex-column min-vh-100">
+      {/* Tự động cuộn lên đầu trang mỗi khi chuyển trang */}
+      <ScrollToTop />
+
       {/* Ẩn Navbar trên trang Admin – Admin có sidebar riêng */}
       {!isAdminPage && <Navbar />}
 

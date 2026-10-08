@@ -31,30 +31,39 @@ export default function HotelDetailPage() {
   const [activeImage, setActiveImage] = useState(null);
   const [bookingSuccessNotice, setBookingSuccessNotice] = useState(null);
 
-  // Danh sách 4 hình ảnh khách sạn đồng bộ với Admin và Trang Chủ
-  const galleryImages = useMemo(() => {
-    if (!hotel) return [];
-    let list = [];
-    if (Array.isArray(hotel.images) && hotel.images.length > 0) {
-      list = hotel.images.filter(Boolean);
-    } else if (typeof hotel.images === 'string' && hotel.images.trim()) {
-      list = hotel.images.split(',').map(s => s.trim()).filter(Boolean);
-    } else if (hotel.thumbnailUrl) {
-      list = [hotel.thumbnailUrl];
+  // 1 ảnh đại diện chính của khách sạn
+  const mainCoverImage = useMemo(() => {
+    if (!hotel) return 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=1000&auto=format&fit=crop&q=80';
+    let cover = hotel.thumbnailUrl;
+    if (!cover) {
+      if (Array.isArray(hotel.images) && hotel.images.length > 0) cover = hotel.images[0];
+      else if (typeof hotel.images === 'string' && hotel.images.trim()) cover = hotel.images.split(',')[0].trim();
     }
-    const defaultFallbacks = [
-      'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=1000&auto=format&fit=crop&q=80',
+    return cover || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=1000&auto=format&fit=crop&q=80';
+  }, [hotel]);
+
+  // Đúng 3 ảnh phòng (lấy từ các phòng của khách sạn và ảnh 2, 3, 4 đã lưu, không trùng lặp ảnh đại diện)
+  const roomImages = useMemo(() => {
+    if (!hotel) return [];
+    const roomImgList = (hotel.rooms || []).map(r => r.imageUrl).filter(Boolean);
+    let extraImgs = [];
+    if (Array.isArray(hotel.images)) {
+      extraImgs = hotel.images.slice(1).filter(Boolean);
+    } else if (typeof hotel.images === 'string' && hotel.images.trim()) {
+      extraImgs = hotel.images.split(',').slice(1).map(s => s.trim()).filter(Boolean);
+    }
+    const combined = [...new Set([...roomImgList, ...extraImgs])].filter(url => url && url !== mainCoverImage);
+    const roomFallbacks = [
       'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=600&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=600&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=600&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1566665797739-1674de7a421a?w=600&auto=format&fit=crop&q=80'
     ];
     return [
-      list[0] || hotel.thumbnailUrl || defaultFallbacks[0],
-      list[1] || defaultFallbacks[1],
-      list[2] || defaultFallbacks[2],
-      list[3] || defaultFallbacks[3]
+      combined[0] || roomFallbacks[0],
+      combined[1] || roomFallbacks[1],
+      combined[2] || roomFallbacks[2]
     ];
-  }, [hotel]);
+  }, [hotel, mainCoverImage]);
 
   // Tải chi tiết khách sạn và danh sách phòng từ Backend API
   const loadHotelDetails = async () => {
@@ -266,33 +275,63 @@ export default function HotelDetailPage() {
           </div>
         </div>
 
-        {/* 2. Thư viện ảnh (Gallery) */}
+        {/* 2. Thư viện ảnh (Gallery) - 1 Ảnh to đại diện + 3 Ảnh phòng */}
         <div className="card border-0 shadow-sm rounded-4 p-3 mb-4 bg-white overflow-hidden">
           <div className="row g-2">
-            {/* Ảnh lớn chính */}
+            {/* 1 Ảnh lớn chính (Mặc định là Ảnh đại diện, có thể bấm đổi khi click vào ảnh phòng) */}
             <div className="col-lg-8">
-              <img 
-                src={activeImage || galleryImages[0]} 
-                alt={hotel.name} 
-                className="w-100 rounded-3 shadow-sm"
-                style={{ height: '420px', objectFit: 'cover' }}
-              />
+              <div className="position-relative w-100 rounded-3 overflow-hidden shadow-sm" style={{ height: '420px' }}>
+                <img 
+                  src={activeImage || mainCoverImage} 
+                  alt={hotel.name} 
+                  className="w-100 h-100 object-fit-cover"
+                  style={{ display: 'block' }}
+                />
+                <div className="position-absolute bottom-0 start-0 m-3 d-flex align-items-center gap-2">
+                  <span className="badge bg-dark bg-opacity-75 px-3 py-2 fs-6 fw-semibold shadow-sm">
+                    {(activeImage && activeImage !== mainCoverImage) ? '📷 Xem Chi Tiết Phòng' : '⭐ Ảnh Đại Diện Khách Sạn'}
+                  </span>
+                  {activeImage && activeImage !== mainCoverImage && (
+                    <button 
+                      type="button" 
+                      onClick={() => setActiveImage(mainCoverImage)}
+                      className="btn btn-sm btn-light bg-white bg-opacity-95 fw-semibold px-2 py-1 shadow-sm border-0"
+                      style={{ fontSize: '12px' }}
+                    >
+                      ↩ Về ảnh đại diện
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
 
-            {/* Danh sách 4 ảnh con có thể bấm chọn */}
+            {/* Cột phải: Đúng 3 ảnh phòng (không trùng lặp ảnh đại diện) */}
             <div className="col-lg-4">
-              <div className="row g-2 h-100">
-                {galleryImages.map((imgUrl, index) => (
-                  <div key={index} className="col-6">
-                    <img 
-                      src={imgUrl} 
-                      alt={`Ảnh ${index + 1}`} 
-                      onClick={() => setActiveImage(imgUrl)}
-                      className={`w-100 rounded-3 cursor-pointer object-fit-cover border ${(activeImage || galleryImages[0]) === imgUrl ? 'border-primary border-3 shadow' : 'opacity-75'}`}
-                      style={{ height: '205px', transition: 'all 0.2s' }}
-                    />
-                  </div>
-                ))}
+              <div className="d-flex flex-column justify-content-between gap-2" style={{ height: '420px' }}>
+                {roomImages.map((imgUrl, index) => {
+                  const isSelected = (activeImage || mainCoverImage) === imgUrl;
+                  return (
+                    <div 
+                      key={index} 
+                      className="position-relative flex-grow-1 rounded-3 overflow-hidden" 
+                      style={{ height: '134px', minHeight: 0 }}
+                    >
+                      <img 
+                        src={imgUrl} 
+                        alt={`Ảnh phòng ${index + 1}`} 
+                        onClick={() => setActiveImage(imgUrl)}
+                        className={`w-100 h-100 cursor-pointer object-fit-cover border rounded-3 transition-all ${isSelected ? 'border-primary border-3 shadow' : 'opacity-85'}`}
+                        style={{ transition: 'all 0.2s', display: 'block' }}
+                      />
+                      <span 
+                        className="position-absolute bottom-0 start-0 m-2 px-2 py-1 bg-dark bg-opacity-75 text-white rounded small fw-medium"
+                        style={{ fontSize: '11px', pointerEvents: 'none' }}
+                      >
+                        🛏️ Ảnh phòng {index + 1}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -432,14 +471,22 @@ export default function HotelDetailPage() {
                     <div className="pt-2 border-top">
                       <span className="fw-bold small text-dark d-block mb-2">Tiện nghi trong phòng:</span>
                       <div className="d-flex flex-wrap gap-1">
-                        {(Array.isArray(room.amenities)
-                          ? room.amenities
-                          : (typeof room.amenities === 'string' ? room.amenities.split(',').map(s => s.trim()).filter(Boolean) : [])
-                        ).map((item, i) => (
-                          <span key={i} className="badge bg-light text-secondary border small">
-                            ✓ {item}
-                          </span>
-                        ))}
+                        {(() => {
+                          let list = [];
+                          if (Array.isArray(room.amenities)) {
+                            list = room.amenities.filter(Boolean);
+                          } else if (typeof room.amenities === 'string' && room.amenities.trim()) {
+                            list = room.amenities.split(',').map(s => s.trim()).filter(Boolean);
+                          }
+                          if (list.length === 0) {
+                            list = ['WiFi miễn phí', 'Điều hòa nhiệt độ', 'Smart TV', 'Phòng tắm riêng', 'Nước suối miễn phí'];
+                          }
+                          return list.map((item, i) => (
+                            <span key={i} className="badge bg-light text-dark border small py-1 px-2 fw-normal">
+                              ✓ {item}
+                            </span>
+                          ));
+                        })()}
                       </div>
                     </div>
                   </div>
