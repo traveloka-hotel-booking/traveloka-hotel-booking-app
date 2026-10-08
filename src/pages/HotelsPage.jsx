@@ -7,6 +7,52 @@ import {
   Loader2, ChevronLeft, ChevronRight
 } from 'lucide-react';
 
+// Trích xuất an toàn danh sách 4 hình ảnh khách sạn (1 ảnh chính + 3 ảnh phòng/tiện ích)
+const getHotelImageList = (hotel) => {
+  let list = [];
+  if (Array.isArray(hotel?.images) && hotel.images.length > 0) {
+    list = hotel.images.filter(Boolean);
+  } else if (typeof hotel?.images === 'string' && hotel.images.trim()) {
+    let parts = [];
+    const trimmed = hotel.images.trim();
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) parts = parsed.map(s => String(s).trim()).filter(Boolean);
+      } catch {}
+    } else if (trimmed.includes(';;;')) {
+      parts = trimmed.split(';;;').map(s => s.trim()).filter(Boolean);
+    } else if (trimmed.includes('|||')) {
+      parts = trimmed.split('|||').map(s => s.trim()).filter(Boolean);
+    } else if (trimmed.includes('\n')) {
+      parts = trimmed.split('\n').map(s => s.trim()).filter(Boolean);
+    } else {
+      parts = trimmed.split(',').map(s => s.trim()).filter(Boolean);
+    }
+    list = parts;
+  } else if (hotel?.thumbnailUrl) {
+    list = [hotel.thumbnailUrl];
+  }
+
+  // Bổ sung từ ảnh phòng nếu danh sách thiếu
+  const roomImgs = (hotel?.rooms || []).map(r => r.imageUrl).filter(Boolean);
+  const combined = [...new Set([...list, ...roomImgs])].filter(Boolean);
+
+  const defaultFallbacks = [
+    'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=600&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?w=600&auto=format&fit=crop&q=80',
+  ];
+
+  return [
+    combined[0] || hotel?.thumbnailUrl || defaultFallbacks[0],
+    combined[1] || defaultFallbacks[1],
+    combined[2] || defaultFallbacks[2],
+    combined[3] || defaultFallbacks[3]
+  ];
+};
+
 export default function HotelsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const cityParam = searchParams.get('city') || '';
@@ -33,6 +79,11 @@ export default function HotelsPage() {
   useEffect(() => {
     setSelectedCity(cityParam);
   }, [cityParam]);
+
+  // Cuộn lên đầu trang khi chuyển trang phân trang
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [page]);
 
   // Gọi API FR-06 / FR-07 từ backend
   const loadHotels = useCallback(async () => {
@@ -355,14 +406,54 @@ export default function HotelsPage() {
                 {filteredHotels.map((hotel) => (
                   <div key={hotel.id} className="card border-0 shadow-sm rounded-4 overflow-hidden hover-shadow bg-white">
                     <div className="row g-0">
-                      {/* Ảnh khách sạn */}
-                      <div className="col-lg-4 col-md-5">
-                        <img 
-                          src={(Array.isArray(hotel.images) ? hotel.images[0] : null) || hotel.thumbnailUrl || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600&auto=format&fit=crop&q=80'} 
-                          className="w-100 h-100 object-fit-cover" 
-                          alt={hotel.name}
-                          style={{ minHeight: '240px', maxHeight: '280px' }}
-                        />
+                      {/* Cột ảnh: 1 ảnh to đại diện + 3 ảnh nhỏ phòng/tiện ích */}
+                      <div className="col-lg-4 col-md-5 p-2 d-flex flex-column justify-content-between">
+                        {(() => {
+                          const imgs = getHotelImageList(hotel);
+                          return (
+                            <>
+                              <div className="position-relative mb-1 rounded-3 overflow-hidden" style={{ height: '175px' }}>
+                                <img 
+                                  src={imgs[0]} 
+                                  alt={hotel.name}
+                                  className="w-100 h-100 object-fit-cover"
+                                />
+                                <span 
+                                  className="position-absolute top-0 start-0 m-2 badge bg-dark bg-opacity-75 small px-2 py-1"
+                                  style={{ fontSize: '11px' }}
+                                >
+                                  ⭐ Ảnh chính
+                                </span>
+                              </div>
+                              <div className="row g-1">
+                                <div className="col-4">
+                                  <img 
+                                    src={imgs[1]} 
+                                    alt="Ảnh phòng 1"
+                                    className="w-100 rounded-2 object-fit-cover"
+                                    style={{ height: '58px' }}
+                                  />
+                                </div>
+                                <div className="col-4">
+                                  <img 
+                                    src={imgs[2]} 
+                                    alt="Ảnh tiện ích 2"
+                                    className="w-100 rounded-2 object-fit-cover"
+                                    style={{ height: '58px' }}
+                                  />
+                                </div>
+                                <div className="col-4">
+                                  <img 
+                                    src={imgs[3]} 
+                                    alt="Ảnh không gian 3"
+                                    className="w-100 rounded-2 object-fit-cover"
+                                    style={{ height: '58px' }}
+                                  />
+                                </div>
+                              </div>
+                            </>
+                          );
+                        })()}
                       </div>
 
                       {/* Thông tin chi tiết */}

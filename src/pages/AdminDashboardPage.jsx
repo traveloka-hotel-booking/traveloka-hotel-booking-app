@@ -98,6 +98,14 @@ export default function AdminDashboardPage() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [toastMsg, setToastMsg] = useState(null);
+  const mainContentRef = useRef(null);
+
+  // Cuộn lên đầu tab khi chuyển đổi tab trong Admin
+  useEffect(() => {
+    if (mainContentRef.current) {
+      mainContentRef.current.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    }
+  }, [activeTab]);
 
   const showToast = (msg) => {
     setToastMsg(msg);
@@ -402,12 +410,49 @@ export default function AdminDashboardPage() {
     setEditingHotel(h); 
     let initialImgs = ['', '', '', ''];
     if (Array.isArray(h.images) && h.images.length > 0) {
-      initialImgs = [h.images[0] || '', h.images[1] || '', h.images[2] || '', h.images[3] || ''];
+      const filtered = h.images.map(s => typeof s === 'string' ? s.trim() : '').filter(Boolean);
+      initialImgs = [filtered[0] || '', filtered[1] || '', filtered[2] || '', filtered[3] || ''];
     } else if (typeof h.images === 'string' && h.images.trim()) {
-      const parts = h.images.split(',').map(s => s.trim()).filter(Boolean);
+      let parts = [];
+      const trimmed = h.images.trim();
+      if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (Array.isArray(parsed)) parts = parsed.map(s => String(s).trim()).filter(Boolean);
+        } catch {}
+      } else if (trimmed.includes(';;;')) {
+        parts = trimmed.split(';;;').map(s => s.trim()).filter(Boolean);
+      } else if (trimmed.includes('|||')) {
+        parts = trimmed.split('|||').map(s => s.trim()).filter(Boolean);
+      } else if (trimmed.includes('\n')) {
+        parts = trimmed.split('\n').map(s => s.trim()).filter(Boolean);
+      } else {
+        parts = trimmed.split(',').map(s => s.trim()).filter(Boolean);
+      }
       initialImgs = [parts[0] || '', parts[1] || '', parts[2] || '', parts[3] || ''];
-    } else if (h.thumbnailUrl) {
-      initialImgs = [h.thumbnailUrl, '', '', ''];
+    }
+
+    if (!initialImgs[0] && h.thumbnailUrl) {
+      initialImgs[0] = h.thumbnailUrl;
+    }
+
+    // Nếu các slot ảnh 2, 3, 4 còn trống, tự động bổ sung từ ảnh phòng của khách sạn này
+    const hotelRooms = roomsList.filter(r => String(r.hotelId) === String(h.id));
+    const roomImgs = [...new Set([
+      ...(h.rooms || []).map(r => r.imageUrl),
+      ...hotelRooms.map(r => r.imageUrl)
+    ])].filter(Boolean);
+
+    let roomImgIdx = 0;
+    for (let i = 1; i < 4; i++) {
+      if (!initialImgs[i]) {
+        while (roomImgIdx < roomImgs.length && initialImgs.includes(roomImgs[roomImgIdx])) {
+          roomImgIdx++;
+        }
+        if (roomImgIdx < roomImgs.length) {
+          initialImgs[i] = roomImgs[roomImgIdx++];
+        }
+      }
     }
 
     setHotelForm({ 
@@ -531,7 +576,19 @@ export default function AdminDashboardPage() {
         });
         if (res.ok) {
           const json = await res.json();
-          updateHotels(hotels.map(h => h.id === editingHotel.id ? json.result : h));
+          const updatedHotel = {
+            ...editingHotel,
+            ...(json.result || {}),
+            name: hotelForm.name,
+            city: hotelForm.city,
+            address: hotelForm.address,
+            starRating: Number(hotelForm.starRating),
+            pricePerNight: Number(hotelForm.pricePerNight),
+            description: hotelForm.description,
+            thumbnailUrl: mainThumb,
+            images: cleanImages.length > 0 ? cleanImages : (json.result?.images || [mainThumb])
+          };
+          updateHotels(hotels.map(h => h.id === editingHotel.id ? updatedHotel : h));
           showToast('Cập nhật thành công');
         } else {
           const errJson = await res.json().catch(() => ({}));
@@ -554,7 +611,18 @@ export default function AdminDashboardPage() {
         });
         if (res.ok) {
           const json = await res.json();
-          updateHotels([json.result, ...hotels]);
+          const newHotel = {
+            ...(json.result || {}),
+            name: hotelForm.name,
+            city: hotelForm.city,
+            address: hotelForm.address,
+            starRating: Number(hotelForm.starRating),
+            pricePerNight: Number(hotelForm.pricePerNight),
+            description: hotelForm.description,
+            thumbnailUrl: mainThumb,
+            images: cleanImages.length > 0 ? cleanImages : (json.result?.images || [mainThumb])
+          };
+          updateHotels([newHotel, ...hotels]);
           showToast('Thêm mới thành công');
         } else {
           const errJson = await res.json().catch(() => ({}));
@@ -655,7 +723,8 @@ export default function AdminDashboardPage() {
     roomSize: '35 m²',
     status: 'AVAILABLE',
     imageUrl: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60',
-    description: 'Phòng đầy đủ tiện nghi tiêu chuẩn cao cấp, nội thất hiện đại và view thoáng đãng.'
+    description: 'Phòng đầy đủ tiện nghi tiêu chuẩn cao cấp, nội thất hiện đại và view thoáng đãng.',
+    amenities: 'WiFi miễn phí, Điều hòa nhiệt độ, Smart TV, Tủ lạnh mini, Bồn tắm nằm, Máy sấy tóc'
   });
   const roomImageInputRef = useRef(null);
   const [isUploadingRoomImage, setIsUploadingRoomImage] = useState(false);
@@ -783,7 +852,8 @@ export default function AdminDashboardPage() {
       roomSize: '35 m²',
       status: 'AVAILABLE',
       imageUrl: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60',
-      description: 'Phòng đầy đủ tiện nghi cao cấp, nội thất gỗ sang trọng.'
+      description: 'Phòng đầy đủ tiện nghi cao cấp, nội thất gỗ sang trọng.',
+      amenities: 'WiFi miễn phí, Điều hòa nhiệt độ, Smart TV, Tủ lạnh mini, Bồn tắm nằm, Máy sấy tóc'
     });
     setShowRoomModal(true);
   };
@@ -799,7 +869,8 @@ export default function AdminDashboardPage() {
       roomSize: r.roomSize || '35 m²',
       status: r.status || 'AVAILABLE',
       imageUrl: r.imageUrl || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60',
-      description: r.description || ''
+      description: r.description || '',
+      amenities: r.amenities || 'WiFi miễn phí, Điều hòa nhiệt độ, Smart TV, Tủ lạnh mini'
     });
     setShowRoomModal(true);
   };
@@ -822,7 +893,8 @@ export default function AdminDashboardPage() {
             roomSize: roomForm.roomSize,
             status: roomForm.status,
             imageUrl: roomForm.imageUrl,
-            description: roomForm.description
+            description: roomForm.description,
+            amenities: roomForm.amenities
           })
         });
         if (res.ok) {
@@ -848,7 +920,8 @@ export default function AdminDashboardPage() {
             roomSize: roomForm.roomSize,
             status: roomForm.status,
             imageUrl: roomForm.imageUrl,
-            description: roomForm.description
+            description: roomForm.description,
+            amenities: roomForm.amenities
           })
         });
         if (res.ok) {
@@ -1589,7 +1662,7 @@ export default function AdminDashboardPage() {
         </header>
 
         {/* Content area */}
-        <main style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+        <main ref={mainContentRef} style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
 
           {/* ══ TAB: TỔNG QUAN ══ */}
           {activeTab === 'dashboard' && (
@@ -1666,7 +1739,27 @@ export default function AdminDashboardPage() {
                   <thead style={{ background: '#f8fafc' }}><tr>{['Hình Ảnh', 'Tên Khách Sạn', 'Thành Phố', 'Hạng Sao', 'Điểm Đánh Giá', 'Giá Khởi Điểm', 'Số Phòng', 'Thao Tác'].map(h => <Th key={h}>{h}</Th>)}</tr></thead>
                   <tbody>{hotels.map(h => (
                     <tr key={h.id}>
-                      <td><img src={h.thumbnailUrl} alt={h.name} style={{ width: 64, height: 48, borderRadius: 8, objectFit: 'cover' }} /></td>
+                      <td>
+                        <div style={{ position: 'relative', width: 64, height: 48, borderRadius: 8, overflow: 'hidden', backgroundColor: '#f1f5f9' }}>
+                          <img
+                            src={h.thumbnailUrl || (Array.isArray(h.images) ? h.images[0] : null) || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600&auto=format&fit=crop&q=80'}
+                            alt={h.name}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            onError={(e) => { e.target.style.opacity = '0.3'; }}
+                          />
+                          {(() => {
+                            let count = 0;
+                            if (Array.isArray(h.images)) count = h.images.filter(Boolean).length;
+                            else if (typeof h.images === 'string' && h.images.trim()) count = h.images.split(/[,;\n|]+/).map(s => s.trim()).filter(Boolean).length;
+                            else if (h.thumbnailUrl) count = 1;
+                            return count > 0 ? (
+                              <span style={{ position: 'absolute', bottom: 2, right: 2, background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '9px', padding: '1px 4px', borderRadius: 3, fontWeight: 600 }}>
+                                {count} ảnh
+                              </span>
+                            ) : null;
+                          })()}
+                        </div>
+                      </td>
                       <td><div style={{ fontWeight: 600, color: '#1e293b' }}>{h.name}</div><div style={{ fontSize: 11, color: '#94a3b8' }}>{h.address}</div></td>
                       <td><span style={{ background: '#f1f5f9', color: '#475569', padding: '3px 10px', borderRadius: 8, fontSize: 12 }}>{h.city}</span></td>
                       <td style={{ color: '#f59e0b', fontWeight: 700 }}>{'★'.repeat(h.starRating || 5)} {h.starRating} sao</td>
@@ -1873,6 +1966,11 @@ export default function AdminDashboardPage() {
                               {r.description && (
                                 <div style={{ fontSize: 11, color: '#94a3b8', maxWidth: 220 }} className="text-truncate" title={r.description}>
                                   {r.description}
+                                </div>
+                              )}
+                              {r.amenities && (
+                                <div style={{ fontSize: 11, color: '#059669', maxWidth: 220, fontWeight: 500, marginTop: 2 }} className="text-truncate" title={r.amenities}>
+                                  ✨ {r.amenities}
                                 </div>
                               )}
                             </td>
@@ -2530,13 +2628,13 @@ export default function AdminDashboardPage() {
                   onChange={handleHotelImageUpload}
                 />
 
-                {/* 4 ô nhập link hoặc Upload ảnh */}
+                {/* 4 ô nhập link hoặc Upload ảnh kèm Thumbnail trực tiếp */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   {[
-                    { label: 'Ảnh 1: Ảnh bìa chính (Bắt buộc)', badge: 'Đại diện', required: true },
-                    { label: 'Ảnh 2: Phòng ngủ / Nội thất', badge: 'Không gian', required: false },
-                    { label: 'Ảnh 3: Tiện ích / Hồ bơi / View', badge: 'Tiện ích', required: false },
-                    { label: 'Ảnh 4: Nhà hàng / Sảnh / Toàn cảnh', badge: 'Toàn cảnh', required: false }
+                    { label: 'Ảnh 1: Ảnh bìa chính (Bắt buộc)', badge: 'Đại diện', required: true, subtitle: 'Ảnh lớn hiển thị bên trái thẻ' },
+                    { label: 'Ảnh 2: Phòng ngủ / Nội thất', badge: 'Không gian', required: false, subtitle: 'Ảnh nhỏ thứ nhất bên phải' },
+                    { label: 'Ảnh 3: Tiện ích / Hồ bơi / View', badge: 'Tiện ích', required: false, subtitle: 'Ảnh nhỏ thứ hai bên phải' },
+                    { label: 'Ảnh 4: Nhà hàng / Sảnh / Toàn cảnh', badge: 'Toàn cảnh', required: false, subtitle: 'Ảnh nhỏ thứ ba bên phải' }
                   ].map((slot, index) => (
                     <div key={index} className="p-2 border rounded-3 bg-white shadow-xs">
                       <div className="d-flex justify-content-between align-items-center mb-1">
@@ -2547,67 +2645,86 @@ export default function AdminDashboardPage() {
                           {slot.badge}
                         </span>
                       </div>
-                      <div className="input-group input-group-sm">
-                        <input
-                          type="url"
-                          className="form-control"
-                          value={hotelForm.images?.[index] || ''}
-                          onChange={e => handleHotelImageUrlChange(index, e.target.value)}
-                          placeholder={`URL ảnh ${index + 1} hoặc bấm Upload`}
-                          required={slot.required && !hotelForm.images?.[0] && !hotelForm.thumbnailUrl}
-                        />
-                        {hotelForm.images?.[index] && (
+                      <div className="d-flex align-items-center gap-2">
+                        {/* Mini thumbnail hiển thị trực tiếp trong từng ô */}
+                        <div style={{ width: 44, height: 38, borderRadius: 6, overflow: 'hidden', flexShrink: 0, backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {hotelForm.images?.[index] ? (
+                            <img
+                              src={hotelForm.images[index]}
+                              alt=""
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              onError={(e) => { e.target.style.opacity = '0.3'; }}
+                            />
+                          ) : (
+                            <span className="text-muted fw-bold" style={{ fontSize: '11px' }}>
+                              #{index + 1}
+                            </span>
+                          )}
+                        </div>
+                        <div className="input-group input-group-sm flex-grow-1">
+                          <input
+                            type="url"
+                            className="form-control"
+                            value={hotelForm.images?.[index] || ''}
+                            onChange={e => handleHotelImageUrlChange(index, e.target.value)}
+                            placeholder={`URL ảnh ${index + 1} hoặc bấm Upload`}
+                            required={slot.required && !hotelForm.images?.[0] && !hotelForm.thumbnailUrl}
+                          />
+                          {hotelForm.images?.[index] && (
+                            <button
+                              type="button"
+                              className="btn btn-outline-secondary px-2"
+                              onClick={() => handleHotelImageUrlChange(index, '')}
+                              title="Xóa link ảnh này"
+                            >
+                              <X size={13} />
+                            </button>
+                          )}
                           <button
                             type="button"
-                            className="btn btn-outline-secondary px-2"
-                            onClick={() => handleHotelImageUrlChange(index, '')}
-                            title="Xóa link ảnh này"
+                            className="btn btn-primary d-flex align-items-center gap-1 fw-semibold px-2"
+                            onClick={() => triggerHotelImageUpload(index)}
+                            disabled={uploadingImageIndex !== null}
+                            title={`Tải ảnh ${index + 1} từ máy tính lên Cloudinary`}
                           >
-                            <X size={13} />
+                            {uploadingImageIndex === index ? (
+                              <>
+                                <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" style={{ width: 12, height: 12 }} />
+                                <span style={{ fontSize: '11px' }}>Tải...</span>
+                              </>
+                            ) : (
+                              <>
+                                <UploadCloud size={13} />
+                                <span style={{ fontSize: '11px' }}>Upload</span>
+                              </>
+                            )}
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          className="btn btn-primary d-flex align-items-center gap-1 fw-semibold px-2"
-                          onClick={() => triggerHotelImageUpload(index)}
-                          disabled={uploadingImageIndex !== null}
-                          title={`Tải ảnh ${index + 1} từ máy tính lên Cloudinary`}
-                        >
-                          {uploadingImageIndex === index ? (
-                            <>
-                              <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" style={{ width: 12, height: 12 }} />
-                              <span style={{ fontSize: '11px' }}>Tải...</span>
-                            </>
-                          ) : (
-                            <>
-                              <UploadCloud size={13} />
-                              <span style={{ fontSize: '11px' }}>Upload</span>
-                            </>
-                          )}
-                        </button>
+                        </div>
                       </div>
                     </div>
                   ))}
                 </div>
 
-                {/* Khung Live Preview 4 ảnh theo đúng bố cục Trang chủ & Chi tiết */}
+                {/* Khung Live Preview chuẩn 4 ảnh không bao giờ bị tràn hoặc mất ảnh */}
                 <div className="mt-3 p-3 bg-light rounded-3 border">
                   <div className="d-flex justify-content-between align-items-center mb-2">
                     <div className="fw-semibold text-dark" style={{ fontSize: '12.5px' }}>
                       📸 Xem Trước Bố Cục Thẻ Khách Sạn (1 Ảnh Lớn + 3 Ảnh Nhỏ)
                     </div>
-                    <span className="badge bg-secondary-subtle text-secondary" style={{ fontSize: '11px' }}>
+                    <span className="badge bg-primary-subtle text-primary fw-bold" style={{ fontSize: '11.5px' }}>
                       {(hotelForm.images || []).filter(Boolean).length}/4 ảnh đã nhập
                     </span>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 8, height: 170, borderRadius: 8, overflow: 'hidden' }}>
+
+                  {/* Bố cục mô phỏng thẻ Traveloka: Trái 1 ảnh to, Phải 3 ảnh nhỏ xếp đều nhau */}
+                  <div style={{ display: 'flex', gap: 8, height: 180, borderRadius: 8, overflow: 'hidden' }}>
                     {/* Ảnh lớn bên trái */}
-                    <div style={{ position: 'relative', width: '100%', height: '100%', backgroundColor: '#e2e8f0', borderRadius: 6, overflow: 'hidden' }}>
+                    <div style={{ flex: '1.6 1 0', minWidth: 0, height: 180, position: 'relative', backgroundColor: '#e2e8f0', borderRadius: 6, overflow: 'hidden' }}>
                       {hotelForm.images?.[0] ? (
                         <img
                           src={hotelForm.images[0]}
                           alt="Ảnh 1 (Bìa chính)"
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                           onError={(e) => { e.target.style.opacity = '0.3'; }}
                         />
                       ) : (
@@ -2616,29 +2733,86 @@ export default function AdminDashboardPage() {
                           <span style={{ fontSize: '11px' }}>Chưa có Ảnh bìa chính (Ảnh 1)</span>
                         </div>
                       )}
-                      <span style={{ position: 'absolute', bottom: 6, left: 6, background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: '10px', padding: '2px 6px', borderRadius: 4, fontWeight: 500 }}>
-                        Ảnh 1 (Bìa)
+                      <span style={{ position: 'absolute', bottom: 6, left: 6, background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '10.5px', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>
+                        ⭐ Ảnh 1 (Bìa chính)
                       </span>
                     </div>
 
-                    {/* 3 ảnh nhỏ bên phải */}
-                    <div style={{ display: 'grid', gridTemplateRows: '1fr 1fr 1fr', gap: 6, height: '100%' }}>
-                      {[1, 2, 3].map(idx => (
-                        <div key={idx} style={{ position: 'relative', width: '100%', height: '100%', backgroundColor: '#e2e8f0', borderRadius: 4, overflow: 'hidden' }}>
+                    {/* 3 ảnh nhỏ bên phải - Flex column với height: 0 đảm bảo chia đều chính xác 56px mỗi ảnh */}
+                    <div style={{ flex: '1 1 0', minWidth: 0, height: 180, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {[
+                        { idx: 1, title: 'Ảnh 2 (Không gian)' },
+                        { idx: 2, title: 'Ảnh 3 (Tiện ích)' },
+                        { idx: 3, title: 'Ảnh 4 (Toàn cảnh)' }
+                      ].map(({ idx, title }) => (
+                        <div
+                          key={idx}
+                          style={{
+                            flex: '1 1 0',
+                            height: 0,
+                            minHeight: 0,
+                            position: 'relative',
+                            backgroundColor: '#e2e8f0',
+                            borderRadius: 4,
+                            overflow: 'hidden'
+                          }}
+                        >
                           {hotelForm.images?.[idx] ? (
                             <img
                               src={hotelForm.images[idx]}
-                              alt={`Ảnh ${idx + 1}`}
-                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              alt={title}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                               onError={(e) => { e.target.style.opacity = '0.3'; }}
                             />
                           ) : (
-                            <div className="d-flex align-items-center justify-content-center h-100 text-muted" style={{ fontSize: '10px' }}>
-                              Ảnh {idx + 1} (Trống)
+                            <div className="d-flex align-items-center justify-content-center h-100 text-muted" style={{ fontSize: '10.5px' }}>
+                              {title} (Trống)
                             </div>
                           )}
-                          <span style={{ position: 'absolute', bottom: 2, left: 4, background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: '9px', padding: '1px 4px', borderRadius: 3 }}>
-                            Ảnh {idx + 1}
+                          <span style={{ position: 'absolute', bottom: 2, left: 4, background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '9.5px', padding: '1px 5px', borderRadius: 3, fontWeight: 500 }}>
+                            {title}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Thanh hiển thị đầy đủ cả 4 ảnh theo hàng ngang độc lập */}
+                  <div className="mt-2 pt-2 border-top">
+                    <div className="text-secondary small fw-semibold mb-1" style={{ fontSize: '11px' }}>
+                      Danh mục 4 ảnh của khách sạn:
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+                      {[
+                        { idx: 0, name: 'Ảnh 1 (Bìa)' },
+                        { idx: 1, name: 'Ảnh 2 (Phòng)' },
+                        { idx: 2, name: 'Ảnh 3 (Tiện ích)' },
+                        { idx: 3, name: 'Ảnh 4 (Sảnh/Cảnh)' }
+                      ].map(({ idx, name }) => (
+                        <div
+                          key={idx}
+                          style={{
+                            height: 48,
+                            borderRadius: 6,
+                            overflow: 'hidden',
+                            position: 'relative',
+                            backgroundColor: '#f1f5f9',
+                            border: hotelForm.images?.[idx] ? '1.5px solid #3b82f6' : '1px dashed #cbd5e1'
+                          }}
+                        >
+                          {hotelForm.images?.[idx] ? (
+                            <img
+                              src={hotelForm.images[idx]}
+                              alt=""
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                          ) : (
+                            <div className="d-flex align-items-center justify-content-center h-100 text-muted" style={{ fontSize: '10px' }}>
+                              Chưa nhập
+                            </div>
+                          )}
+                          <span style={{ position: 'absolute', bottom: 1, left: 3, background: 'rgba(0,0,0,0.75)', color: '#fff', fontSize: '8.5px', padding: '0 4px', borderRadius: 2 }}>
+                            {name}
                           </span>
                         </div>
                       ))}
@@ -2799,6 +2973,85 @@ export default function AdminDashboardPage() {
                     </div>
                   </div>
                 )}
+              </div>
+              <div style={{ gridColumn: '1/-1' }}>
+                <div className="d-flex justify-content-between align-items-center mb-1">
+                  <FL style={{ margin: 0 }}>Tiện nghi & Trang bị trong phòng</FL>
+                  <span className="badge bg-success-subtle text-success small" style={{ fontSize: '11px' }}>
+                    {(() => {
+                      const count = (roomForm.amenities || '').split(',').map(s => s.trim()).filter(Boolean).length;
+                      return `${count} tiện nghi đã chọn`;
+                    })()}
+                  </span>
+                </div>
+                <input
+                  type="text"
+                  className="form-control mb-2"
+                  value={roomForm.amenities || ''}
+                  onChange={e => setRoomForm({ ...roomForm, amenities: e.target.value })}
+                  placeholder="VD: WiFi miễn phí, Điều hòa, Smart TV, Bồn tắm nằm, Tủ lạnh mini... (cách nhau bằng dấu phẩy)"
+                />
+                
+                {/* Gợi ý tiện nghi phòng phổ biến để click chọn nhanh */}
+                <div className="p-2 bg-light rounded-3 border">
+                  <div className="small text-secondary fw-semibold mb-2" style={{ fontSize: '11.5px' }}>
+                    ⚡ Bấm vào tiện ích bên dưới để thêm/bỏ nhanh vào phòng:
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {[
+                      '📶 WiFi miễn phí',
+                      '❄️ Điều hòa nhiệt độ',
+                      '📺 Smart TV',
+                      '🧊 Tủ lạnh mini',
+                      '🛁 Bồn tắm nằm',
+                      '🚿 Vòi sen đứng',
+                      '💨 Máy sấy tóc',
+                      '🔒 Két an toàn',
+                      '☕ Ấm đun nước',
+                      '🌅 Ban công / Hướng phố',
+                      '🪟 Cửa sổ thoáng',
+                      '🧴 Đồ vệ sinh cá nhân',
+                      '🔇 Cách âm cao cấp',
+                      '🛋️ Bàn làm việc & Sofa',
+                      '🍳 Bữa sáng miễn phí',
+                      '🧹 Dọn phòng hàng ngày'
+                    ].map(item => {
+                      const cleanName = item.replace(/^[^\w\s\u00C0-\u1EF9]+/u, '').trim();
+                      const currentList = (roomForm.amenities || '').split(',').map(s => s.trim().toLowerCase());
+                      const isSelected = currentList.some(c => c.includes(cleanName.toLowerCase()) || cleanName.toLowerCase().includes(c));
+                      return (
+                        <button
+                          key={item}
+                          type="button"
+                          onClick={() => {
+                            const cur = (roomForm.amenities || '').split(',').map(s => s.trim()).filter(Boolean);
+                            const exists = cur.some(c => c.toLowerCase() === cleanName.toLowerCase());
+                            const next = exists
+                              ? cur.filter(c => c.toLowerCase() !== cleanName.toLowerCase())
+                              : [...cur, cleanName];
+                            setRoomForm({ ...roomForm, amenities: next.join(', ') });
+                          }}
+                          style={{
+                            fontSize: 11.5,
+                            padding: '3px 9px',
+                            borderRadius: 16,
+                            border: isSelected ? '1.5px solid #10b981' : '1px solid #cbd5e1',
+                            background: isSelected ? '#ecfdf5' : '#fff',
+                            color: isSelected ? '#047857' : '#475569',
+                            fontWeight: isSelected ? 700 : 500,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 3,
+                            transition: 'all 0.15s'
+                          }}
+                        >
+                          {isSelected ? '✓ ' : ''}{item}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
               <div style={{ gridColumn: '1/-1' }}>
                 <FL>Mô tả chi tiết phòng</FL>
