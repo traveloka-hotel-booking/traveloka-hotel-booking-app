@@ -2727,17 +2727,16 @@ export default function AdminDashboardPage() {
                   type="text"
                   inputMode="numeric"
                   className="form-control"
-                  placeholder="VD: 1.500.000"
                   value={hotelForm.pricePerNight}
                   onKeyDown={handlePriceKeyDown}
                   onChange={e => setHotelForm({ ...hotelForm, pricePerNight: sanitizePriceInput(e.target.value) })}
                   required
                 />
-                {hotelForm.pricePerNight && (
+                {/* {hotelForm.pricePerNight && (
                   <div style={{ fontSize: 11, color: '#059669', marginTop: 4, fontWeight: 500 }}>
                     💰 {hotelForm.pricePerNight} VNĐ / đêm
                   </div>
-                )}
+                )} */}
               </div>
               <div style={{ gridColumn: '1/-1' }}>
                 <div className="d-flex justify-content-between align-items-center mb-2">
@@ -2835,12 +2834,12 @@ export default function AdminDashboardPage() {
                 {/* Khung Live Preview chuẩn 4 ảnh không bao giờ bị tràn hoặc mất ảnh */}
                 <div className="mt-3 p-3 bg-light rounded-3 border">
                   <div className="d-flex justify-content-between align-items-center mb-2">
-                    <div className="fw-semibold text-dark" style={{ fontSize: '12.5px' }}>
+                    {/* <div className="fw-semibold text-dark" style={{ fontSize: '12.5px' }}>
                       📸 Xem Trước Bố Cục Thẻ Khách Sạn (1 Ảnh Lớn + 3 Ảnh Nhỏ)
-                    </div>
-                    <span className="badge bg-primary-subtle text-primary fw-bold" style={{ fontSize: '11.5px' }}>
+                    </div> */}
+                    {/* <span className="badge bg-primary-subtle text-primary fw-bold" style={{ fontSize: '11.5px' }}>
                       {(hotelForm.images || []).filter(Boolean).length}/4 ảnh đã nhập
-                    </span>
+                    </span> */}
                   </div>
 
                   {/* Bố cục mô phỏng thẻ Traveloka: Trái 1 ảnh to, Phải 3 ảnh nhỏ xếp đều nhau */}

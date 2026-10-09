@@ -418,12 +418,7 @@ export default function HotelsPage() {
                                   alt={hotel.name}
                                   className="w-100 h-100 object-fit-cover"
                                 />
-                                <span 
-                                  className="position-absolute top-0 start-0 m-2 badge bg-dark bg-opacity-75 small px-2 py-1"
-                                  style={{ fontSize: '11px' }}
-                                >
-                                  ⭐ Ảnh chính
-                                </span>
+                            
                               </div>
                               <div className="row g-1">
                                 <div className="col-4">

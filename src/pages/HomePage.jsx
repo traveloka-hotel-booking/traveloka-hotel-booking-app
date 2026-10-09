@@ -186,7 +186,7 @@ export default function HomePage() {
   useEffect(() => {
     const fetchInitialHotels = async () => {
       try {
-        const res = await filterHotelsApi({ page: 0, size: 20 });
+        const res = await filterHotelsApi({ page: 0, size: 50 });
         const list = Array.isArray(res?.content) ? res.content : (Array.isArray(res) ? res : []);
         setBackendHotels(list);
       } catch (err) {
@@ -221,22 +221,24 @@ export default function HomePage() {
       // Chuẩn hóa tên thành phố tìm kiếm sang tên chuẩn CSDL
       let searchCity = destination?.trim() || '';
       const lowerCity = searchCity.toLowerCase();
-      if (lowerCity.includes('việt nam') || lowerCity.includes('toàn bộ') || lowerCity === 'tất cả') {
+      if (!searchCity || lowerCity.includes('việt nam') || lowerCity.includes('toàn bộ') || lowerCity === 'tất cả') {
         searchCity = '';
-      } else if (isLocationMatch('Hồ Chí Minh', searchCity)) {
-        searchCity = 'Hồ Chí Minh';
-      } else if (isLocationMatch('Phú Quốc', searchCity)) {
-        searchCity = 'Phú Quốc';
-      } else if (isLocationMatch('Đà Nẵng', searchCity)) {
-        searchCity = 'Đà Nẵng';
-      } else if (isLocationMatch('Hà Nội', searchCity)) {
-        searchCity = 'Hà Nội';
-      } else if (isLocationMatch('Sa Pa', searchCity)) {
-        searchCity = 'Sa Pa';
-      } else if (isLocationMatch('Đà Lạt', searchCity)) {
-        searchCity = 'Đà Lạt';
-      } else if (isLocationMatch('Nha Trang', searchCity)) {
-        searchCity = 'Nha Trang';
+      } else {
+        if (isLocationMatch('Hồ Chí Minh', searchCity)) {
+          searchCity = 'Hồ Chí Minh';
+        } else if (isLocationMatch('Phú Quốc', searchCity)) {
+          searchCity = 'Phú Quốc';
+        } else if (isLocationMatch('Đà Nẵng', searchCity)) {
+          searchCity = 'Đà Nẵng';
+        } else if (isLocationMatch('Hà Nội', searchCity)) {
+          searchCity = 'Hà Nội';
+        } else if (isLocationMatch('Sa Pa', searchCity)) {
+          searchCity = 'Sa Pa';
+        } else if (isLocationMatch('Đà Lạt', searchCity)) {
+          searchCity = 'Đà Lạt';
+        } else if (isLocationMatch('Nha Trang', searchCity)) {
+          searchCity = 'Nha Trang';
+        }
       }
 
       let list = [];
@@ -247,19 +249,31 @@ export default function HomePage() {
           checkOut: checkOut || tomorrow,
           guests,
           page: 0,
-          size: 20
+          size: 50
         });
         list = Array.isArray(res?.content) ? res.content : (Array.isArray(res) ? res : []);
       } catch (err) {
         console.warn('searchHotelsApi error:', err);
       }
 
-      // Nếu search API không có phòng hoặc gặp lỗi, tự động fallback sang filterHotelsApi
-      // để luôn hiển thị đầy đủ khách sạn cho người dùng
-      if (list.length === 0) {
+      // Khi người dùng không chọn thành phố (tìm kiếm toàn quốc), hoặc search API không có phòng / gặp lỗi,
+      // tự động lấy đầy đủ tất cả các khách sạn hiện có trong hệ thống để hiển thị
+      if (!searchCity || list.length === 0) {
         try {
-          const fallbackRes = await filterHotelsApi({ city: searchCity, page: 0, size: 20 });
-          list = Array.isArray(fallbackRes?.content) ? fallbackRes.content : (Array.isArray(fallbackRes) ? fallbackRes : []);
+          const fallbackRes = await filterHotelsApi({ city: searchCity, page: 0, size: 50 });
+          const fallbackList = Array.isArray(fallbackRes?.content) ? fallbackRes.content : (Array.isArray(fallbackRes) ? fallbackRes : []);
+          if (fallbackList.length > 0) {
+            if (!searchCity) {
+              // Hợp nhất: ưu tiên dữ liệu minPricePerNight từ search API nếu có, đồng thời giữ đầy đủ toàn bộ khách sạn trong hệ thống
+              const searchMap = new Map(list.map(h => [h.id, h]));
+              list = fallbackList.map(h => {
+                const searched = searchMap.get(h.id);
+                return searched ? { ...h, ...searched } : h;
+              });
+            } else {
+              list = fallbackList;
+            }
+          }
         } catch (fErr) {
           console.warn('filterHotelsApi fallback error:', fErr);
         }

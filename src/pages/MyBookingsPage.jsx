@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../services/api';
+import { getHotelByIdApi } from '../services/hotelApi';
 import { 
   Luggage, Calendar, MapPin, BedDouble, ArrowRight, Eye, 
   XCircle, CheckCircle, Clock, AlertTriangle, RotateCcw, Building, Info, Sparkles, RefreshCw
@@ -101,6 +102,39 @@ export default function MyBookingsPage() {
     }
     const finalStatus = finalRawStatus.toLowerCase();
 
+    const validImage = (url) => {
+      if (!url || typeof url !== 'string') return null;
+      const trimmed = url.trim();
+      if (!trimmed) return null;
+      if (trimmed.includes('photo-1566073771259') || trimmed.includes('photo-1590490360182')) return null;
+      return trimmed;
+    };
+
+    const resolvedHotelThumbnail = 
+      validImage(b.hotelThumbnailUrl) ||
+      validImage(b.thumbnailUrl) ||
+      validImage(b.hotelThumbnail) ||
+      validImage(b.hotelImage) ||
+      validImage(b.hotel?.thumbnailUrl) ||
+      validImage(Array.isArray(b.hotel?.images) ? b.hotel.images[0] : null) ||
+      validImage(Array.isArray(b.images) ? b.images[0] : null) ||
+      validImage(b.roomImageUrl) ||
+      validImage(b.roomImage) ||
+      b.hotelThumbnailUrl ||
+      b.hotelThumbnail ||
+      b.hotelImage ||
+      'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&auto=format&fit=crop&q=60';
+
+    const resolvedRoomImage = 
+      validImage(b.roomImageUrl) ||
+      validImage(b.roomImage) ||
+      validImage(b.hotelThumbnailUrl) ||
+      validImage(b.hotelThumbnail) ||
+      validImage(b.hotelImage) ||
+      b.roomImageUrl ||
+      b.roomImage ||
+      'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=800&auto=format&fit=crop&q=60';
+
     return {
       id: bookingCode,
       backendId: typeof rawId === 'number' ? rawId : (b.backendBookingId || null),
@@ -110,10 +144,12 @@ export default function MyBookingsPage() {
       hotelName: b.hotelName || 'Khách sạn',
       hotelCity: b.hotelCity || 'Việt Nam',
       hotelAddress: b.hotelAddress || b.hotelCity || '',
-      hotelThumbnail: b.hotelImage || b.hotelThumbnail || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&auto=format&fit=crop&q=60',
+      hotelThumbnail: resolvedHotelThumbnail,
+      hotelThumbnailUrl: resolvedHotelThumbnail,
       roomId: b.roomId,
       roomName: b.roomName || 'Phòng nghỉ cao cấp',
-      roomImage: b.roomImage || b.hotelImage || 'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=800&auto=format&fit=crop&q=60',
+      roomImage: resolvedRoomImage,
+      roomImageUrl: resolvedRoomImage,
       roomBed: b.roomBedType || b.roomBed || '1 Giường King lớn',
       checkInDate,
       checkOutDate,
@@ -182,10 +218,12 @@ export default function MyBookingsPage() {
 
   // Tải danh sách đơn đặt phòng từ Backend và LocalStorage
   const loadBookings = async () => {
+    let currentList = [];
     try {
       const saved = JSON.parse(localStorage.getItem('traveloka_bookings') || '[]');
       if (Array.isArray(saved) && saved.length > 0) {
-        setBookings(saved.map(normalizeBooking));
+        currentList = saved.map(normalizeBooking);
+        setBookings(currentList);
       }
     } catch (e) {
       console.error('Lỗi khi đọc danh sách đặt phòng localStorage:', e);
@@ -199,6 +237,7 @@ export default function MyBookingsPage() {
           const data = await res.json();
           if (data && data.result && Array.isArray(data.result)) {
             const mapped = data.result.map(normalizeBooking);
+            currentList = mapped;
             setBookings(mapped);
             localStorage.setItem('traveloka_bookings', JSON.stringify(mapped));
           }
@@ -207,6 +246,42 @@ export default function MyBookingsPage() {
         console.warn('API my-bookings fallback to local storage:', e);
       } finally {
         setLoading(false);
+      }
+    }
+
+    // Tự động kiểm tra và đồng bộ ảnh Cloudinary thật của khách sạn nếu đơn chưa có ảnh thật
+    if (currentList.length > 0) {
+      const needEnrich = currentList.some(b => b.hotelId && (!b.hotelThumbnail || b.hotelThumbnail.includes('unsplash.com')));
+      if (needEnrich) {
+        try {
+          const hotelIds = [...new Set(currentList.filter(b => b.hotelId).map(b => b.hotelId))];
+          const hotelMap = {};
+          await Promise.all(
+            hotelIds.map(async (hid) => {
+              try {
+                const hotelData = await getHotelByIdApi(hid);
+                if (hotelData) {
+                  const realImg = hotelData.thumbnailUrl || (Array.isArray(hotelData.images) ? hotelData.images[0] : null);
+                  if (realImg) hotelMap[hid] = realImg;
+                }
+              } catch (_) {}
+            })
+          );
+          if (Object.keys(hotelMap).length > 0) {
+            setBookings(prev => {
+              const updated = prev.map(b => {
+                if (b.hotelId && hotelMap[b.hotelId] && (!b.hotelThumbnail || b.hotelThumbnail.includes('unsplash.com'))) {
+                  return { ...b, hotelThumbnail: hotelMap[b.hotelId], hotelThumbnailUrl: hotelMap[b.hotelId] };
+                }
+                return b;
+              });
+              localStorage.setItem('traveloka_bookings', JSON.stringify(updated));
+              return updated;
+            });
+          }
+        } catch (enrichErr) {
+          console.warn('Đồng bộ ảnh khách sạn cho bookings lỗi:', enrichErr);
+        }
       }
     }
   };
