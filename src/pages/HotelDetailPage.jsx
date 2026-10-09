@@ -393,7 +393,7 @@ export default function HotelDetailPage() {
               <span className="text-secondary small d-block">Giá khởi điểm từ</span>
               <div className="fs-3 fw-bold text-danger mb-2">
                 {hotel.rooms[0]?.pricePerNight.toLocaleString('vi-VN')} đ
-                <span className="text-secondary fs-6 fw-normal"> / đêm</span>
+                <span className="text-secondary fs-6 fw-normal"> / Đêm</span>
               </div>
               <p className="text-secondary small mb-3">Đã bao gồm thuế và các loại phí dịch vụ.</p>
 
@@ -401,12 +401,7 @@ export default function HotelDetailPage() {
                 Xem Danh Sách Phòng Trống
               </a>
 
-              <div className="p-3 bg-primary-subtle rounded-3 text-primary small">
-                <div className="d-flex align-items-center gap-2 mb-1 fw-bold">
-                  <CheckCircle2 size={18} /> Cam kết Traveloka
-                </div>
-                <div>Đảm bảo có phòng khi nhận. Xác nhận đặt phòng tức thì qua email và tin nhắn.</div>
-              </div>
+              
             </div>
           </div>
         </div>
@@ -415,7 +410,6 @@ export default function HotelDetailPage() {
         <section id="room-list-section" className="mb-5 pt-3">
           <div className="d-flex justify-content-between align-items-end mb-4">
             <div>
-              <span className="badge bg-primary px-3 py-1 rounded-pill mb-2">Lựa chọn phòng ngủ</span>
               <h3 className="fw-bold text-dark mb-0">Các Loại Phòng Còn Trống</h3>
             </div>
             <span className="text-secondary small">Hiện có {hotel?.rooms?.length || 0} loại phòng sẵn sàng đón tiếp</span>
@@ -492,7 +486,7 @@ export default function HotelDetailPage() {
                         </div>
                       ) : (
                         <div className="badge bg-warning-subtle text-warning small mb-2">
-                          Không hoàn tiền khi hủy
+                      
                         </div>
                       )}
 
@@ -506,7 +500,7 @@ export default function HotelDetailPage() {
                       <div className="fs-3 fw-bold text-danger my-1">
                         {room.pricePerNight.toLocaleString('vi-VN')} đ
                       </div>
-                      <span className="text-secondary small">/ đêm (chưa gồm thuế)</span>
+                      <span className="text-secondary small">/ Đêm</span>
                     </div>
 
                     <div className="mt-4">
@@ -516,9 +510,7 @@ export default function HotelDetailPage() {
                       >
                         Đặt Phòng Ngay
                       </button>
-                      <small className="text-center d-block text-secondary mt-2" style={{ fontSize: '12px' }}>
-                        ⚡ Xác nhận tức thì chỉ trong 1 phút
-                      </small>
+                    
                     </div>
                   </div>
                 </div>

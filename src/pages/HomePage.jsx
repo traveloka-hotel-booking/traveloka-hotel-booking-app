@@ -437,6 +437,7 @@ export default function HomePage() {
                   </div>
 
                   {/* Ô 2: Đăng ký vào / Thanh toán (Ngày nhận - trả + 1 đêm) */}
+                  
                   <div className="col-lg-4 col-md-6 p-2 px-3 border-end">
                     <div className="d-flex justify-content-between align-items-center mb-1">
                       <span className="text-secondary small" style={{ fontSize: '11px', fontWeight: 600 }}>Nhận phòng</span>
@@ -457,6 +458,7 @@ export default function HomePage() {
                           }
                         }}
                       />
+                      
                       <span className="text-secondary">-</span>
                       <input 
                         type="date" 

@@ -467,10 +467,8 @@ export default function HotelsPage() {
 
                             {/* Điểm đánh giá */}
                             <div className="text-end flex-shrink-0">
-                              <span className="badge bg-success text-white fs-6 px-2 py-1 rounded-3">
-                                ★ {hotel.ratingScore || 8.5}
-                              </span>
-                              <span className="d-block small text-secondary mt-1">{hotel.ratingText || 'Rất tốt'}</span>
+                           
+                              <span className="d-block small text-secondary mt-1">{hotel.ratingText || ''}</span>
                             </div>
                           </div>
 
