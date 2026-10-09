@@ -288,9 +288,7 @@ export default function HotelDetailPage() {
                   style={{ display: 'block' }}
                 />
                 <div className="position-absolute bottom-0 start-0 m-3 d-flex align-items-center gap-2">
-                  <span className="badge bg-dark bg-opacity-75 px-3 py-2 fs-6 fw-semibold shadow-sm">
-                    {(activeImage && activeImage !== mainCoverImage) ? '📷 Xem Chi Tiết Phòng' : '⭐ Ảnh Đại Diện Khách Sạn'}
-                  </span>
+
                   {activeImage && activeImage !== mainCoverImage && (
                     <button 
                       type="button" 
@@ -318,17 +316,11 @@ export default function HotelDetailPage() {
                     >
                       <img 
                         src={imgUrl} 
-                        alt={`Ảnh phòng ${index + 1}`} 
                         onClick={() => setActiveImage(imgUrl)}
                         className={`w-100 h-100 cursor-pointer object-fit-cover border rounded-3 transition-all ${isSelected ? 'border-primary border-3 shadow' : 'opacity-85'}`}
                         style={{ transition: 'all 0.2s', display: 'block' }}
                       />
-                      <span 
-                        className="position-absolute bottom-0 start-0 m-2 px-2 py-1 bg-dark bg-opacity-75 text-white rounded small fw-medium"
-                        style={{ fontSize: '11px', pointerEvents: 'none' }}
-                      >
-                        🛏️ Ảnh phòng {index + 1}
-                      </span>
+                   
                     </div>
                   );
                 })}
