@@ -6,19 +6,30 @@ import { apiFetch } from './api';
  */
 export async function searchHotelsApi({ city, checkIn, checkOut, guests = 1, page = 0, size = 10 } = {}) {
   const params = new URLSearchParams();
-  if (city) params.append('city', city);
+  const cleanCity = city?.trim();
+  const isNationwide = !cleanCity || cleanCity === 'Tất cả' || cleanCity.includes('Việt Nam') || cleanCity.includes('Toàn bộ');
+
+  if (!isNationwide) {
+    params.append('city', cleanCity);
+  }
   if (checkIn) params.append('checkIn', checkIn);
   if (checkOut) params.append('checkOut', checkOut);
   if (guests != null) params.append('guests', String(guests));
   params.append('page', String(page));
   params.append('size', String(size));
 
-  const response = await apiFetch(`/hotels/search?${params.toString()}`);
-  if (!response.ok) {
-    throw new Error(`Tìm kiếm khách sạn thất bại (HTTP ${response.status})`);
+  try {
+    const response = await apiFetch(`/hotels/search?${params.toString()}`);
+    if (response.ok) {
+      const payload = await response.json();
+      return payload?.result ?? payload;
+    }
+  } catch (err) {
+    console.warn('/hotels/search error, falling back to /hotels/filter:', err);
   }
-  const payload = await response.json();
-  return payload?.result ?? payload;
+
+  // Tự động fallback sang filterHotelsApi nếu /hotels/search gặp lỗi
+  return filterHotelsApi({ city: isNationwide ? '' : cleanCity, page, size });
 }
 
 /**

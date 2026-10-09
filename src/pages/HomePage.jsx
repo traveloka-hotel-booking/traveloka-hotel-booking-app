@@ -33,6 +33,8 @@ const normalizeLocationText = (str) => {
 // Kiểm tra khớp địa danh thông minh (hỗ trợ linh hoạt: "TP. Hồ Chí Minh" <-> "Hồ Chí Minh" <-> "Sài Gòn" <-> "HCM")
 const isLocationMatch = (target, term) => {
   if (!term || !term.trim()) return true;
+  const cleanTerm = term.trim().toLowerCase();
+  if (cleanTerm === 'việt nam' || cleanTerm.includes('toàn bộ') || cleanTerm === 'tất cả') return true;
   if (!target) return false;
 
   const rawTarget = target.toLowerCase().trim();
@@ -218,30 +220,60 @@ export default function HomePage() {
       
       // Chuẩn hóa tên thành phố tìm kiếm sang tên chuẩn CSDL
       let searchCity = destination?.trim() || '';
-      if (isLocationMatch('Hồ Chí Minh', searchCity)) {
+      const lowerCity = searchCity.toLowerCase();
+      if (lowerCity.includes('việt nam') || lowerCity.includes('toàn bộ') || lowerCity === 'tất cả') {
+        searchCity = '';
+      } else if (isLocationMatch('Hồ Chí Minh', searchCity)) {
         searchCity = 'Hồ Chí Minh';
       } else if (isLocationMatch('Phú Quốc', searchCity)) {
         searchCity = 'Phú Quốc';
+      } else if (isLocationMatch('Đà Nẵng', searchCity)) {
+        searchCity = 'Đà Nẵng';
+      } else if (isLocationMatch('Hà Nội', searchCity)) {
+        searchCity = 'Hà Nội';
+      } else if (isLocationMatch('Sa Pa', searchCity)) {
+        searchCity = 'Sa Pa';
+      } else if (isLocationMatch('Đà Lạt', searchCity)) {
+        searchCity = 'Đà Lạt';
+      } else if (isLocationMatch('Nha Trang', searchCity)) {
+        searchCity = 'Nha Trang';
       }
 
-      const res = await searchHotelsApi({
-        city: searchCity,
-        checkIn: checkIn || today,
-        checkOut: checkOut || tomorrow,
-        guests,
-        page: 0,
-        size: 20
-      });
-      const list = Array.isArray(res?.content) ? res.content : (Array.isArray(res) ? res : []);
+      let list = [];
+      try {
+        const res = await searchHotelsApi({
+          city: searchCity,
+          checkIn: checkIn || today,
+          checkOut: checkOut || tomorrow,
+          guests,
+          page: 0,
+          size: 20
+        });
+        list = Array.isArray(res?.content) ? res.content : (Array.isArray(res) ? res : []);
+      } catch (err) {
+        console.warn('searchHotelsApi error:', err);
+      }
+
+      // Nếu search API không có phòng hoặc gặp lỗi, tự động fallback sang filterHotelsApi
+      // để luôn hiển thị đầy đủ khách sạn cho người dùng
+      if (list.length === 0) {
+        try {
+          const fallbackRes = await filterHotelsApi({ city: searchCity, page: 0, size: 20 });
+          list = Array.isArray(fallbackRes?.content) ? fallbackRes.content : (Array.isArray(fallbackRes) ? fallbackRes : []);
+        } catch (fErr) {
+          console.warn('filterHotelsApi fallback error:', fErr);
+        }
+      }
+
       if (list.length > 0) {
         setBackendHotels(list);
         setSearchFeedback(`Tìm thấy ${list.length} khách sạn phù hợp từ hệ thống`);
       } else {
         setBackendHotels([]);
-        setSearchFeedback('Không tìm thấy khách sạn còn trống trong cơ sở dữ liệu cho tiêu chí này.');
+        setSearchFeedback('Không tìm thấy khách sạn phù hợp với tiêu chí này.');
       }
     } catch (err) {
-      console.warn('FR-06 search API offline or error:', err);
+      console.warn('Search execution error:', err);
       setBackendHotels([]);
     } finally {
       setIsSearching(false);
@@ -262,11 +294,14 @@ export default function HomePage() {
     return sourceHotels.filter(hotel => {
       // 1. Lọc theo Điểm đến nếu có (khớp địa danh thông minh)
       if (destination && destination.trim() !== '') {
-        const matchCity = isLocationMatch(hotel.city, destination);
-        const matchAddress = isLocationMatch(hotel.address, destination);
-        const matchName = isLocationMatch(hotel.name, destination);
-        if (!matchCity && !matchAddress && !matchName) {
-          return false;
+        const cleanDest = destination.trim().toLowerCase();
+        if (cleanDest !== 'việt nam' && !cleanDest.includes('toàn bộ') && cleanDest !== 'tất cả') {
+          const matchCity = isLocationMatch(hotel.city, destination);
+          const matchAddress = isLocationMatch(hotel.address, destination);
+          const matchName = isLocationMatch(hotel.name, destination);
+          if (!matchCity && !matchAddress && !matchName) {
+            return false;
+          }
         }
       }
 
@@ -786,19 +821,9 @@ export default function HomePage() {
               {/* Thông báo nếu không tìm thấy khách sạn */}
               {displayedHotels.length === 0 ? (
                 <div className="card border-0 shadow-sm rounded-3 p-5 bg-white text-center my-3">
-                  <h5 className="fw-bold text-dark mb-2">Không tìm thấy khách sạn phù hợp tại "{destination}"</h5>
-                  <p className="text-secondary small mb-3">
-                    Hãy thử tìm kiếm với các thành phố như "Hà Nội", "Hồ Chí Minh", "Đà Nẵng", hoặc bỏ bớt tiêu chí lọc sao.
-                  </p>
-                  <div>
-                    <button 
-                      type="button" 
-                      onClick={() => { setDestination(''); setSelectedStar(null); setSelectedRating(null); }}
-                      className="btn btn-outline-primary btn-sm px-4 rounded-pill fw-semibold"
-                    >
-                      Xem tất cả khách sạn
-                    </button>
-                  </div>
+                  <h5 className="fw-bold text-dark mb-2">Không tìm thấy khách sạn phù hợp </h5>
+
+       
                 </div>
               ) : (
                 /* Danh sách thẻ Khách Sạn (Bố cục ngang theo đúng ảnh 2) */
@@ -818,12 +843,7 @@ export default function HomePage() {
                             className="w-100 rounded-2 object-fit-cover"
                             style={{ height: '180px' }}
                           />
-                          <span 
-                            className="position-absolute top-0 start-0 m-2 badge bg-dark bg-opacity-75 small px-2 py-1"
-                            style={{ fontSize: '11px' }}
-                          >
-                            ≤ 1km
-                          </span>
+                    
                         </div>
                         <div className="row g-1">
                           <div className="col-4">
