@@ -490,10 +490,10 @@ export default function CheckoutPage() {
                               ✓ Thành viên đã đăng nhập: {user?.name} ({user?.email})
                             </strong>
                             <span className="small text-secondary" style={{ fontSize: '12px' }}>
-                              Thông tin liên hệ đã được tự động điền. Đơn đặt phòng này sẽ được đồng bộ trực tiếp vào mục <strong>Chuyến đi của tôi</strong>.
+                            
                             </span>
                           </div>
-                          <span className="badge bg-success text-white px-2 py-1">Thành viên thân thiết</span>
+                        
                         </div>
                       </div>
                     </div>
