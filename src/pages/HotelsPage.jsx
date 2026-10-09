@@ -119,8 +119,10 @@ export default function HotelsPage() {
       setTotalElements(Number(data?.totalElements ?? list.length));
       setTotalPages(Number(data?.totalPages ?? 1));
     } catch (err) {
-      console.warn('FR-06/FR-07 API call error, falling back to local data:', err);
-      setBackendHotels(null);
+      console.warn('FR-06/FR-07 API call error:', err);
+      setBackendHotels([]);
+      setTotalElements(0);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }

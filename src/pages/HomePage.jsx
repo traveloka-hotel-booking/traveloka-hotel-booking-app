@@ -186,6 +186,21 @@ export default function HomePage() {
   useEffect(() => {
     const fetchInitialHotels = async () => {
       try {
+        if (savedSearch?.checkIn && savedSearch?.checkOut) {
+          const guests = Math.max(1, Number(savedSearch.adultsCount || 1) + Number(savedSearch.childrenCount || 0));
+          const res = await searchHotelsApi({
+            city: savedSearch.destination?.trim() || '',
+            checkIn: savedSearch.checkIn,
+            checkOut: savedSearch.checkOut,
+            guests,
+            page: 0,
+            size: 50
+          });
+          const list = Array.isArray(res?.content) ? res.content : (Array.isArray(res) ? res : []);
+          setBackendHotels(list);
+          return;
+        }
+
         const res = await filterHotelsApi({ page: 0, size: 50 });
         const list = Array.isArray(res?.content) ? res.content : (Array.isArray(res) ? res : []);
         setBackendHotels(list);
@@ -209,7 +224,7 @@ export default function HomePage() {
       window.removeEventListener('traveloka_rooms_updated', handleSync);
       window.removeEventListener('storage', handleSync);
     };
-  }, []);
+  }, [savedSearch]);
 
   // Gọi API FR-06 tìm kiếm phòng trống theo ngày và số khách
   const performSearch = async () => {
@@ -254,41 +269,20 @@ export default function HomePage() {
         list = Array.isArray(res?.content) ? res.content : (Array.isArray(res) ? res : []);
       } catch (err) {
         console.warn('searchHotelsApi error:', err);
-      }
-
-      // Khi người dùng không chọn thành phố (tìm kiếm toàn quốc), hoặc search API không có phòng / gặp lỗi,
-      // tự động lấy đầy đủ tất cả các khách sạn hiện có trong hệ thống để hiển thị
-      if (!searchCity || list.length === 0) {
-        try {
-          const fallbackRes = await filterHotelsApi({ city: searchCity, page: 0, size: 50 });
-          const fallbackList = Array.isArray(fallbackRes?.content) ? fallbackRes.content : (Array.isArray(fallbackRes) ? fallbackRes : []);
-          if (fallbackList.length > 0) {
-            if (!searchCity) {
-              // Hợp nhất: ưu tiên dữ liệu minPricePerNight từ search API nếu có, đồng thời giữ đầy đủ toàn bộ khách sạn trong hệ thống
-              const searchMap = new Map(list.map(h => [h.id, h]));
-              list = fallbackList.map(h => {
-                const searched = searchMap.get(h.id);
-                return searched ? { ...h, ...searched } : h;
-              });
-            } else {
-              list = fallbackList;
-            }
-          }
-        } catch (fErr) {
-          console.warn('filterHotelsApi fallback error:', fErr);
-        }
+        list = [];
       }
 
       if (list.length > 0) {
         setBackendHotels(list);
-        setSearchFeedback(`Tìm thấy ${list.length} khách sạn phù hợp từ hệ thống`);
+        setSearchFeedback(`Tìm thấy ${list.length} khách sạn còn phòng phù hợp`);
       } else {
         setBackendHotels([]);
-        setSearchFeedback('Không tìm thấy khách sạn phù hợp với tiêu chí này.');
+        setSearchFeedback('Không tìm thấy khách sạn còn phòng trống trong khoảng thời gian đã chọn.');
       }
     } catch (err) {
       console.warn('Search execution error:', err);
       setBackendHotels([]);
+      setSearchFeedback('Không tìm thấy khách sạn còn phòng trống trong khoảng thời gian đã chọn.');
     } finally {
       setIsSearching(false);
     }

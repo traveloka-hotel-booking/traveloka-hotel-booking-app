@@ -18,18 +18,12 @@ export async function searchHotelsApi({ city, checkIn, checkOut, guests = 1, pag
   params.append('page', String(page));
   params.append('size', String(size));
 
-  try {
-    const response = await apiFetch(`/hotels/search?${params.toString()}`);
-    if (response.ok) {
-      const payload = await response.json();
-      return payload?.result ?? payload;
-    }
-  } catch (err) {
-    console.warn('/hotels/search error, falling back to /hotels/filter:', err);
+  const response = await apiFetch(`/hotels/search?${params.toString()}`);
+  if (response.ok) {
+    const payload = await response.json();
+    return payload?.result ?? payload;
   }
-
-  // Tự động fallback sang filterHotelsApi nếu /hotels/search gặp lỗi
-  return filterHotelsApi({ city: isNationwide ? '' : cleanCity, page, size });
+  throw new Error(`Tìm kiếm khách sạn thất bại (HTTP ${response.status})`);
 }
 
 /**
