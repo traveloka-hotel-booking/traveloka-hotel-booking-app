@@ -13,7 +13,7 @@ import {
 export default function CheckoutPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, updateUserProfile } = useAuth();
 
   // Lấy dữ liệu hotel và room từ state chuyển trang, hoặc khôi phục từ pending booking
   const pendingBooking = (() => {
@@ -61,20 +61,51 @@ export default function CheckoutPage() {
     );
   }
 
-  // State thông tin khách hàng: Tự động điền nếu đã đăng nhập, hoặc để trống nếu là khách vãng lai
-  const [fullName, setFullName] = useState(user?.name || '');
+  // State thông tin khách hàng: Tự động điền nếu đã đăng nhập hoặc đã cập nhật hồ sơ
+  const [fullName, setFullName] = useState(user?.fullName || user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
-  const [phoneNumber, setPhoneNumber] = useState(user?.phone || '0912345678');
+  const [phoneNumber, setPhoneNumber] = useState(user?.phone || '');
   const [isBookingForSomeoneElse, setIsBookingForSomeoneElse] = useState(false);
   const [guestName, setGuestName] = useState('');
 
-  // Tự động đồng bộ thông tin tài khoản nếu người dùng vừa đăng nhập
+  // Tự động đồng bộ thông tin tài khoản nếu người dùng đã có tài khoản / đã cập nhật hồ sơ
   useEffect(() => {
-    if (isAuthenticated && user) {
-      if (!fullName) setFullName(user.name || '');
-      if (!email) setEmail(user.email || '');
-      if (!phoneNumber && user.phone) setPhoneNumber(user.phone);
-    }
+    if (!isAuthenticated) return;
+
+    const currentName = user?.fullName || user?.name || '';
+    if (currentName) setFullName(prev => prev || currentName);
+    if (user?.email) setEmail(prev => prev || user.email);
+    if (user?.phone) setPhoneNumber(prev => prev || user.phone);
+
+    // Tự động lấy thông tin mới nhất từ hồ sơ cá nhân để đồng bộ Họ và Tên vào form checkout
+    const syncLatestProfile = async () => {
+      try {
+        const response = await apiFetch('/customer/profile');
+        if (response.ok) {
+          const resData = await response.json();
+          const profileData = resData?.result || resData;
+          if (profileData) {
+            const profileName = profileData.fullName || profileData.name;
+            if (profileName) {
+              setFullName(prev => prev || profileName);
+            }
+            if (profileData.email) {
+              setEmail(prev => prev || profileData.email);
+            }
+            if (profileData.phone) {
+              setPhoneNumber(prev => prev || profileData.phone);
+            }
+            if (typeof updateUserProfile === 'function') {
+              updateUserProfile(profileData);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Lỗi tự động đồng bộ hồ sơ tại CheckoutPage:', err);
+      }
+    };
+
+    syncLatestProfile();
   }, [isAuthenticated, user]);
 
   // Đọc thông tin tìm kiếm dự phòng từ localStorage nếu F5 hoặc mở tab mới

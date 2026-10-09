@@ -67,7 +67,11 @@ export default function ProfilePage() {
 
             console.log("PROFILE RESULT:", JSON.stringify(result, null, 2));
 
-            setProfile(result.result || result);
+            const profileData = result.result || result;
+            setProfile(profileData);
+            if (typeof updateUserProfile === 'function' && profileData) {
+              updateUserProfile(profileData);
+            }
 
         } catch (error) {
             console.error('Get profile error:', error);
@@ -449,7 +453,11 @@ const handleSaveProfile = async (e) => {
     }
 
       // Backend trả về profile mới sau khi update
-      setProfile(result.result);
+      const updatedProfile = result.result || result;
+      setProfile(updatedProfile);
+      if (typeof updateUserProfile === 'function' && updatedProfile) {
+        updateUserProfile(updatedProfile);
+      }
       setErrorMessage('');
       setShowAddressSuggestions(false);
       setAddressSuggestions([]);
