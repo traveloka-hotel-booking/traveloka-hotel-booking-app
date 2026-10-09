@@ -86,14 +86,14 @@ export default function HomePage() {
   const navigate = useNavigate();
   const location = useLocation();
   
-  // Đọc thông tin tìm kiếm đã lưu từ localStorage nếu có
-  const savedSearch = (() => {
+  // Đọc thông tin tìm kiếm đã lưu từ localStorage nếu có (ổn định tham chiếu qua useMemo)
+  const savedSearch = useMemo(() => {
     try {
       return JSON.parse(localStorage.getItem('traveloka_search_params')) || null;
     } catch {
       return null;
     }
-  })();
+  }, []);
 
   // Tự động tính ngày checkIn hôm nay và checkOut ngày mai theo thời gian thực
   const today = new Date().toISOString().split('T')[0];
@@ -186,12 +186,17 @@ export default function HomePage() {
   useEffect(() => {
     const fetchInitialHotels = async () => {
       try {
-        if (savedSearch?.checkIn && savedSearch?.checkOut) {
-          const guests = Math.max(1, Number(savedSearch.adultsCount || 1) + Number(savedSearch.childrenCount || 0));
+        let saved = null;
+        try {
+          saved = JSON.parse(localStorage.getItem('traveloka_search_params'));
+        } catch {}
+
+        if (saved?.checkIn && saved?.checkOut) {
+          const guests = Math.max(1, Number(saved.adultsCount || 1) + Number(saved.childrenCount || 0));
           const res = await searchHotelsApi({
-            city: savedSearch.destination?.trim() || '',
-            checkIn: savedSearch.checkIn,
-            checkOut: savedSearch.checkOut,
+            city: saved.destination?.trim() || '',
+            checkIn: saved.checkIn,
+            checkOut: saved.checkOut,
             guests,
             page: 0,
             size: 50
@@ -217,14 +222,12 @@ export default function HomePage() {
 
     window.addEventListener('traveloka_hotels_updated', handleSync);
     window.addEventListener('traveloka_rooms_updated', handleSync);
-    window.addEventListener('storage', handleSync);
 
     return () => {
       window.removeEventListener('traveloka_hotels_updated', handleSync);
       window.removeEventListener('traveloka_rooms_updated', handleSync);
-      window.removeEventListener('storage', handleSync);
     };
-  }, [savedSearch]);
+  }, []);
 
   // Gọi API FR-06 tìm kiếm phòng trống theo ngày và số khách
   const performSearch = async () => {
