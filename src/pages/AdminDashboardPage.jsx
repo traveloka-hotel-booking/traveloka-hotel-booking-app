@@ -330,8 +330,8 @@ export default function AdminDashboardPage() {
     return { total, available, booked, maintenance };
   }, [roomsList]);
 
-  // ── Phân trang Tab Khách Sạn (5 phần tử / trang) ──
-  const HOTELS_PER_PAGE = 5;
+  // ── Phân trang Tab Khách Sạn (10 phần tử / trang) ──
+  const HOTELS_PER_PAGE = 10;
   const [hotelCurrentPage, setHotelCurrentPage] = useState(1);
   const hotelTotalPages = Math.max(1, Math.ceil(hotels.length / HOTELS_PER_PAGE));
   const paginatedHotels = useMemo(() => {
@@ -375,8 +375,26 @@ export default function AdminDashboardPage() {
         if (hotelRes.ok) {
           const hotelData = await hotelRes.json();
           if (hotelData.result && Array.isArray(hotelData.result.content)) {
-            setHotels(hotelData.result.content);
-            localStorage.setItem('traveloka_custom_hotels', JSON.stringify(hotelData.result.content));
+            const localHotels = (() => {
+              try { return JSON.parse(localStorage.getItem('traveloka_custom_hotels') || '[]'); } catch { return []; }
+            })();
+            const priceMap = {};
+            localHotels.forEach(lh => {
+              const p = Number(lh.pricePerNight || lh.minPrice || 0);
+              if (p > 0) priceMap[lh.id] = p;
+            });
+
+            const merged = hotelData.result.content.map(bh => {
+              const bMin = Number(bh.minPrice || 0);
+              const effectivePrice = bMin > 0 ? bMin : (priceMap[bh.id] || 0);
+              return {
+                ...bh,
+                minPrice: effectivePrice,
+                pricePerNight: effectivePrice
+              };
+            });
+            setHotels(merged);
+            localStorage.setItem('traveloka_custom_hotels', JSON.stringify(merged));
           }
         }
       } catch (e) {
@@ -409,16 +427,17 @@ export default function AdminDashboardPage() {
     }
   }, [isAdmin]);
 
-  // ── Tiện ích chuẩn hóa giá tiền: Không âm, không chữ cái/ký tự đặc biệt, không số 0 ở đầu ──
+  // ── Tiện ích chuẩn hóa giá tiền: Không âm, không chữ cái, định dạng dấu chấm dễ nhìn ──
   const sanitizePriceInput = (val) => {
     if (val === undefined || val === null) return '';
-    const digitsOnly = String(val).replace(/\D/g, ''); // Loại bỏ toàn bộ ký tự không phải chữ số
-    return digitsOnly.replace(/^0+/, ''); // Xóa toàn bộ số 0 ở đầu (VD: '0222' -> '222', '0' -> '')
+    const digitsOnly = String(val).replace(/\D/g, '').replace(/^0+/, ''); // Loại bỏ toàn bộ ký tự không phải chữ số và số 0 ở đầu
+    if (!digitsOnly) return '';
+    return Number(digitsOnly).toLocaleString('vi-VN'); // Tự động định dạng dấu chấm ngăn cách hàng nghìn (VD: 1500000 -> 1.500.000)
   };
 
   const handlePriceKeyDown = (e) => {
-    // Chặn gõ trực tiếp dấu âm (-), dấu cộng (+), ký hiệu số mũ (e, E), dấu chấm, phẩy
-    if (['-', '+', 'e', 'E', '.', ','].includes(e.key)) {
+    // Chặn gõ trực tiếp dấu âm (-), dấu cộng (+), ký hiệu số mũ (e, E), cho phép gõ dấu chấm/phẩy (.)
+    if (['-', '+', 'e', 'E'].includes(e.key)) {
       e.preventDefault();
     }
   };
@@ -612,8 +631,9 @@ export default function AdminDashboardPage() {
 
   const saveHotel = async (e) => {
     e.preventDefault();
-    const hotelPrice = Number(hotelForm.pricePerNight);
-    if (!hotelPrice || hotelPrice <= 0) {
+    const rawPriceDigits = String(hotelForm.pricePerNight || '').replace(/\D/g, '');
+    const hotelPrice = Number(rawPriceDigits);
+    if (!rawPriceDigits || !hotelPrice || hotelPrice <= 0) {
       showToast('Vui lòng nhập giá phòng khởi điểm hợp lệ (phải lớn hơn 0 VNĐ)!');
       return;
     }
@@ -624,7 +644,7 @@ export default function AdminDashboardPage() {
       // 1. Upload các file ảnh chọn từ máy tính lên Cloudinary cùng 1 lúc (nếu có)
       const hasFilesToUpload = hotelSelectedFiles.some(f => f instanceof File);
       if (hasFilesToUpload) {
-        showToast('Đang tải 4 ảnh lên Cloudinary cùng 1 lúc...');
+        showToast('Đang tải 4 ảnh lên ');
       }
 
       const uploadPromises = [0, 1, 2, 3].map(async (idx) => {
@@ -661,7 +681,7 @@ export default function AdminDashboardPage() {
             city: hotelForm.city,
             address: hotelForm.address,
             starRating: Number(hotelForm.starRating),
-            pricePerNight: Number(hotelForm.pricePerNight) || '',
+            pricePerNight: hotelPrice,
             description: hotelForm.description,
             thumbnailUrl: mainThumb,
             images: imagesString,
@@ -677,7 +697,8 @@ export default function AdminDashboardPage() {
             city: hotelForm.city,
             address: hotelForm.address,
             starRating: Number(hotelForm.starRating),
-            pricePerNight: Number(hotelForm.pricePerNight) || '',
+            minPrice: hotelPrice,
+            pricePerNight: hotelPrice,
             description: hotelForm.description,
             thumbnailUrl: mainThumb,
             images: cleanImages.length > 0 ? cleanImages : (json.result?.images || [mainThumb])
@@ -697,7 +718,7 @@ export default function AdminDashboardPage() {
             city: hotelForm.city,
             address: hotelForm.address,
             starRating: Number(hotelForm.starRating),
-            pricePerNight: Number(hotelForm.pricePerNight) || '',
+            pricePerNight: hotelPrice,
             description: hotelForm.description,
             thumbnailUrl: mainThumb,
             images: imagesString,
@@ -712,7 +733,8 @@ export default function AdminDashboardPage() {
             city: hotelForm.city,
             address: hotelForm.address,
             starRating: Number(hotelForm.starRating),
-            pricePerNight: Number(hotelForm.pricePerNight) || '',
+            minPrice: hotelPrice,
+            pricePerNight: hotelPrice,
             description: hotelForm.description,
             thumbnailUrl: mainThumb,
             images: cleanImages.length > 0 ? cleanImages : (json.result?.images || [mainThumb])
@@ -940,8 +962,9 @@ export default function AdminDashboardPage() {
 
   const saveRoom = async (e) => {
     e.preventDefault();
-    const roomPrice = Number(roomForm.pricePerNight);
-    if (!roomPrice || roomPrice <= 0) {
+    const rawRoomPrice = String(roomForm.pricePerNight || '').replace(/\D/g, '');
+    const roomPrice = Number(rawRoomPrice);
+    if (!rawRoomPrice || !roomPrice || roomPrice <= 0) {
       showToast('Vui lòng nhập giá phòng 1 đêm hợp lệ (phải lớn hơn 0 VNĐ)!');
       return;
     }
@@ -975,7 +998,7 @@ export default function AdminDashboardPage() {
           body: JSON.stringify({
             hotelId: Number(roomForm.hotelId),
             name: roomForm.name,
-            pricePerNight: Number(roomForm.pricePerNight),
+            pricePerNight: roomPrice,
             maxGuests: Number(roomForm.maxGuests),
             bedType: roomForm.bedType,
             roomSize: roomForm.roomSize,
@@ -990,7 +1013,7 @@ export default function AdminDashboardPage() {
           savedRoomObj = { ...json.result, hotelName: targetHotel?.name, imageUrl: finalImageUrl };
           showToast('Cập nhật thành công');
         } else {
-          savedRoomObj = { ...editingRoom, ...roomForm, hotelId: targetHotel?.id, hotelName: targetHotel?.name, imageUrl: finalImageUrl };
+          savedRoomObj = { ...editingRoom, ...roomForm, pricePerNight: roomPrice, hotelId: targetHotel?.id, hotelName: targetHotel?.name, imageUrl: finalImageUrl };
           showToast('Cập nhật thành công');
         }
         const updated = roomsList.map(r => r.id === editingRoom.id ? savedRoomObj : r);
@@ -1002,7 +1025,7 @@ export default function AdminDashboardPage() {
           body: JSON.stringify({
             hotelId: Number(roomForm.hotelId),
             name: roomForm.name,
-            pricePerNight: Number(roomForm.pricePerNight),
+            pricePerNight: roomPrice,
             maxGuests: Number(roomForm.maxGuests),
             bedType: roomForm.bedType,
             roomSize: roomForm.roomSize,
@@ -1837,7 +1860,7 @@ export default function AdminDashboardPage() {
                       <td><span style={{ background: '#f1f5f9', color: '#475569', padding: '3px 10px', borderRadius: 8, fontSize: 12 }}>{h.city}</span></td>
                       <td style={{ color: '#f59e0b', fontWeight: 700 }}>{'★'.repeat(h.starRating || 5)} {h.starRating} sao</td>
                       <td><span style={{ background: '#dcfce7', color: '#16a34a', padding: '3px 10px', borderRadius: 8, fontSize: 12, fontWeight: 700 }}>{h.ratingScore || 9.0}/10</span></td>
-                      <td style={{ fontWeight: 700, color: '#dc2626' }}>{(h.minPrice || h.rooms?.[0]?.pricePerNight || h.pricePerNight || 0).toLocaleString('vi-VN')} đ</td>
+                      <td style={{ fontWeight: 700, color: '#dc2626' }}>{(Number(h.minPrice) > 0 ? Number(h.minPrice) : (Number(h.rooms?.[0]?.pricePerNight) || Number(h.pricePerNight) || 0)).toLocaleString('vi-VN')} đ</td>
                       <td>{h.totalRooms ?? h.rooms?.length ?? 1} phòng</td>
                       <td><div style={{ display: 'flex', gap: 8 }}>
                         <SmBtn color="blue" onClick={() => openEditHotel(h)} icon={<Edit2 size={12} />}>Sửa</SmBtn>
@@ -1991,7 +2014,7 @@ export default function AdminDashboardPage() {
               {/* BẢNG DỮ LIỆU PHÒNG */}
               <SectionCard
                 title="Danh Sách Loại Phòng Lưu Trú"
-                sub="Quản lý chi tiết từng loại phòng, cập nhật đơn giá, tải ảnh Cloudinary và đổi trạng thái phòng nhanh"
+                // sub="Quản lý chi tiết từng loại phòng, cập nhật đơn giá, tải ảnh Cloudinary và đổi trạng thái phòng nhanh"
                 action={<ActionBtn onClick={openAddRoom} icon={<Plus size={16} />}>Thêm Loại Phòng Mới</ActionBtn>}
               >
                 {filteredRoomsList.length === 0 ? (
@@ -2003,18 +2026,18 @@ export default function AdminDashboardPage() {
                           : 'Chưa có loại phòng nào'
                       }
                     />
-                    {(roomSearchQuery || roomHotelFilter !== 'ALL' || roomStatusFilter !== 'ALL') ? (
+                    {/* {(roomSearchQuery || roomHotelFilter !== 'ALL' || roomStatusFilter !== 'ALL') ? (
                       <button
                         onClick={() => { setRoomSearchQuery(''); setRoomHotelFilter('ALL'); setRoomStatusFilter('ALL'); }}
                         className="btn btn-outline-primary btn-sm mt-3"
                       >
                         Đặt lại bộ lọc tìm kiếm
                       </button>
-                    ) : (
-                      <button onClick={openAddRoom} className="btn btn-primary btn-sm mt-3">
+                    ) : ( */}
+                      {/* <button onClick={openAddRoom} className="btn btn-primary btn-sm mt-3">
                         + Tạo loại phòng đầu tiên
                       </button>
-                    )}
+                    )} */}
                   </div>
                 ) : (
                   <>
@@ -2704,12 +2727,17 @@ export default function AdminDashboardPage() {
                   type="text"
                   inputMode="numeric"
                   className="form-control"
+                  placeholder="VD: 1.500.000"
                   value={hotelForm.pricePerNight}
                   onKeyDown={handlePriceKeyDown}
                   onChange={e => setHotelForm({ ...hotelForm, pricePerNight: sanitizePriceInput(e.target.value) })}
                   required
                 />
-             
+                {hotelForm.pricePerNight && (
+                  <div style={{ fontSize: 11, color: '#059669', marginTop: 4, fontWeight: 500 }}>
+                    💰 {hotelForm.pricePerNight} VNĐ / đêm
+                  </div>
+                )}
               </div>
               <div style={{ gridColumn: '1/-1' }}>
                 <div className="d-flex justify-content-between align-items-center mb-2">
@@ -3474,10 +3502,10 @@ function TablePagination({ currentPage, totalPages, totalItems, itemsPerPage, on
       flexWrap: 'wrap',
       gap: 12
     }}>
-      <div style={{ fontSize: 13, color: '#64748b' }}>
+      {/* <div style={{ fontSize: 13, color: '#64748b' }}>
         Hiển thị <span style={{ fontWeight: 600, color: '#1e293b' }}>{startIdx} - {endIdx}</span> trên <span style={{ fontWeight: 600, color: '#1e293b' }}>{totalItems}</span> {label}
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      </div> */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
         <button
           type="button"
           onClick={() => onPageChange(currentPage - 1)}
