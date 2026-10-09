@@ -46,10 +46,13 @@ export default function ProfilePage() {
   const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
   const addressSearchAbortRef = useRef(null);
   const addressSearchTimeoutRef = useRef(null);
+  const hasFetchedProfileRef = useRef(false);
 
   // Lấy profile khi mở trang
   useEffect(() => {
     if (!isAuthenticated) return;
+    if (hasFetchedProfileRef.current) return;
+    hasFetchedProfileRef.current = true;
 
     const fetchProfile = async () => {
         try {
@@ -81,7 +84,7 @@ export default function ProfilePage() {
     };
 
     fetchProfile();
-}, [isAuthenticated, user]);
+}, [isAuthenticated]);
 
   // Form State đổi mật khẩu
   const [passwordForm, setPasswordForm] = useState({

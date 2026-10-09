@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../services/api';
@@ -68,6 +68,8 @@ export default function CheckoutPage() {
   const [isBookingForSomeoneElse, setIsBookingForSomeoneElse] = useState(false);
   const [guestName, setGuestName] = useState('');
 
+  const hasSyncedProfileRef = useRef(false);
+
   // Tự động đồng bộ thông tin tài khoản nếu người dùng đã có tài khoản / đã cập nhật hồ sơ
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -76,6 +78,9 @@ export default function CheckoutPage() {
     if (currentName) setFullName(prev => prev || currentName);
     if (user?.email) setEmail(prev => prev || user.email);
     if (user?.phone) setPhoneNumber(prev => prev || user.phone);
+
+    if (hasSyncedProfileRef.current) return;
+    hasSyncedProfileRef.current = true;
 
     // Tự động lấy thông tin mới nhất từ hồ sơ cá nhân để đồng bộ Họ và Tên vào form checkout
     const syncLatestProfile = async () => {
@@ -106,7 +111,7 @@ export default function CheckoutPage() {
     };
 
     syncLatestProfile();
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated]);
 
   // Đọc thông tin tìm kiếm dự phòng từ localStorage nếu F5 hoặc mở tab mới
   const savedSearch = (() => {
