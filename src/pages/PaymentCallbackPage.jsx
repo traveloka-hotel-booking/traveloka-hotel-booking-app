@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../services/api';
 import { CheckCircle2, XCircle, ArrowRight, Home, RefreshCw, ShieldCheck } from 'lucide-react';
 
 export default function PaymentCallbackPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [paymentResult, setPaymentResult] = useState(null);
   const [confirmedBooking, setConfirmedBooking] = useState(null);
@@ -45,6 +47,10 @@ export default function PaymentCallbackPage() {
             if (b.backendBookingId === result.bookingId || b.id === `BK-${String(result.bookingId).padStart(4, '0')}`) {
               const updated = {
                 ...b,
+                contactName: (b.contactName && b.contactName !== 'Khách hàng') ? b.contactName : (user?.fullName || user?.name || b.contactName || 'Khách hàng'),
+                guestName: (b.guestName && b.guestName !== 'Khách hàng') ? b.guestName : (user?.fullName || user?.name || b.guestName || 'Khách hàng'),
+                contactEmail: b.contactEmail || user?.email || '',
+                contactPhone: b.contactPhone || user?.phone || '',
                 status: result.status === 'SUCCESS' ? 'confirmed' : 'failed',
                 paymentStatus: result.status,
                 transactionId: result.transactionId,
@@ -58,6 +64,20 @@ export default function PaymentCallbackPage() {
           localStorage.setItem('traveloka_bookings', JSON.stringify(updatedBookings));
           if (!targetBooking && updatedBookings.length > 0) {
             targetBooking = updatedBookings[0];
+          }
+          if (targetBooking) {
+            if (!targetBooking.contactName || targetBooking.contactName === 'Khách hàng') {
+              targetBooking.contactName = user?.fullName || user?.name || targetBooking.contactName || 'Khách hàng';
+            }
+            if (!targetBooking.guestName || targetBooking.guestName === 'Khách hàng') {
+              targetBooking.guestName = user?.fullName || user?.name || targetBooking.guestName || 'Khách hàng';
+            }
+            if (!targetBooking.contactEmail) {
+              targetBooking.contactEmail = user?.email || '';
+            }
+            if (!targetBooking.contactPhone) {
+              targetBooking.contactPhone = user?.phone || '';
+            }
           }
           setConfirmedBooking(targetBooking);
         } catch (e) {

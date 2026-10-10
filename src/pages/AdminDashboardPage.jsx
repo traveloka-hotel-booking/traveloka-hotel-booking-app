@@ -795,7 +795,7 @@ export default function AdminDashboardPage() {
 
     const confirmed = await showConfirm({
       title: 'Xóa khách sạn',
-      message: `Bạn có chắc chắn muốn xóa khách sạn "${hotelToDelete?.name || ''}" không?\nThao tác này sẽ xóa toàn bộ các loại phòng thuộc khách sạn này.`,
+      message: `Bạn có chắc chắn muốn xóa khách sạn "${hotelToDelete?.name || ''}" không?`,
       type: 'warning',
       confirmText: 'Xóa khách sạn',
       cancelText: 'Hủy'
@@ -1106,7 +1106,7 @@ export default function AdminDashboardPage() {
 
     const confirmed = await showConfirm({
       title: 'Xóa loại phòng',
-      message: `Bạn có chắc muốn xóa loại phòng "${targetRoom?.name || ''}" không?\nThao tác này không thể hoàn tác.`,
+      message: `Bạn có chắc muốn xóa loại phòng "${targetRoom?.name || ''}" không?`,
       type: 'warning',
       confirmText: 'Xóa loại phòng',
       cancelText: 'Hủy'
@@ -1222,7 +1222,7 @@ export default function AdminDashboardPage() {
     const code = b.bookingCode || b.id;
     const confirmed = await showConfirm({
       title: 'Xóa đơn đặt phòng',
-      message: `Bạn có chắc chắn muốn xóa vĩnh viễn đơn đặt phòng [${code}] không?\nThao tác này sẽ xóa dữ liệu đơn.`,
+      message: `Bạn có chắc chắn muốn xóa vĩnh viễn đơn đặt phòng [${code}] không?`,
       type: 'warning',
       confirmText: 'Xóa vĩnh viễn',
       cancelText: 'Hủy'

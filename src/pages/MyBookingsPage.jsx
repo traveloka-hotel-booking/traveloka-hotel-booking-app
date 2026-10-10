@@ -5,9 +5,10 @@ import { apiFetch } from '../services/api';
 import { getHotelByIdApi } from '../services/hotelApi';
 import { 
   Luggage, Calendar, MapPin, BedDouble, ArrowRight, Eye, 
-  XCircle, CheckCircle, Clock, AlertTriangle, RotateCcw, Building, Info, Sparkles, RefreshCw
+  XCircle, CheckCircle, Clock, AlertTriangle, RotateCcw, Building, Info, Sparkles, RefreshCw, CreditCard, AlertCircle
 } from 'lucide-react';
 import AlertModal from '../components/AlertModal';
+import { getFriendlyErrorMessage, sanitizeErrorMessage } from '../utils/errorHandler';
 
 export default function MyBookingsPage() {
   const navigate = useNavigate();
@@ -155,10 +156,10 @@ export default function MyBookingsPage() {
       checkOutDate,
       nights,
       guestCount: b.guestCount || 2,
-      contactName: b.userFullName || b.contactName || b.guestName || 'Khách hàng',
-      guestName: b.userFullName || b.guestName || b.contactName || 'Khách hàng',
-      contactEmail: b.userEmail || b.contactEmail || '',
-      contactPhone: b.userPhone || b.contactPhone || '',
+      contactName: b.customerName || b.userFullName || b.contactName || b.guestName || 'Khách hàng',
+      guestName: b.customerName || b.userFullName || b.guestName || b.contactName || 'Khách hàng',
+      contactEmail: b.customerEmail || b.userEmail || b.contactEmail || '',
+      contactPhone: b.customerPhone || b.userPhone || b.contactPhone || '',
       specialRequests: Array.isArray(b.specialRequests) ? b.specialRequests : (b.specialRequests ? [b.specialRequests] : []),
       paymentMethod,
       paymentStatus,
@@ -183,9 +184,19 @@ export default function MyBookingsPage() {
     }
   });
   const [activeTab, setActiveTab] = useState('all'); // 'all', 'pending', 'confirmed', 'checked_in', 'completed', 'cancelled'
-  const [cancellingBookingId, setCancellingBookingId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [payingBookingId, setPayingBookingId] = useState(null);
+
+  // State cho toast thông báo nổi đồng nhất hệ thống (showToast)
+  const [toastMessage, setToastMessage] = useState(null);
+  const [toastType, setToastType] = useState('success');
+
+  const showToast = (msg, type = 'success') => {
+    setToastType(type);
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
   // State cho Alert Modal thân thiện thay thế alert() và window.confirm()
   const [alertModal, setAlertModal] = useState({
@@ -291,7 +302,20 @@ export default function MyBookingsPage() {
   }, [isAuthenticated]);
 
 
-  // Xử lý xác nhận hủy đặt phòng
+  // Xử lý khi nhấn nút Hủy đặt phòng - hiển thị AlertModal xác nhận đồng nhất hệ thống
+  const handleCancelBooking = (bookingItem) => {
+    showAlert({
+      title: 'Xác nhận hủy đơn đặt phòng',
+      message: `Bạn có chắc chắn muốn hủy đơn đặt phòng ${bookingItem.bookingCode || bookingItem.id}?`,
+      type: 'warning',
+      confirmText: 'Xác nhận hủy',
+      cancelText: 'Đóng',
+      showCancel: true,
+      onConfirm: () => handleConfirmCancel(bookingItem)
+    });
+  };
+
+  // Xử lý xác nhận hủy đặt phòng và thông báo dạng Toast nổi (showToast)
   const handleConfirmCancel = async (bookingItem) => {
     try {
       setIsCancelling(true);
@@ -302,12 +326,7 @@ export default function MyBookingsPage() {
         });
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
-          showAlert({
-            title: 'Không thể hủy đơn',
-            message: errData.message || 'Không thể hủy đơn đặt phòng vào thời điểm này. Vui lòng thử lại sau!',
-            type: 'error',
-            confirmText: 'Đã hiểu'
-          });
+          showToast(errData.message || 'Không thể hủy đơn đặt phòng vào thời điểm này. Vui lòng thử lại sau!', 'error');
           setIsCancelling(false);
           return;
         }
@@ -322,23 +341,74 @@ export default function MyBookingsPage() {
 
       localStorage.setItem('traveloka_bookings', JSON.stringify(updated));
       setBookings(updated);
-      setCancellingBookingId(null);
-      showAlert({
-        title: 'Hủy đơn thành công',
-        message: `Đơn đặt phòng ${bookingItem.bookingCode || bookingItem.id} đã được hủy thành công!`,
-        type: 'success',
-        confirmText: 'Đã hiểu'
-      });
+      showToast(`Đơn đặt phòng ${bookingItem.bookingCode || bookingItem.id} đã được hủy thành công!`, 'success');
     } catch (err) {
       console.error('Lỗi khi hủy đơn:', err);
+      showToast('Có lỗi xảy ra khi hủy đơn đặt phòng. Vui lòng thử lại sau!', 'error');
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  // Xử lý thanh toán trực tuyến qua VNPay cho đơn đặt phòng
+  const handlePayNow = async (bookingItem) => {
+    const targetBookingId = bookingItem.backendId 
+      || (typeof bookingItem.id === 'number' ? bookingItem.id : null)
+      || (bookingItem.bookingCode ? parseInt(String(bookingItem.bookingCode).replace(/\D/g, ''), 10) : null)
+      || (typeof bookingItem.id === 'string' ? parseInt(bookingItem.id.replace(/\D/g, ''), 10) : null);
+
+    if (!targetBookingId) {
+      showAlert({
+        title: 'Không thể thanh toán',
+        message: 'Không tìm thấy ID hợp lệ của đơn đặt phòng này.',
+        type: 'error'
+      });
+      return;
+    }
+
+    try {
+      setPayingBookingId(bookingItem.id);
+      const payResponse = await apiFetch('/customer/payments/create-url', {
+        method: 'POST',
+        body: JSON.stringify({
+          bookingId: targetBookingId,
+          paymentMethod: 'VNPAY'
+        })
+      });
+
+      if (payResponse.ok) {
+        const payData = await payResponse.json();
+        const payResult = payData?.result;
+        if (payResult?.paymentUrl) {
+          window.location.href = payResult.paymentUrl;
+          return;
+        } else {
+          showAlert({
+            title: 'Thành công',
+            message: payResult?.message || 'Đã tạo liên kết thanh toán thành công!',
+            type: 'success'
+          });
+        }
+      } else {
+        const payErr = await payResponse.json().catch(() => ({}));
+        const payMsg = getFriendlyErrorMessage(payErr, 'Lỗi kết nối cổng thanh toán.');
+        showAlert({
+          title: 'Lỗi cổng thanh toán',
+          message: payMsg,
+          type: 'error',
+          confirmText: 'Đã hiểu'
+        });
+      }
+    } catch (err) {
+      console.error('Lỗi khi thanh toán đơn:', err);
       showAlert({
         title: 'Có lỗi xảy ra',
-        message: 'Có lỗi xảy ra khi hủy đơn đặt phòng. Vui lòng thử lại sau!',
+        message: 'Đã xảy ra lỗi trong quá trình kết nối cổng thanh toán: ' + sanitizeErrorMessage(err),
         type: 'error',
         confirmText: 'Đã hiểu'
       });
     } finally {
-      setIsCancelling(false);
+      setPayingBookingId(null);
     }
   };
 
@@ -346,7 +416,7 @@ export default function MyBookingsPage() {
   const handleClearAll = () => {
     showAlert({
       title: 'Xóa toàn bộ lịch sử?',
-      message: 'Bạn có chắc chắn muốn xóa toàn bộ lịch sử đặt phòng đã lưu không? Thao tác này sẽ làm trống danh sách chuyến đi của bạn.',
+      message: 'Bạn có chắc chắn muốn xóa toàn bộ lịch sử đặt phòng đã lưu không? ',
       type: 'warning',
       confirmText: 'Xóa toàn bộ',
       cancelText: 'Giữ lại',
@@ -567,6 +637,19 @@ export default function MyBookingsPage() {
                       </div>
 
                       <div className="d-flex flex-column gap-2">
+                        {/* Nút thanh toán ngay: Chỉ hiển thị cho đơn chưa thanh toán và chưa bị hủy */}
+                        {b.paymentStatus !== 'paid' && b.status !== 'cancelled' && !b.isExpired && b.status !== 'completed' && b.status !== 'checked_in' && (
+                          <button
+                            onClick={() => handlePayNow(b)}
+                            disabled={payingBookingId === b.id}
+                            className="btn btn-warning btn-sm fw-bold d-inline-flex align-items-center justify-content-center gap-1 rounded-pill text-dark shadow-sm"
+                            title="Thanh toán đơn đặt phòng qua cổng VNPay"
+                          >
+                            <CreditCard size={15} />
+                            {payingBookingId === b.id ? 'Đang kết nối...' : 'Thanh toán ngay'}
+                          </button>
+                        )}
+
                         {/* Nút xem vé điện tử */}
                         <button 
                           onClick={() => navigate('/booking-success', { state: { booking: b } })}
@@ -578,7 +661,7 @@ export default function MyBookingsPage() {
                         {/* Nút hủy phòng (chỉ cho phép khi đang chờ duyệt hoặc đã xác nhận và chưa quá hạn) */}
                         {!b.isExpired && (b.status === 'confirmed' || b.status === 'pending') && (
                           <button 
-                            onClick={() => setCancellingBookingId(b.id)} 
+                            onClick={() => handleCancelBooking(b)} 
                             className="btn btn-link text-danger text-decoration-none btn-sm"
                           >
                             Hủy đặt phòng này
@@ -590,37 +673,26 @@ export default function MyBookingsPage() {
                   </div>
                 </div>
 
-                {/* Hộp thoại xác nhận hủy phòng inline */}
-                {cancellingBookingId === b.id && (
-                  <div className="p-3 bg-danger-subtle border-top text-danger d-flex flex-wrap align-items-center justify-content-between gap-2">
-                    <div className="d-flex align-items-center gap-2 small fw-semibold">
-                      <AlertTriangle size={18} />
-                      <span>Bạn có chắc chắn muốn hủy đơn đặt phòng {b.bookingCode || b.id}? Thao tác này sẽ gửi yêu cầu hủy đơn đến hệ thống.</span>
-                    </div>
-                    <div className="d-flex align-items-center gap-2">
-                      <button 
-                        onClick={() => handleConfirmCancel(b)} 
-                        disabled={isCancelling}
-                        className="btn btn-danger btn-sm fw-bold px-3 rounded-pill"
-                      >
-                        {isCancelling ? 'Đang hủy...' : 'Xác nhận hủy'}
-                      </button>
-                      <button 
-                        onClick={() => setCancellingBookingId(null)} 
-                        disabled={isCancelling}
-                        className="btn btn-secondary btn-sm px-3 rounded-pill"
-                      >
-                        Đóng
-                      </button>
-                    </div>
-                  </div>
-                )}
-
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Toast thông báo nổi đồng nhất hệ thống (showToast) */}
+      {toastMessage && (
+        <div
+          className="position-fixed top-0 start-50 translate-middle-x mt-4"
+          style={{ zIndex: 99999, maxWidth: 'calc(100vw - 32px)' }}
+        >
+          <div className={`alert ${toastType === 'error' ? 'alert-danger' : 'alert-success'} shadow-lg border-0 rounded-pill px-4 py-2 d-flex align-items-center gap-2 mb-0`}>
+            {toastType === 'error'
+              ? <AlertCircle size={18} className="text-danger" />
+              : <CheckCircle size={18} className="text-success" />}
+            <span className="fw-semibold small">{toastMessage}</span>
+          </div>
+        </div>
+      )}
 
       {/* Modal Thông Báo Thân Thiện Người Dùng */}
       <AlertModal
