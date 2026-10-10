@@ -95,14 +95,31 @@ export default function HomePage() {
     }
   }, []);
 
-  // Tự động tính ngày checkIn hôm nay và checkOut ngày mai theo thời gian thực
-  const today = new Date().toISOString().split('T')[0];
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  // Tự động tính ngày checkIn hôm nay và checkOut ngày mai theo giờ địa phương (tránh lệch múi giờ UTC)
+  const today = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }, []);
+
+  const tomorrow = useMemo(() => {
+    const tm = new Date(Date.now() + 86400000);
+    const y = tm.getFullYear();
+    const m = String(tm.getMonth() + 1).padStart(2, '0');
+    const d = String(tm.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }, []);
+
+  // Đảm bảo dữ liệu cũ trong localStorage nếu là ngày quá khứ sẽ được tự động làm mới về today
+  const initialCheckIn = (savedSearch?.checkIn && savedSearch.checkIn >= today) ? savedSearch.checkIn : today;
+  const initialCheckOut = (savedSearch?.checkOut && savedSearch.checkOut > initialCheckIn) ? savedSearch.checkOut : tomorrow;
 
   // State tìm kiếm trên Hero (để trống ban đầu để hiển thị toàn bộ khách sạn trên hệ thống)
   const [destination, setDestination] = useState(savedSearch?.destination || '');
-  const [checkIn, setCheckIn] = useState(savedSearch?.checkIn || today);
-  const [checkOut, setCheckOut] = useState(savedSearch?.checkOut || tomorrow);
+  const [checkIn, setCheckIn] = useState(initialCheckIn);
+  const [checkOut, setCheckOut] = useState(initialCheckOut);
   
   // State chọn phòng và khách (3 thành phần: Phòng, Người Lớn, Trẻ Em)
   const [roomsCount, setRoomsCount] = useState(savedSearch?.roomsCount || 1);
@@ -261,10 +278,13 @@ export default function HomePage() {
 
       let list = [];
       try {
+        const safeCheckIn = (checkIn && checkIn >= today) ? checkIn : today;
+        const safeCheckOut = (checkOut && checkOut > safeCheckIn) ? checkOut : tomorrow;
+
         const res = await searchHotelsApi({
           city: searchCity,
-          checkIn: checkIn || today,
-          checkOut: checkOut || tomorrow,
+          checkIn: safeCheckIn,
+          checkOut: safeCheckOut,
           guests,
           page: 0,
           size: 50
@@ -332,7 +352,7 @@ export default function HomePage() {
       const priceA = a.minPricePerNight || a.rooms?.[0]?.pricePerNight || 0;
       const priceB = b.minPricePerNight || b.rooms?.[0]?.pricePerNight || 0;
       if (sortOption === 'priceAsc') return priceA - priceB;
-      if (sortOption === 'ratingDesc') return (b.ratingScore || 8.5) - (a.ratingScore || 8.5);
+      if (sortOption === 'priceDesc') return priceB - priceA;
       return 0;
     });
   }, [backendHotels, destination, selectedStar, selectedRating, sortOption]);
@@ -448,10 +468,20 @@ export default function HomePage() {
                         min={today}
                         onChange={(e) => {
                           const newCheckIn = e.target.value;
+                          if (newCheckIn && newCheckIn < today) {
+                            setCheckIn(today);
+                            if (checkOut <= today) {
+                              setCheckOut(tomorrow);
+                            }
+                            return;
+                          }
                           setCheckIn(newCheckIn);
                           if (checkOut <= newCheckIn) {
-                            const nextDay = new Date(new Date(newCheckIn).getTime() + 86400000).toISOString().split('T')[0];
-                            setCheckOut(nextDay);
+                            const nextDate = new Date(new Date(newCheckIn).getTime() + 86400000);
+                            const y = nextDate.getFullYear();
+                            const m = String(nextDate.getMonth() + 1).padStart(2, '0');
+                            const d = String(nextDate.getDate()).padStart(2, '0');
+                            setCheckOut(`${y}-${m}-${d}`);
                           }
                         }}
                       />
@@ -461,8 +491,20 @@ export default function HomePage() {
                         type="date" 
                         className="form-control border-0 p-0 fw-bold fs-6 text-dark shadow-none bg-transparent"
                         value={checkOut}
-                        min={checkIn}
-                        onChange={(e) => setCheckOut(e.target.value)}
+                        min={checkIn || today}
+                        onChange={(e) => {
+                          const newCheckOut = e.target.value;
+                          const currentCheckIn = checkIn || today;
+                          if (newCheckOut && newCheckOut <= currentCheckIn) {
+                            const nextDate = new Date(new Date(currentCheckIn).getTime() + 86400000);
+                            const y = nextDate.getFullYear();
+                            const m = String(nextDate.getMonth() + 1).padStart(2, '0');
+                            const d = String(nextDate.getDate()).padStart(2, '0');
+                            setCheckOut(`${y}-${m}-${d}`);
+                            return;
+                          }
+                          setCheckOut(newCheckOut);
+                        }}
                       />
                     </div>
                   </div>
@@ -813,10 +855,10 @@ export default function HomePage() {
                     Ưu tiên giá thấp nhất
                   </button>
                   <button 
-                    onClick={() => setSortOption('ratingDesc')}
-                    className={`btn btn-sm flex-fill py-2 fw-semibold rounded-2 ${sortOption === 'ratingDesc' ? 'btn-dark text-white' : 'btn-white text-secondary'}`}
+                    onClick={() => setSortOption('priceDesc')}
+                    className={`btn btn-sm flex-fill py-2 fw-semibold rounded-2 ${sortOption === 'priceDesc' ? 'btn-dark text-white' : 'btn-white text-secondary'}`}
                   >
-                    Đánh giá cao nhất
+                    Ưu tiên giá cao nhất
                   </button>
                 </div>
               </div>
