@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { apiFetch } from '../services/api';
 import { 
   CheckCircle, Copy, Check, Printer, ArrowRight, Home, 
   MapPin, Calendar, Users, BedDouble, Phone, Mail, ShieldCheck, QrCode, Sparkles, UserPlus
@@ -9,6 +10,28 @@ export default function BookingSuccessPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
+  const [profile, setProfile] = useState(null);
+  const hasFetchedProfileRef = useRef(false);
+
+  // Tự động tải profile mới nhất để đồng bộ thông tin khách hàng nếu đơn còn thiếu
+  useEffect(() => {
+    if (!isAuthenticated || hasFetchedProfileRef.current) return;
+    hasFetchedProfileRef.current = true;
+
+    const fetchProfile = async () => {
+      try {
+        const response = await apiFetch('/customer/profile');
+        if (response.ok) {
+          const resData = await response.json();
+          const p = resData?.result || resData;
+          if (p) setProfile(p);
+        }
+      } catch (err) {
+        console.warn('Lỗi lấy profile tại BookingSuccessPage:', err);
+      }
+    };
+    fetchProfile();
+  }, [isAuthenticated]);
 
   // Đọc dữ liệu booking từ state chuyển trang, hoặc lấy đơn gần nhất từ localStorage
   const getInitialBooking = () => {
@@ -32,8 +55,8 @@ export default function BookingSuccessPage() {
       checkOutDate: '—',
       nights: 1,
       guestCount: 2,
-      contactName: user?.fullName || 'Khách hàng',
-      guestName: user?.fullName || 'Khách hàng',
+      contactName: user?.fullName || user?.name || 'Khách hàng',
+      guestName: user?.fullName || user?.name || 'Khách hàng',
       contactEmail: user?.email || '',
       contactPhone: user?.phone || '',
       specialRequests: [],
@@ -44,6 +67,63 @@ export default function BookingSuccessPage() {
   };
 
   const booking = getInitialBooking();
+
+  // Đồng bộ thông tin khách hàng từ nhiều nguồn (booking, profile mới nhất, auth context)
+  const customerName = 
+    (booking.customerName && booking.customerName !== 'Khách hàng' ? booking.customerName : null) ||
+    (booking.guestName && booking.guestName !== 'Khách hàng' ? booking.guestName : null) ||
+    (booking.contactName && booking.contactName !== 'Khách hàng' ? booking.contactName : null) ||
+    (booking.userFullName && booking.userFullName !== 'Khách hàng' ? booking.userFullName : null) ||
+    profile?.fullName || profile?.name ||
+    user?.fullName || user?.name ||
+    'Khách hàng';
+
+  const customerPhone = 
+    booking.customerPhone || 
+    booking.contactPhone || 
+    booking.userPhone || 
+    profile?.phone || 
+    user?.phone || 
+    '';
+
+  const customerEmail = 
+    booking.customerEmail || 
+    booking.contactEmail || 
+    booking.userEmail || 
+    profile?.email || 
+    user?.email || 
+    '';
+
+  // Tự động lưu thông tin khách hàng đã đồng bộ vào localStorage
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('traveloka_bookings') || '[]');
+      if (saved.length > 0) {
+        let changed = false;
+        const updated = saved.map((b, idx) => {
+          if (idx === 0 || b.id === booking.id || (b.backendBookingId && b.backendBookingId === booking.backendBookingId)) {
+            const needName = !b.contactName || b.contactName === 'Khách hàng';
+            const needEmail = !b.contactEmail;
+            const needPhone = !b.contactPhone;
+            if ((needName && customerName !== 'Khách hàng') || (needEmail && customerEmail) || (needPhone && customerPhone)) {
+              changed = true;
+              return {
+                ...b,
+                contactName: (needName && customerName !== 'Khách hàng') ? customerName : b.contactName,
+                guestName: (needName && customerName !== 'Khách hàng') ? customerName : b.guestName,
+                contactEmail: (needEmail && customerEmail) ? customerEmail : b.contactEmail,
+                contactPhone: (needPhone && customerPhone) ? customerPhone : b.contactPhone
+              };
+            }
+          }
+          return b;
+        });
+        if (changed) {
+          localStorage.setItem('traveloka_bookings', JSON.stringify(updated));
+        }
+      }
+    } catch (_) {}
+  }, [customerName, customerPhone, customerEmail, booking.id, booking.backendBookingId]);
 
   // State sao chép mã booking
   const [copied, setCopied] = useState(false);
@@ -78,7 +158,7 @@ export default function BookingSuccessPage() {
 
               <h2 className="fw-bold text-dark mb-2">Đặt Phòng Thành Công!</h2>
               <p className="text-secondary mb-4 mx-auto" style={{ maxWidth: '600px' }}>
-                Cảm ơn bạn đã lựa chọn Traveloka! Đơn đặt phòng của bạn đã được xác nhận. Chúng tôi đã gửi email xác nhận và vé điện tử chi tiết đến hòm thư <strong className="text-dark">{booking.contactEmail}</strong>.
+                Cảm ơn bạn đã lựa chọn Traveloka! Đơn đặt phòng của bạn đã được xác nhận. Chúng tôi đã gửi email xác nhận và vé điện tử chi tiết đến hòm thư <strong className="text-dark">{customerEmail || 'email của bạn'}</strong>.
               </p>
 
               {/* Hộp hiển thị mã đặt phòng & nút copy */}
@@ -229,15 +309,15 @@ export default function BookingSuccessPage() {
                       <div className="row g-2 small text-secondary">
                         <div className="col-md-6">
                           <span>Họ tên khách: </span>
-                          <strong className="text-dark">{booking.guestName || booking.contactName}</strong>
+                          <strong className="text-dark">{customerName}</strong>
                         </div>
                         <div className="col-md-6">
                           <span>Số điện thoại: </span>
-                          <strong className="text-dark">{booking.contactPhone}</strong>
+                          <strong className="text-dark">{customerPhone || 'Chưa cập nhật'}</strong>
                         </div>
                         <div className="col-md-12">
                           <span>Email: </span>
-                          <strong className="text-dark">{booking.contactEmail}</strong>
+                          <strong className="text-dark">{customerEmail || 'Chưa cập nhật'}</strong>
                         </div>
                         {booking.specialRequests && booking.specialRequests.length > 0 && (
                           <div className="col-12 mt-1">
