@@ -135,8 +135,8 @@ export default function AdminDashboardPage() {
       paymentStatus = 'paid';
     }
 
-    // 2. Chuyển khoản VNPay khi đã thanh toán thành công -> TỰ ĐỘNG DUYỆT ĐƠN (CONFIRMED), không cần admin duyệt
-    if (paymentMethod === 'vnpay' && paymentStatus === 'paid' && rawStatus === 'PENDING') {
+    // 2. Chuyển khoản VNPay khi đã thanh toán thành công HOẶC Tiền mặt -> TỰ ĐỘNG DUYỆT ĐƠN (CONFIRMED), không cần admin duyệt
+    if (((paymentMethod === 'vnpay' && paymentStatus === 'paid') || paymentMethod === 'pay_at_hotel') && rawStatus === 'PENDING') {
       rawStatus = 'CONFIRMED';
     }
 
@@ -388,14 +388,42 @@ export default function AdminDashboardPage() {
     return { total, available, booked, maintenance };
   }, [roomsList]);
 
-  // ── Phân trang Tab Khách Sạn (10 phần tử / trang) ──
+  // ── Phân trang & Tìm kiếm Tab Khách Sạn (10 phần tử / trang) ──
   const HOTELS_PER_PAGE = 10;
+  const [hotelSearchQuery, setHotelSearchQuery] = useState('');
+  const [showHotelSuggestions, setShowHotelSuggestions] = useState(false);
+  const hotelSearchRef = useRef(null);
   const [hotelCurrentPage, setHotelCurrentPage] = useState(1);
-  const hotelTotalPages = Math.max(1, Math.ceil(hotels.length / HOTELS_PER_PAGE));
+
+  const filteredHotels = useMemo(() => {
+    if (!hotelSearchQuery.trim()) return hotels;
+    const q = hotelSearchQuery.toLowerCase().trim();
+    return hotels.filter(h =>
+      (h.name && h.name.toLowerCase().includes(q)) ||
+      (h.city && h.city.toLowerCase().includes(q)) ||
+      (h.address && h.address.toLowerCase().includes(q))
+    );
+  }, [hotels, hotelSearchQuery]);
+
+  const hotelTotalPages = Math.max(1, Math.ceil(filteredHotels.length / HOTELS_PER_PAGE));
   const paginatedHotels = useMemo(() => {
     const start = (hotelCurrentPage - 1) * HOTELS_PER_PAGE;
-    return hotels.slice(start, start + HOTELS_PER_PAGE);
-  }, [hotels, hotelCurrentPage]);
+    return filteredHotels.slice(start, start + HOTELS_PER_PAGE);
+  }, [filteredHotels, hotelCurrentPage]);
+
+  useEffect(() => {
+    setHotelCurrentPage(1);
+  }, [hotelSearchQuery]);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (hotelSearchRef.current && !hotelSearchRef.current.contains(e.target)) {
+        setShowHotelSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (hotelCurrentPage > hotelTotalPages) {
@@ -2046,12 +2074,134 @@ export default function AdminDashboardPage() {
 
           {/* ══ TAB: KHÁCH SẠN (FR-13) ══ */}
           {activeTab === 'hotels' && (
-            <SectionCard title={`Danh Sách Khách Sạn & Khu Nghỉ Dưỡng (${hotels.length} cơ sở)`} sub="Thêm mới, cập nhật hoặc xóa khách sạn"
-              action={<ActionBtn onClick={openAddHotel} icon={<Plus size={16} />}>Thêm Khách Sạn Mới</ActionBtn>}>
+            <SectionCard title={`Danh Sách Khách Sạn & Khu Nghỉ Dưỡng (${filteredHotels.length} cơ sở)`} sub="Thêm mới, cập nhật hoặc xóa khách sạn"
+              action={
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div
+                    ref={hotelSearchRef}
+                    style={{ position: 'relative', width: 280 }}
+                  >
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      background: '#f8fafc',
+                      border: showHotelSuggestions && hotelSearchQuery ? '1px solid #3b82f6' : '1px solid #cbd5e1',
+                      borderRadius: 8,
+                      padding: '6px 12px',
+                      width: '100%',
+                      boxShadow: showHotelSuggestions && hotelSearchQuery ? '0 0 0 2px rgba(59, 130, 246, 0.15)' : 'none',
+                      transition: 'all 0.2s'
+                    }}>
+                      <Search size={15} color="#64748b" />
+                      <input
+                        type="text"
+                        placeholder="Tìm kiếm khách sạn, địa chỉ..."
+                        value={hotelSearchQuery}
+                        onFocus={() => setShowHotelSuggestions(true)}
+                        onChange={e => {
+                          setHotelSearchQuery(e.target.value);
+                          setShowHotelSuggestions(true);
+                        }}
+                        style={{ border: 'none', background: 'transparent', outline: 'none', width: '100%', fontSize: 13, color: '#1e293b' }}
+                      />
+                      {hotelSearchQuery && (
+                        <button
+                          onClick={() => {
+                            setHotelSearchQuery('');
+                            setShowHotelSuggestions(false);
+                          }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 0, display: 'flex' }}
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Hộp gợi ý tìm kiếm (Autocomplete Suggestions Dropdown) */}
+                    {showHotelSuggestions && hotelSearchQuery.trim() && (
+                      <div style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 6px)',
+                        left: 0,
+                        right: 0,
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: 10,
+                        boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)',
+                        zIndex: 1050,
+                        overflow: 'hidden'
+                      }}>
+                        <div style={{
+                          padding: '7px 12px',
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: '#64748b',
+                          background: '#f8fafc',
+                          borderBottom: '1px solid #f1f5f9',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <span>Gợi ý khách sạn ({filteredHotels.length})</span>
+                          <span style={{ fontSize: 10, color: '#94a3b8' }}>Bấm để chọn</span>
+                        </div>
+                        <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+                          {filteredHotels.length > 0 ? (
+                            filteredHotels.slice(0, 5).map(h => (
+                              <div
+                                key={h.id}
+                                onClick={() => {
+                                  setHotelSearchQuery(h.name);
+                                  setShowHotelSuggestions(false);
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 10,
+                                  padding: '8px 12px',
+                                  cursor: 'pointer',
+                                  borderBottom: '1px solid #f8fafc',
+                                  transition: 'background 0.15s'
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'}
+                                onMouseLeave={e => e.currentTarget.style.background = '#ffffff'}
+                              >
+                                <img
+                                  src={h.thumbnailUrl || (Array.isArray(h.images) ? h.images[0] : null) || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=200&auto=format&fit=crop&q=80'}
+                                  alt={h.name}
+                                  style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }}
+                                  onError={e => { e.target.style.opacity = '0.4'; }}
+                                />
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                  <div style={{ fontWeight: 600, fontSize: 13, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {h.name}
+                                  </div>
+                                  <div style={{ fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <span>📍 {h.city}</span>
+                                    <span>•</span>
+                                    <span style={{ color: '#f59e0b', fontWeight: 600 }}>{'★'.repeat(h.starRating || 5)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div style={{ padding: '14px 12px', textAlign: 'center', fontSize: 12, color: '#94a3b8' }}>
+                              Không tìm thấy khách sạn phù hợp
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <ActionBtn onClick={openAddHotel} icon={<Plus size={16} />}>Thêm Khách Sạn Mới</ActionBtn>
+                </div>
+              }>
               <div className="table-responsive">
                 <table className="table table-hover align-middle mb-0" style={{ fontSize: 13 }}>
                   <thead style={{ background: '#f8fafc' }}><tr>{['Hình Ảnh', 'Tên Khách Sạn', 'Thành Phố', 'Hạng Sao', 'Điểm Đánh Giá', 'Giá Khởi Điểm', 'Số Phòng', 'Thao Tác'].map(h => <Th key={h}>{h}</Th>)}</tr></thead>
-                  <tbody>{paginatedHotels.map(h => (
+                  <tbody>{paginatedHotels.length > 0 ? (
+                    paginatedHotels.map(h => (
                     <tr key={h.id}>
                       <td>
                         <div style={{ position: 'relative', width: 64, height: 48, borderRadius: 8, overflow: 'hidden', backgroundColor: '#f1f5f9' }}>
@@ -2085,13 +2235,20 @@ export default function AdminDashboardPage() {
                         <SmBtn color="red" onClick={() => deleteHotel(h.id)} icon={<Trash2 size={12} />}>Xóa</SmBtn>
                       </div></td>
                     </tr>
-                  ))}</tbody>
+                  ))
+                  ) : (
+                    <tr>
+                      <td colSpan={8} className="text-center py-4 text-muted">
+                        Không tìm thấy khách sạn nào phù hợp với từ khóa "{hotelSearchQuery}"
+                      </td>
+                    </tr>
+                  )}</tbody>
                 </table>
               </div>
               <TablePagination
                 currentPage={hotelCurrentPage}
                 totalPages={hotelTotalPages}
-                totalItems={hotels.length}
+                totalItems={filteredHotels.length}
                 itemsPerPage={HOTELS_PER_PAGE}
                 onPageChange={setHotelCurrentPage}
                 label="khách sạn"
