@@ -31,8 +31,8 @@ export default function MyBookingsPage() {
       paymentStatus = 'paid';
     }
 
-    // 2. Chuyển khoản VNPay khi đã thanh toán thành công -> TỰ ĐỘNG DUYỆT ĐƠN (CONFIRMED), không cần admin duyệt
-    if (paymentMethod === 'vnpay' && paymentStatus === 'paid' && rawStatus === 'PENDING') {
+    // 2. Chuyển khoản VNPay khi đã thanh toán thành công HOẶC Tiền mặt -> TỰ ĐỘNG DUYỆT ĐƠN (CONFIRMED), không cần admin duyệt
+    if (((paymentMethod === 'vnpay' && paymentStatus === 'paid') || paymentMethod === 'pay_at_hotel') && rawStatus === 'PENDING') {
       rawStatus = 'CONFIRMED';
     }
 
