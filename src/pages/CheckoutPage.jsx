@@ -331,10 +331,10 @@ export default function CheckoutPage() {
         checkOutDate,
         nights,
         guestCount: passedData.guestCount || passedData.adultsCount || savedSearch.adultsCount || room.maxGuests || 2,
-        contactName: fullName || user?.fullName || user?.name || 'Khách hàng',
-        guestName: isBookingForSomeoneElse ? (guestName || 'Khách hàng') : (fullName || user?.fullName || user?.name || 'Khách hàng'),
-        contactEmail: email || user?.email || '',
-        contactPhone: phoneNumber || user?.phone || '',
+        contactName: fullName,
+        guestName: isBookingForSomeoneElse ? guestName : fullName,
+        contactEmail: email,
+        contactPhone: phoneNumber,
         specialRequests,
         paymentMethod,
         roomPrice: roomPriceTotal,
@@ -353,10 +353,10 @@ export default function CheckoutPage() {
 
       const payResponse = await apiFetch('/customer/payments/create-url', {
         method: 'POST',
-        body: JSON.stringify({
+        body: JSON.stringify({ //Request は統括された
           bookingId: realBookingId,
           paymentMethod: paymentMethodEnum
-        })
+        })  
       });
 
       if (payResponse.ok) {
@@ -448,7 +448,7 @@ export default function CheckoutPage() {
               <div className="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white">
                 <div className="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
                   <h5 className="fw-bold text-dark mb-0">1. Thông Tin Người Liên Hệ</h5>
-                  <span className="badge bg-primary-subtle text-primary small">Yêu cầu thông tin chính xác</span>
+                
                 </div>
                 {/* BANNER PHÂN BIỆT: KHÁCH VÃNG LAI (GUEST) VÀ THÀNH VIÊN ĐÃ ĐĂNG NHẬP */}
                 {!isAuthenticated ? (
@@ -646,9 +646,6 @@ export default function CheckoutPage() {
               <div className="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white">
                 <div className="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
                   <h5 className="fw-bold text-dark mb-0">3. Chọn Phương Thức Thanh Toán</h5>
-                  <span className="badge bg-success-subtle text-success small d-flex align-items-center gap-1">
-                    <ShieldCheck size={14} /> Bảo mật SSL 256-bit
-                  </span>
                 </div>
 
                 <div className="d-flex flex-column gap-3 mb-4">

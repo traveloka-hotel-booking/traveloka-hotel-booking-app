@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { filterHotelsApi, searchHotelsApi } from '../services/hotelApi';
 import { 
   Search, MapPin, Star, Filter, RotateCcw, 
-  Wifi, Waves, Coffee, Car, Dumbbell, Sparkles, CheckSquare, Square,
+  Wifi, Waves, Coffee, Car, Dumbbell, Sparkles, CheckSquare, Square, CheckCircle2, Circle,
   Loader2, ChevronLeft, ChevronRight
 } from 'lucide-react';
 
@@ -62,7 +62,7 @@ export default function HotelsPage() {
 
   // State các bộ lọc
   const [selectedCity, setSelectedCity] = useState(cityParam);
-  const [selectedStars, setSelectedStars] = useState([]);
+  const [selectedStar, setSelectedStar] = useState(null); // null (tất cả), hoặc 5, 4, 3
   const [maxPrice, setMaxPrice] = useState(5000000);
   const [selectedAmenities, setSelectedAmenities] = useState([]);
   const [sortBy, setSortBy] = useState('popular'); // popular, priceAsc, priceDesc, ratingDesc
@@ -101,9 +101,9 @@ export default function HotelsPage() {
           size
         });
       } else {
-        // Ngược lại gọi FR-07 Filter
-        const minStar = selectedStars.length > 0 ? Math.min(...selectedStars) : null;
-        const maxStar = selectedStars.length > 0 ? Math.max(...selectedStars) : null;
+        // Ngược lại gọi FR-07 Filter (chỉ lọc duy nhất 1 hạng sao chính xác nếu được chọn)
+        const minStar = selectedStar ? selectedStar : null;
+        const maxStar = selectedStar ? selectedStar : null;
         data = await filterHotelsApi({
           city: selectedCity && selectedCity !== 'Tất cả' ? selectedCity : '',
           minStar,
@@ -126,7 +126,7 @@ export default function HotelsPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCity, selectedStars, selectedAmenities, checkInParam, checkOutParam, guestsParam, page, size]);
+  }, [selectedCity, selectedStar, selectedAmenities, checkInParam, checkOutParam, guestsParam, page, size]);
 
   useEffect(() => {
     loadHotels();
@@ -162,13 +162,10 @@ export default function HotelsPage() {
     "Quầy bar & Lounge"
   ];
 
-  // Xử lý bật/tắt chọn sao
+  // Xử lý chọn 1 hạng sao duy nhất (chọn sao này thì sao khác tự động bỏ chọn)
   const toggleStar = (star) => {
-    setSelectedStars(prev => {
-      const next = prev.includes(star) ? prev.filter(s => s !== star) : [...prev, star];
-      setPage(0);
-      return next;
-    });
+    setSelectedStar(prev => (prev === star ? null : star));
+    setPage(0);
   };
 
   // Xử lý bật/tắt tiện ích
@@ -183,7 +180,7 @@ export default function HotelsPage() {
   // Xóa toàn bộ bộ lọc
   const handleResetFilters = () => {
     setSelectedCity('');
-    setSelectedStars([]);
+    setSelectedStar(null);
     setMaxPrice(5000000);
     setSelectedAmenities([]);
     setSortBy('popular');
@@ -201,11 +198,19 @@ export default function HotelsPage() {
     const sourceHotels = Array.isArray(backendHotels) ? backendHotels : [];
 
     return sourceHotels.filter(hotel => {
-      // Lọc theo mức giá tối đa:
+      // 1. Lọc theo mức giá tối đa:
       // Bất kỳ khách sạn nào có giá phòng vượt quá mức giá người dùng chọn -> không hiển thị
       const hotelPrice = getHotelPrice(hotel);
       if (hotelPrice > maxPrice) {
         return false;
+      }
+
+      // 2. Lọc theo hạng sao chính xác: nếu người dùng chọn 1 hạng sao thì chỉ hiển thị đúng khách sạn có hạng sao đó, các hạng sao khác sẽ biến mất
+      if (selectedStar) {
+        const hotelStar = Number(hotel?.starRating ?? hotel?.stars ?? 0);
+        if (hotelStar !== Number(selectedStar)) {
+          return false;
+        }
       }
 
       return true;
@@ -218,7 +223,7 @@ export default function HotelsPage() {
       if (sortBy === 'ratingDesc') return (b.ratingScore || 8.5) - (a.ratingScore || 8.5);
       return 0; // popular
     });
-  }, [backendHotels, maxPrice, sortBy]);
+  }, [backendHotels, maxPrice, sortBy, selectedStar]);
 
   return (
     <div className="bg-light pb-4 min-vh-100 page-top-spacing">
@@ -333,27 +338,53 @@ export default function HotelsPage() {
 
               {/* 3. Lọc theo Hạng sao */}
               <div className="mb-4 pb-3 border-bottom">
-                <label className="form-label fw-bold text-dark small text-uppercase mb-2">Hạng sao khách sạn</label>
-                <div className="d-flex flex-column gap-2">
-                  {[5, 4, 3].map(star => (
-                    <div 
-                      key={star} 
-                      className="d-flex align-items-center gap-2 cursor-pointer"
-                      onClick={() => toggleStar(star)}
+                <div className="d-flex justify-content-between align-items-center mb-2">
+                  <label className="form-label fw-bold text-dark small text-uppercase mb-0">Hạng sao khách sạn</label>
+                  {selectedStar && (
+                    <button 
+                      type="button" 
+                      onClick={() => toggleStar(selectedStar)} 
+                      className="btn btn-link p-0 text-decoration-none text-danger small"
+                      style={{ fontSize: '11px' }}
                     >
-                      {selectedStars.includes(star) ? (
-                        <CheckSquare size={18} className="text-primary" />
-                      ) : (
-                        <Square size={18} className="text-secondary" />
-                      )}
-                      <div className="d-flex align-items-center gap-1 text-warning">
-                        {Array.from({ length: star }).map((_, i) => (
-                          <Star key={i} size={15} fill="#ffc107" />
-                        ))}
-                        <span className="text-dark small ms-1">({star} sao)</span>
+                      Bỏ chọn
+                    </button>
+                  )}
+                </div>
+                <div className="d-flex flex-column gap-2">
+                  {[5, 4, 3].map(star => {
+                    const isSelected = selectedStar === star;
+                    return (
+                      <div 
+                        key={star} 
+                        className={`d-flex align-items-center justify-content-between p-2 rounded-3 cursor-pointer transition-all ${
+                          isSelected ? 'bg-primary-subtle border border-primary-subtle' : 'bg-white'
+                        }`}
+                        onClick={() => toggleStar(star)}
+                      >
+                        <div className="d-flex align-items-center gap-2">
+                          {isSelected ? (
+                            <CheckCircle2 size={18} className="text-primary flex-shrink-0" />
+                          ) : (
+                            <Circle size={18} className="text-secondary flex-shrink-0" />
+                          )}
+                          <div className="d-flex align-items-center gap-1 text-warning">
+                            {Array.from({ length: star }).map((_, i) => (
+                              <Star key={i} size={15} fill="#ffc107" />
+                            ))}
+                            <span className={`small ms-1 ${isSelected ? 'text-primary fw-bold' : 'text-dark'}`}>
+                              ({star} sao)
+                            </span>
+                          </div>
+                        </div>
+                        {isSelected && (
+                          <span className="badge bg-primary text-white rounded-pill px-2 py-1" style={{ fontSize: '10px' }}>
+                          
+                          </span>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 

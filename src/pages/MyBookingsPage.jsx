@@ -230,10 +230,18 @@ export default function MyBookingsPage() {
   // Tải danh sách đơn đặt phòng từ Backend và LocalStorage
   const loadBookings = async () => {
     let currentList = [];
+    const deletedIds = JSON.parse(localStorage.getItem('traveloka_deleted_booking_ids') || '[]');
+    const isNotDeleted = (b) => {
+      const idStr = String(b.id || '');
+      const codeStr = String(b.bookingCode || '');
+      const backendIdStr = b.backendId ? String(b.backendId) : '';
+      return !deletedIds.includes(idStr) && !deletedIds.includes(codeStr) && (!backendIdStr || !deletedIds.includes(backendIdStr));
+    };
+
     try {
       const saved = JSON.parse(localStorage.getItem('traveloka_bookings') || '[]');
       if (Array.isArray(saved) && saved.length > 0) {
-        currentList = saved.map(normalizeBooking);
+        currentList = saved.map(normalizeBooking).filter(isNotDeleted);
         setBookings(currentList);
       }
     } catch (e) {
@@ -247,7 +255,7 @@ export default function MyBookingsPage() {
         if (res.ok) {
           const data = await res.json();
           if (data && data.result && Array.isArray(data.result)) {
-            const mapped = data.result.map(normalizeBooking);
+            const mapped = data.result.map(normalizeBooking).filter(isNotDeleted);
             currentList = mapped;
             setBookings(mapped);
             localStorage.setItem('traveloka_bookings', JSON.stringify(mapped));
@@ -299,14 +307,16 @@ export default function MyBookingsPage() {
 
   useEffect(() => {
     loadBookings();
+    const handleUpdate = () => loadBookings();
+    window.addEventListener('traveloka_bookings_updated', handleUpdate);
+    return () => window.removeEventListener('traveloka_bookings_updated', handleUpdate);
   }, [isAuthenticated]);
-
 
   // Xử lý khi nhấn nút Hủy đặt phòng - hiển thị AlertModal xác nhận đồng nhất hệ thống
   const handleCancelBooking = (bookingItem) => {
     showAlert({
-      title: 'Xác nhận hủy đơn đặt phòng',
-      message: `Bạn có chắc chắn muốn hủy đơn đặt phòng ${bookingItem.bookingCode || bookingItem.id}?`,
+      title: 'Xác nhận hủy đặt phòng',
+      message: `Bạn có chắc chắn muốn hủy đơn đặt phòng [${bookingItem.bookingCode || bookingItem.id}] và xóa khỏi danh sách không?`,
       type: 'warning',
       confirmText: 'Xác nhận hủy',
       cancelText: 'Đóng',
@@ -315,33 +325,55 @@ export default function MyBookingsPage() {
     });
   };
 
-  // Xử lý xác nhận hủy đặt phòng và thông báo dạng Toast nổi (showToast)
+  // Xử lý xác nhận hủy đặt phòng và xóa đơn khỏi danh sách
   const handleConfirmCancel = async (bookingItem) => {
     try {
       setIsCancelling(true);
-      if (bookingItem.backendId) {
-        const res = await apiFetch(`/customer/bookings/${bookingItem.backendId}/cancel`, {
-          method: 'PUT',
-          body: JSON.stringify({ reason: 'Khách hàng tự hủy trên website' })
-        });
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          showToast(errData.message || 'Không thể hủy đơn đặt phòng vào thời điểm này. Vui lòng thử lại sau!', 'error');
-          setIsCancelling(false);
-          return;
+      const targetBackendId = bookingItem.backendId 
+        || (typeof bookingItem.id === 'number' ? bookingItem.id : null)
+        || (bookingItem.bookingCode ? parseInt(String(bookingItem.bookingCode).replace(/\D/g, ''), 10) : null);
+
+      if (targetBackendId) {
+        const rawS = (bookingItem.rawStatus || bookingItem.status || '').toUpperCase();
+        // Gọi API hủy đơn nếu đơn đang ở trạng thái PENDING hoặc CONFIRMED
+        if (rawS === 'PENDING' || rawS === 'CONFIRMED') {
+          try {
+            await apiFetch(`/customer/bookings/${targetBackendId}/cancel`, {
+              method: 'PUT',
+              body: JSON.stringify({ reason: 'Khách hàng tự hủy trên website' })
+            });
+          } catch (apiErr) {
+            console.warn('Lỗi gọi API hủy đơn backend:', apiErr);
+          }
         }
       }
 
-      const updated = bookings.map(b => {
-        if (b.id === bookingItem.id || (bookingItem.backendId && b.backendId === bookingItem.backendId)) {
-          return { ...b, status: 'cancelled', rawStatus: 'CANCELLED' };
-        }
-        return b;
+      // 1. Xóa đơn đặt phòng khỏi danh sách hiển thị
+      const updated = bookings.filter(b => {
+        if (b.id === bookingItem.id) return false;
+        if (bookingItem.bookingCode && b.bookingCode === bookingItem.bookingCode) return false;
+        if (bookingItem.backendId && b.backendId === bookingItem.backendId) return false;
+        return true;
       });
 
-      localStorage.setItem('traveloka_bookings', JSON.stringify(updated));
+      // 2. Cập nhật state và localStorage
       setBookings(updated);
-      showToast(`Đơn đặt phòng ${bookingItem.bookingCode || bookingItem.id} đã được hủy thành công!`, 'success');
+      localStorage.setItem('traveloka_bookings', JSON.stringify(updated));
+
+      // 3. Ghi nhớ ID đã xóa vào danh sách loại trừ để không nạp lại từ backend
+      const deletedIds = JSON.parse(localStorage.getItem('traveloka_deleted_booking_ids') || '[]');
+      const newDeletedIds = [...new Set([
+        ...deletedIds,
+        String(bookingItem.id),
+        String(bookingItem.bookingCode),
+        bookingItem.backendId ? String(bookingItem.backendId) : null,
+        targetBackendId ? String(targetBackendId) : null
+      ].filter(Boolean))];
+      localStorage.setItem('traveloka_deleted_booking_ids', JSON.stringify(newDeletedIds));
+
+      // 4. Phát sự kiện đồng bộ toàn hệ thống
+      window.dispatchEvent(new Event('traveloka_bookings_updated'));
+      showToast(`Đơn đặt phòng ${bookingItem.bookingCode || bookingItem.id} đã được hủy và xóa khỏi danh sách thành công!`, 'success');
     } catch (err) {
       console.error('Lỗi khi hủy đơn:', err);
       showToast('Có lỗi xảy ra khi hủy đơn đặt phòng. Vui lòng thử lại sau!', 'error');
@@ -422,8 +454,12 @@ export default function MyBookingsPage() {
       cancelText: 'Giữ lại',
       showCancel: true,
       onConfirm: () => {
+        const allIds = bookings.flatMap(b => [String(b.id), String(b.bookingCode), b.backendId ? String(b.backendId) : null]).filter(Boolean);
+        const deletedIds = JSON.parse(localStorage.getItem('traveloka_deleted_booking_ids') || '[]');
+        localStorage.setItem('traveloka_deleted_booking_ids', JSON.stringify([...new Set([...deletedIds, ...allIds])]));
         localStorage.removeItem('traveloka_bookings');
         setBookings([]);
+        window.dispatchEvent(new Event('traveloka_bookings_updated'));
       }
     });
   };
@@ -658,8 +694,8 @@ export default function MyBookingsPage() {
                           <Eye size={15} /> Xem vé điện tử
                         </button>
 
-                        {/* Nút hủy phòng (chỉ cho phép khi đang chờ duyệt hoặc đã xác nhận và chưa quá hạn) */}
-                        {!b.isExpired && (b.status === 'confirmed' || b.status === 'pending') && (
+                        {/* Nút hủy phòng / xóa đơn khỏi danh sách */}
+                        {b.status !== 'checked_in' && (
                           <button 
                             onClick={() => handleCancelBooking(b)} 
                             className="btn btn-link text-danger text-decoration-none btn-sm"

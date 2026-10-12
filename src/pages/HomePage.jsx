@@ -4,7 +4,7 @@ import { searchHotelsApi, filterHotelsApi } from '../services/hotelApi';
 import { 
   Search, MapPin, Calendar, Users, Star, ArrowRight, ChevronDown, ChevronUp,
   Minus, Plus, ShieldCheck, Tag, Clock, Sparkles, Check, Info, ArrowUp, ThumbsUp,
-  Award, Shield, HelpCircle, Loader2, X, RotateCcw
+  Award, Shield, HelpCircle, Loader2, X, RotateCcw, Filter
 } from 'lucide-react';
 
 // Danh sách gợi ý điểm đến phổ biến tại Việt Nam (chuẩn hóa tên đồng bộ với CSDL và Admin)
@@ -696,15 +696,16 @@ export default function HomePage() {
       <section id="hotel-list-section" className="bg-light py-4">
         <div className="container">
           
-          {/* Breadcrumb theo ảnh 2 */}
-          <div className="d-flex align-items-center gap-2 small text-secondary mb-3" style={{ fontSize: '13px' }}>
-            <Link to="/" className="text-primary text-decoration-none">Traveloka</Link>
-            <span>&gt;</span>
-            <Link to="/hotels" className="text-primary text-decoration-none">Khách sạn</Link>
-            <span>&gt;</span>
-            <span className="text-primary">Khách sạn tại Việt Nam</span>
-            <span>&gt;</span>
-            <span className="text-dark fw-semibold">{destination || "Điểm đến của bạn"}</span>
+          {/* Nút chức năng Lọc Khách Sạn có độ rộng bằng với khung Tiêu chí tinh chỉnh */}
+          <div className="row g-4 mb-3">
+            <div className="col-lg-3 col-md-4">
+              <Link 
+                to={destination && destination.trim() ? `/hotels?city=${encodeURIComponent(destination.trim())}` : "/hotels"} 
+                className="btn btn-primary w-100 py-2 fw-semibold d-flex align-items-center justify-content-center gap-2 shadow-sm rounded-3"
+              >
+                <Filter size={16} /> Lọc Khách Sạn
+              </Link>
+            </div>
           </div>
 
           <div className="row g-4">
