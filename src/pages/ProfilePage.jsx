@@ -657,9 +657,7 @@ const handleSaveProfile = async (e) => {
               <h5 className="fw-bold text-dark mb-1">{user.name}</h5>
               <p className="text-secondary small mb-2 text-truncate">{user.email}</p>
 
-              <div className="d-inline-flex align-items-center gap-1 badge bg-light text-primary border px-3 py-1 rounded-pill small">
-                {isAdmin ? '👑 Quản Trị Viên' : '⭐ Thành Viên Thân Thiết'}
-              </div>
+            
             </div>
 
             {/* Menu Danh Mục Tài Khoản (Chỉ hiển thị cho Khách hàng - Ẩn hoàn toàn với Admin) */}

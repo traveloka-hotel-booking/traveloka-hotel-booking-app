@@ -264,11 +264,11 @@ export default function HotelDetailPage() {
 
             {/* Điểm số & Đánh giá */}
             <div className="text-md-end text-start">
-              <div className="d-inline-flex align-items-center gap-2 p-2 px-3 bg-success-subtle rounded-3 text-success">
-                <span className="fs-3 fw-bold">★ {hotel.ratingScore}</span>
+              <div className="d-inline-flex  ">
+               
                 <div className="text-start">
                   <div className="fw-bold">{hotel.ratingText}</div>
-                  <small className="text-secondary">{hotel.reviewCount} đánh giá</small>
+               
                 </div>
               </div>
             </div>

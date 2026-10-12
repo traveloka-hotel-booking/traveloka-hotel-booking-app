@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../context/AlertContext';
@@ -23,21 +23,6 @@ import {
   Tooltip, ResponsiveContainer, Area, AreaChart, PieChart, Pie, Cell, Legend
 } from 'recharts';
 
-// ─── Dữ liệu biểu đồ 7 ngày gần nhất ────────────────────────────────────────
-const last7Days = (() => {
-  const days = [];
-  const seeds = [3200000, 5100000, 4400000, 6800000, 3900000, 7200000, 8500000];
-  const bookSeeds = [2, 4, 3, 6, 3, 5, 7];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate() - i);
-    days.push({
-      ngay: d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }),
-      doanhThu: seeds[6 - i],
-      daDat: bookSeeds[6 - i],
-    });
-  }
-  return days;
-})();
 
 // ─── Dữ liệu mẫu Tiện nghi ───────────────────────────────────────────────────
 const AMENITIES_DATA = [
@@ -156,7 +141,8 @@ export default function AdminDashboardPage() {
     }
 
     // 3. Xác định xem đơn có bị quá hạn nhận phòng hoặc trả phòng hay không
-    const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const todayObj = new Date();
+    const todayStr = `${todayObj.getFullYear()}-${String(todayObj.getMonth() + 1).padStart(2, '0')}-${String(todayObj.getDate()).padStart(2, '0')}`; // YYYY-MM-DD
     let isPastCheckIn = false;
     let isPastCheckOut = false;
     if (checkInDate && checkInDate !== '—') {
@@ -229,7 +215,9 @@ export default function AdminDashboardPage() {
       contactName: b.customerName || b.contactName || b.guestName || 'Khách hàng',
       contactPhone: b.customerPhone || b.contactPhone || '—',
       contactEmail: b.customerEmail || b.contactEmail || '—',
+      hotelId: b.hotelId || b.raw?.hotelId || b.raw?.hotel?.id,
       hotelName: b.hotelName || 'Khách sạn',
+      roomId: b.roomId || b.raw?.roomId || b.raw?.room?.id,
       roomName: b.roomName || 'Phòng nghỉ',
       checkInDate,
       checkOutDate,
@@ -245,6 +233,7 @@ export default function AdminDashboardPage() {
       isPastCheckOut,
       isPaymentTimeout,
       createdAt: b.createdAt || new Date().toLocaleString('vi-VN'),
+      rawCreatedAt: b.rawCreatedAt || b.createdAt || (b.raw && b.raw.createdAt) || null,
       raw: b
     };
   };
@@ -294,6 +283,75 @@ export default function AdminDashboardPage() {
     });
     updateHotels(updatedHotels);
   };
+
+  // Helper kiểm tra xem loại phòng có khách đang ở hay không (dựa trên các đơn đặt phòng có trạng thái CHECKED_IN)
+  const isRoomOccupiedByGuest = useCallback((room, currentBookings) => {
+    if (!room || !currentBookings || currentBookings.length === 0) return false;
+    return currentBookings.some(b => {
+      const isCheckedIn = (b.rawStatus || b.status || '').toUpperCase() === 'CHECKED_IN';
+      if (!isCheckedIn) return false;
+
+      // 1. So khớp trực tiếp theo ID phòng nếu có
+      const bRoomId = b.roomId || b.raw?.roomId || b.raw?.room?.id;
+      if (bRoomId && room.id && String(bRoomId) === String(room.id)) {
+        return true;
+      }
+
+      // 2. So khớp theo Tên phòng và Khách sạn
+      const bRoomName = (b.roomName || b.raw?.roomName || '').trim().toLowerCase();
+      const rRoomName = (room.name || '').trim().toLowerCase();
+      if (!bRoomName || !rRoomName || bRoomName !== rRoomName) {
+        return false;
+      }
+
+      const bHotelId = b.hotelId || b.raw?.hotelId || b.raw?.hotel?.id;
+      const rHotelId = room.hotelId;
+      if (bHotelId && rHotelId && String(bHotelId) === String(rHotelId)) {
+        return true;
+      }
+
+      const bHotelName = (b.hotelName || b.raw?.hotelName || '').trim().toLowerCase();
+      const rHotelName = (room.hotelName || '').trim().toLowerCase();
+      if (bHotelName && rHotelName && (bHotelName === rHotelName || bHotelName.includes(rHotelName) || rHotelName.includes(bHotelName))) {
+        return true;
+      }
+
+      if (!bHotelName && !bHotelId) {
+        return true;
+      }
+
+      return false;
+    });
+  }, []);
+
+  // Tự động đồng bộ trạng thái loại phòng với phòng có khách đang ở (CHECKED_IN) từ Quản lý đặt phòng
+  useEffect(() => {
+    if (!roomsList || roomsList.length === 0) return;
+
+    let hasChanges = false;
+    const synced = roomsList.map(r => {
+      const occupied = isRoomOccupiedByGuest(r, bookings);
+      let newStatus = r.status || 'AVAILABLE';
+
+      if (occupied && r.status !== 'BOOKED') {
+        newStatus = 'BOOKED';
+        hasChanges = true;
+      } else if (!occupied && r.status === 'BOOKED') {
+        newStatus = 'AVAILABLE';
+        hasChanges = true;
+      }
+
+      if (newStatus !== r.status) {
+        return { ...r, status: newStatus };
+      }
+      return r;
+    });
+
+    if (hasChanges) {
+      setRoomsList(synced);
+      localStorage.setItem('traveloka_custom_rooms', JSON.stringify(synced));
+    }
+  }, [bookings, roomsList, isRoomOccupiedByGuest]);
 
   // ── Bộ lọc danh sách loại phòng (FR-14) ──
   const [roomSearchQuery, setRoomSearchQuery] = useState('');
@@ -425,6 +483,24 @@ export default function AdminDashboardPage() {
     if (isAdmin) {
       fetchBackendData();
     }
+
+    const handleBookingsUpdated = () => {
+      try {
+        const saved = JSON.parse(localStorage.getItem('traveloka_bookings') || '[]');
+        if (Array.isArray(saved)) {
+          setBookings(saved.map(normalizeBooking));
+        }
+      } catch (e) {
+        console.warn('Storage sync error:', e);
+      }
+    };
+    window.addEventListener('traveloka_bookings_updated', handleBookingsUpdated);
+    window.addEventListener('storage', handleBookingsUpdated);
+
+    return () => {
+      window.removeEventListener('traveloka_bookings_updated', handleBookingsUpdated);
+      window.removeEventListener('storage', handleBookingsUpdated);
+    };
   }, [isAdmin]);
 
   // ── Tiện ích chuẩn hóa giá tiền: Không âm, không chữ cái, định dạng dấu chấm dễ nhìn ──
@@ -889,6 +965,17 @@ export default function AdminDashboardPage() {
 
   // Đổi trạng thái phòng nhanh trực tiếp trên bảng danh sách (FR-14)
   const handleQuickChangeRoomStatus = async (roomId, newStatus) => {
+    const currentTarget = roomsList.find(r => r.id === roomId);
+    if (currentTarget && newStatus === 'AVAILABLE' && isRoomOccupiedByGuest(currentTarget, bookings)) {
+      showAlert({
+        title: 'Phòng đang có khách lưu trú',
+        message: `Phòng "${currentTarget.name}" đang có khách lưu trú tại Tab Đặt phòng! Vui lòng thực hiện thủ tục Trả phòng cho khách trước khi chuyển sang Sẵn Sàng.`,
+        type: 'warning',
+        confirmText: 'Đã hiểu'
+      });
+      return;
+    }
+
     const updated = roomsList.map(r => r.id === roomId ? { ...r, status: newStatus } : r);
     updateRooms(updated);
     const targetRoom = updated.find(r => r.id === roomId);
@@ -1554,9 +1641,12 @@ export default function AdminDashboardPage() {
     return Array.from(set).sort();
   }, [hotels, bookings]);
 
-  // Số lượng đơn đang xử lý (không tính đơn đã hoàn thành) và đơn hoàn thành
+  // Số lượng đơn đang xử lý trong "Tất cả đơn" (tự động loại trừ đơn hoàn thành, quá hạn và đã hủy)
   const activeBookingsCount = useMemo(() => {
-    return bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() !== 'COMPLETED').length;
+    return bookings.filter(b => {
+      const rawS = (b.rawStatus || b.status || '').toUpperCase();
+      return rawS !== 'COMPLETED' && rawS !== 'EXPIRED' && rawS !== 'CANCELLED' && !b.isExpired && !b.isPaymentTimeout;
+    }).length;
   }, [bookings]);
 
   const completedBookingsCount = useMemo(() => {
@@ -1568,11 +1658,17 @@ export default function AdminDashboardPage() {
       const rawS = (b.rawStatus || b.status || '').toUpperCase();
 
       // 1. Lọc theo Trạng thái (Dropdown hoặc Tab)
-      // Khi chọn "Tất cả đơn" (ALL): Đơn đã hoàn thành (COMPLETED) tự động chuyển qua mục "Hoàn thành" và biến mất khỏi danh mục "Tất cả đơn"
+      // Khi chọn "Tất cả đơn" (ALL): Đơn đã hoàn thành (COMPLETED), quá hạn (EXPIRED), hoặc đã hủy (CANCELLED) tự động chuyển qua các tab tương ứng và biến mất khỏi danh mục "Tất cả đơn"
       if (bookingStatusFilter === 'ALL') {
-        if (rawS === 'COMPLETED') return false;
+        if (rawS === 'COMPLETED' || rawS === 'EXPIRED' || rawS === 'CANCELLED' || b.isExpired || b.isPaymentTimeout) return false;
       } else if (bookingStatusFilter === 'EXPIRED') {
         if (!b.isExpired && rawS !== 'EXPIRED') return false;
+      } else if (bookingStatusFilter === 'CANCELLED') {
+        if (rawS !== 'CANCELLED' && !b.isPaymentTimeout) return false;
+      } else if (bookingStatusFilter === 'PENDING') {
+        if (rawS !== 'PENDING' || b.isExpired || b.isPaymentTimeout) return false;
+      } else if (bookingStatusFilter === 'CONFIRMED') {
+        if (rawS !== 'CONFIRMED' || b.isExpired) return false;
       } else {
         if (rawS !== bookingStatusFilter) return false;
       }
@@ -1618,13 +1714,53 @@ export default function AdminDashboardPage() {
   // ── KPI stats ──
   const stats = useMemo(() => {
     const totalRooms = roomsList.length > 0 ? roomsList.length : hotels.reduce((s, h) => s + (h.rooms?.length || 1), 0);
-    const occupiedRooms = bookings.filter(b => b.status === 'confirmed').length;
-    const confirmed = bookings.filter(b => b.status === 'confirmed').length;
-    const pending = bookings.filter(b => !b.status || b.status === 'pending').length;
-    const revenue = bookings.filter(b => b.status === 'confirmed').reduce((s, b) => s + (b.totalAmount || 0), 0);
-    const today = new Date().toLocaleDateString('vi-VN');
-    const checkins = bookings.filter(b => b.checkInDate === today).length;
-    const checkouts = bookings.filter(b => b.checkOutDate === today).length;
+    const occupiedRooms = bookings.filter(b => {
+      const rawS = (b.rawStatus || b.status || '').toUpperCase();
+      return rawS === 'CHECKED_IN' && !b.isOverdueCheckout;
+    }).length;
+
+    // Đơn đặt phòng hợp lệ (đã xác nhận, đã nhận phòng, hoặc đã hoàn tất lưu trú)
+    const validRevenueBookings = bookings.filter(b => {
+      const rawS = (b.rawStatus || b.status || '').toUpperCase();
+      if (rawS === 'CANCELLED' || rawS === 'EXPIRED' || b.isExpired || b.isPaymentTimeout) return false;
+      return rawS === 'CONFIRMED' || rawS === 'CHECKED_IN' || rawS === 'COMPLETED' || b.paymentStatus === 'paid';
+    });
+
+    const confirmed = validRevenueBookings.length;
+    const pending = bookings.filter(b => {
+      const rawS = (b.rawStatus || b.status || '').toUpperCase();
+      return rawS === 'PENDING' && !b.isExpired && !b.isPaymentTimeout;
+    }).length;
+    const revenue = validRevenueBookings.reduce((s, b) => s + (b.totalAmount || 0), 0);
+    const now = new Date();
+    const todayYMD = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const todayDMY = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+
+    const isDateToday = (dateVal) => {
+      if (!dateVal || dateVal === '—') return false;
+      const s = String(dateVal).trim();
+      if (s === todayYMD || s === todayDMY) return true;
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+        return s.substring(0, 10) === todayYMD;
+      }
+      if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(s)) {
+        const [d, m, y] = s.split('/');
+        return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}` === todayYMD;
+      }
+      return false;
+    };
+
+    const checkins = bookings.filter(b => {
+      const rawS = (b.rawStatus || b.status || '').toUpperCase();
+      if (rawS === 'CANCELLED' || rawS === 'EXPIRED' || b.isExpired || b.isPaymentTimeout) return false;
+      return isDateToday(b.checkInDate);
+    }).length;
+
+    const checkouts = bookings.filter(b => {
+      const rawS = (b.rawStatus || b.status || '').toUpperCase();
+      if (rawS === 'CANCELLED' || rawS === 'EXPIRED' || b.isExpired || b.isPaymentTimeout) return false;
+      return isDateToday(b.checkOutDate);
+    }).length;
     const customers = new Set(bookings.map(b => b.contactPhone).filter(Boolean)).size;
     const avgRating = hotels.reduce((s, h) => s + (h.ratingScore || 9), 0) / (hotels.length || 1);
     const reviewsAll = hotels.flatMap(h => h.reviews || []);
@@ -1637,9 +1773,88 @@ export default function AdminDashboardPage() {
     const vnpay = bookings.filter(b => b.paymentMethod === 'vnpay').length;
     const cash = bookings.filter(b => b.paymentMethod === 'pay_at_hotel').length;
     const other = bookings.length - vnpay - cash;
-    const paidRevenue = bookings.filter(b => b.status === 'confirmed' && (b.paymentMethod !== 'pay_at_hotel' || b.paymentStatus === 'paid')).reduce((s, b) => s + (b.totalAmount || 0), 0);
-    const pendingRevenue = bookings.filter(b => b.status === 'confirmed' && b.paymentMethod === 'pay_at_hotel' && b.paymentStatus !== 'paid').reduce((s, b) => s + (b.totalAmount || 0), 0);
+    const isPaidBooking = (b) => {
+      const rawS = (b.rawStatus || b.status || '').toUpperCase();
+      if (rawS === 'CANCELLED' || rawS === 'EXPIRED' || b.isExpired || b.isPaymentTimeout) return false;
+      return (rawS === 'CONFIRMED' || rawS === 'CHECKED_IN' || rawS === 'COMPLETED') && (b.paymentMethod !== 'pay_at_hotel' || b.paymentStatus === 'paid');
+    };
+    const isPendingCash = (b) => {
+      const rawS = (b.rawStatus || b.status || '').toUpperCase();
+      if (rawS === 'CANCELLED' || rawS === 'EXPIRED' || b.isExpired || b.isPaymentTimeout) return false;
+      return (rawS === 'CONFIRMED' || rawS === 'CHECKED_IN') && b.paymentMethod === 'pay_at_hotel' && b.paymentStatus !== 'paid';
+    };
+    const paidRevenue = bookings.filter(isPaidBooking).reduce((s, b) => s + (b.totalAmount || 0), 0);
+    const pendingRevenue = bookings.filter(isPendingCash).reduce((s, b) => s + (b.totalAmount || 0), 0);
     return { vnpay, cash, other, paidRevenue, pendingRevenue };
+  }, [bookings]);
+
+  // ── Dữ liệu biểu đồ & báo cáo 7 ngày gần nhất (tính toán động từ danh sách bookings thực tế) ──
+  const last7Days = useMemo(() => {
+    const parseBookingDateKey = (b) => {
+      const candidates = [b.rawCreatedAt, b.createdAt, b.raw?.createdAt, b.checkInDate, b.raw?.checkIn];
+      for (const c of candidates) {
+        if (!c || c === '—') continue;
+        if (Array.isArray(c)) {
+          const [y, m, d] = c;
+          return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        }
+        const s = String(c).trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+          return s.substring(0, 10);
+        }
+        const dmy = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (dmy) {
+          const [, d, m, y] = dmy;
+          return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        }
+        const parsed = new Date(s);
+        if (!isNaN(parsed.getTime())) {
+          return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+        }
+      }
+      return null;
+    };
+
+    const days = [];
+    const today = new Date();
+
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const dateKey = `${y}-${m}-${day}`;
+      const ngay = `${day}-${m}`;
+
+      // Lọc các đơn đặt phòng trong ngày này
+      const dayBookings = bookings.filter(b => {
+        const bDateKey = parseBookingDateKey(b);
+        return bDateKey === dateKey;
+      });
+
+      // Số đơn đặt hợp lệ (không tính đơn đã hủy hoặc quá hạn)
+      const validDayBookings = dayBookings.filter(b => {
+        const rawS = (b.rawStatus || b.status || '').toUpperCase();
+        return rawS !== 'CANCELLED' && rawS !== 'EXPIRED' && !b.isExpired && !b.isPaymentTimeout;
+      });
+
+      // Doanh thu trong ngày: Từ các đơn đã xác nhận, đã nhận phòng, hoặc đã hoàn thành lưu trú (hoặc đã thanh toán thành công)
+      const dayRevenue = dayBookings.filter(b => {
+        const rawS = (b.rawStatus || b.status || '').toUpperCase();
+        if (rawS === 'CANCELLED' || rawS === 'EXPIRED' || b.isExpired || b.isPaymentTimeout) return false;
+        return rawS === 'CONFIRMED' || rawS === 'CHECKED_IN' || rawS === 'COMPLETED' || b.paymentStatus === 'paid';
+      }).reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+
+      days.push({
+        ngay,
+        dateKey,
+        doanhThu: dayRevenue,
+        daDat: validDayBookings.length,
+      });
+    }
+
+    return days;
   }, [bookings]);
 
   const customerList = useMemo(() => {
@@ -1649,7 +1864,10 @@ export default function AdminDashboardPage() {
       if (!key) return;
       if (!map[key]) map[key] = { name: b.contactName || b.guestName, phone: b.contactPhone, email: b.contactEmail, isGuest: b.isGuest, bookings: [], totalSpent: 0 };
       map[key].bookings.push(b);
-      if (b.status === 'confirmed') map[key].totalSpent += (b.totalAmount || 0);
+      const rawS = (b.rawStatus || b.status || '').toUpperCase();
+      if ((rawS === 'CONFIRMED' || rawS === 'CHECKED_IN' || rawS === 'COMPLETED' || b.paymentStatus === 'paid') && !b.isExpired && !b.isPaymentTimeout) {
+        map[key].totalSpent += (b.totalAmount || 0);
+      }
     });
     return Object.values(map).sort((a, b) => b.totalSpent - a.totalSpent);
   }, [bookings]);
@@ -1772,8 +1990,8 @@ export default function AdminDashboardPage() {
               </div>
               {/* KPI hàng 2 */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 24 }}>
-                <KpiCard icon={<LogIn size={26} color="#8b5cf6" />} iconBg="#f5f3ff" value={stats.checkins} label="Nhận Phòng Hôm Nay" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Khách Check-in</span>} />
-                <KpiCard icon={<LogOutIcon size={26} color="#ec4899" />} iconBg="#fdf2f8" value={stats.checkouts} label="Trả Phòng Hôm Nay" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Khách Check-out</span>} />
+                <KpiCard icon={<LogIn size={26} color="#8b5cf6" />} iconBg="#f5f3ff" value={stats.checkins} label="Nhận Phòng Hôm Nay" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Khách Check-in</span>} onClick={() => setActiveTab('bookings')} />
+                <KpiCard icon={<LogOutIcon size={26} color="#ec4899" />} iconBg="#fdf2f8" value={stats.checkouts} label="Trả Phòng Hôm Nay" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Khách Check-out</span>} onClick={() => setActiveTab('bookings')} />
                 <KpiCard icon={<Users size={26} color="#06b6d4" />} iconBg="#ecfeff" value={stats.customers} label="Tổng Khách Hàng" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Đã đặt phòng</span>} />
                 <KpiCard icon={<DollarSign size={26} color="#fff" />} iconBg="#f59e0b" iconBgFull value={stats.revenue.toLocaleString('vi-VN') + ' đ'} label="Tổng Doanh Thu" sub={<span style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13 }}>Từ đơn đã xác nhận</span>} dark />
               </div>
@@ -2181,12 +2399,12 @@ export default function AdminDashboardPage() {
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
                 {[
                   { key: 'ALL', label: 'Tất cả đơn', count: activeBookingsCount },
-                  { key: 'PENDING', label: '⏳ Chờ duyệt', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'PENDING').length },
-                  { key: 'EXPIRED', label: '⚠️ Đã quá hạn', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'EXPIRED').length },
-                  { key: 'CONFIRMED', label: '✓ Đã xác nhận', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CONFIRMED').length },
+                  { key: 'PENDING', label: '⏳ Chờ duyệt', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'PENDING' && !b.isExpired && !b.isPaymentTimeout).length },
+                  { key: 'EXPIRED', label: '⚠️ Đã quá hạn', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'EXPIRED' || b.isExpired).length },
+                  { key: 'CONFIRMED', label: '✓ Đã xác nhận', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CONFIRMED' && !b.isExpired).length },
                   { key: 'CHECKED_IN', label: '🏨 Đã nhận phòng', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CHECKED_IN').length },
                   { key: 'COMPLETED', label: '✓ Hoàn thành', count: completedBookingsCount },
-                  { key: 'CANCELLED', label: '✕ Đã hủy', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CANCELLED').length },
+                  { key: 'CANCELLED', label: '✕ Đã hủy', count: bookings.filter(b => (b.rawStatus || b.status || '').toUpperCase() === 'CANCELLED' || b.isPaymentTimeout).length },
                 ].map(tab => (
                   <button
                     key={tab.key}
@@ -2505,7 +2723,7 @@ export default function AdminDashboardPage() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 20 }}>
                 <KpiCard icon={<Users size={26} color="#3b82f6" />} iconBg="#eff6ff" value={customerList.length} label="Tổng Khách Hàng" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Đã từng đặt phòng</span>} />
                 <KpiCard icon={<Award size={26} color="#f59e0b" />} iconBg="#fffbeb" value={customerList.filter(c => !c.isGuest).length} label="Thành Viên Đăng Ký" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Đã có tài khoản</span>} />
-                <KpiCard icon={<Users size={26} color="#8b5cf6" />} iconBg="#f5f3ff" value={customerList.filter(c => c.isGuest).length} label="Khách Vãng Lai" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Đặt không cần tài khoản</span>} />
+             
                 <KpiCard icon={<DollarSign size={26} color="#22c55e" />} iconBg="#f0fdf4" value={customerList.length > 0 ? Math.round(customerList.reduce((s, c) => s + c.totalSpent, 0) / customerList.length).toLocaleString('vi-VN') + ' đ' : '0 đ'} label="Chi Tiêu TB/Khách" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Trên đơn đã xác nhận</span>} />
               </div>
               <SectionCard title="Danh Sách Khách Hàng" sub="Danh sách được xây dựng từ lịch sử đặt phòng">
@@ -2675,8 +2893,24 @@ export default function AdminDashboardPage() {
           {activeTab === 'reports' && (
             <div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 20 }}>
-                <KpiCard icon={<TrendingUp size={26} color="#22c55e" />} iconBg="#f0fdf4" value={last7Days.reduce((s, d) => s + d.doanhThu, 0).toLocaleString('vi-VN') + ' đ'} label="Doanh Thu 7 Ngày" sub={<span style={{ color: '#22c55e', fontWeight: 600, fontSize: 13 }}>↑ Tăng trưởng tốt</span>} />
-                <KpiCard icon={<BarChart2 size={26} color="#3b82f6" />} iconBg="#eff6ff" value={Math.round(stats.revenue / Math.max(stats.confirmed, 1)).toLocaleString('vi-VN') + ' đ'} label="Doanh Thu TB/Đơn" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Trên đơn đã xác nhận</span>} />
+                <KpiCard
+                  icon={<TrendingUp size={26} color="#22c55e" />}
+                  iconBg="#f0fdf4"
+                  value={last7Days.reduce((s, d) => s + d.doanhThu, 0).toLocaleString('vi-VN') + ' đ'}
+                  label="Doanh Thu 7 Ngày"
+                  sub={
+                    <span style={{ color: last7Days.reduce((s, d) => s + d.doanhThu, 0) > 0 ? '#22c55e' : '#6b7280', fontWeight: 600, fontSize: 13 }}>
+                      {last7Days.reduce((s, d) => s + d.doanhThu, 0) > 0 ? '↑ Tăng trưởng tốt' : '7 ngày gần nhất'}
+                    </span>
+                  }
+                />
+                <KpiCard
+                  icon={<BarChart2 size={26} color="#3b82f6" />}
+                  iconBg="#eff6ff"
+                  value={(stats.confirmed > 0 ? Math.round(stats.revenue / stats.confirmed) : 0).toLocaleString('vi-VN') + ' đ'}
+                  label="Doanh Thu TB/Đơn"
+                  sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Trên đơn đã xác nhận</span>}
+                />
                 <KpiCard icon={<Building size={26} color="#8b5cf6" />} iconBg="#f5f3ff" value={hotels.length + ' cơ sở'} label="Khách Sạn Quản Lý" sub={<span style={{ color: '#6b7280', fontSize: 13 }}>Tổng {stats.totalRooms} loại phòng</span>} />
                 <KpiCard icon={<Star size={26} color="#f59e0b" />} iconBg="#fffbeb" value={stats.avgRating + '/10'} label="Điểm Uy Tín TB" sub={<span style={{ color: '#22c55e', fontWeight: 600, fontSize: 13 }}>Từ {allReviews.length} đánh giá</span>} />
               </div>
@@ -2688,7 +2922,13 @@ export default function AdminDashboardPage() {
                       <XAxis dataKey="ngay" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                       <YAxis yAxisId="left" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={v => (v / 1000000).toFixed(1) + 'tr'} />
                       <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                      <Tooltip contentStyle={{ borderRadius: 10, fontSize: 13 }} />
+                      <Tooltip
+                        contentStyle={{ borderRadius: 10, fontSize: 13 }}
+                        formatter={(val, name) => [
+                          name === 'Doanh Thu (đ)' ? Number(val || 0).toLocaleString('vi-VN') + ' đ' : (val + ' đơn'),
+                          name
+                        ]}
+                      />
                       <Legend />
                       <Bar yAxisId="left" dataKey="doanhThu" name="Doanh Thu (đ)" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                       <Bar yAxisId="right" dataKey="daDat" name="Số Đơn" fill="#f59e0b" radius={[4, 4, 0, 0]} />
@@ -3445,9 +3685,22 @@ export default function AdminDashboardPage() {
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
-function KpiCard({ icon, iconBg, iconBgFull, value, label, sub, dark }) {
+function KpiCard({ icon, iconBg, iconBgFull, value, label, sub, dark, onClick }) {
   return (
-    <div style={{ background: dark ? '#f59e0b' : '#fff', borderRadius: 14, padding: '20px 20px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div
+      onClick={onClick}
+      style={{
+        background: dark ? '#f59e0b' : '#fff',
+        borderRadius: 14,
+        padding: '20px 20px 16px',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'all 0.15s ease'
+      }}
+    >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ flex: 1 }}>
           <div style={{ color: dark ? 'rgba(255,255,255,0.85)' : '#94a3b8', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 6 }}>{label}</div>
