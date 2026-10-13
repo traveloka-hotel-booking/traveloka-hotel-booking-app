@@ -472,7 +472,8 @@ export default function AdminDashboardPage() {
 
             const merged = hotelData.result.content.map(bh => {
               const bMin = Number(bh.minPrice || 0);
-              const effectivePrice = bMin > 0 ? bMin : (priceMap[bh.id] || 0);
+              const localPrice = priceMap[bh.id] || 0;
+              const effectivePrice = localPrice > 0 ? localPrice : bMin;
               return {
                 ...bh,
                 minPrice: effectivePrice,
@@ -481,6 +482,7 @@ export default function AdminDashboardPage() {
             });
             setHotels(merged);
             localStorage.setItem('traveloka_custom_hotels', JSON.stringify(merged));
+            window.dispatchEvent(new Event('traveloka_hotels_updated'));
           }
         }
       } catch (e) {

@@ -622,7 +622,7 @@ const handleSaveProfile = async (e) => {
                 title="Nhấp vào ảnh để đổi nhanh ảnh đại diện"
               >
                 <img 
-                  src={user.avatarUrl || user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=60"} 
+                  src={user.avatarUrl || user.avatar || ""} 
                   alt={user.name} 
                   className="rounded-circle object-fit-cover shadow-sm border border-3 border-primary-subtle"
                   style={{ width: '88px', height: '88px', opacity: isUploadingAvatar ? 0.6 : 1, transition: 'opacity 0.2s' }}

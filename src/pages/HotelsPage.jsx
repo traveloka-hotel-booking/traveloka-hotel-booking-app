@@ -115,8 +115,29 @@ export default function HotelsPage() {
       }
 
       const list = Array.isArray(data?.content) ? data.content : (Array.isArray(data) ? data : []);
-      setBackendHotels(list);
-      setTotalElements(Number(data?.totalElements ?? list.length));
+      let mergedList = list;
+      try {
+        const localHotels = JSON.parse(localStorage.getItem('traveloka_custom_hotels') || '[]');
+        if (Array.isArray(localHotels) && localHotels.length > 0) {
+          const customMap = {};
+          localHotels.forEach(lh => {
+            if (lh && lh.id != null) customMap[String(lh.id)] = lh;
+          });
+          mergedList = list.map(h => {
+            const custom = customMap[String(h.id)];
+            const customPrice = Number(custom?.pricePerNight || custom?.minPrice || 0);
+            const backendPrice = Number(h.minPricePerNight || h.minPrice || h.pricePerNight || 0);
+            const finalPrice = customPrice > 0 ? customPrice : (backendPrice > 0 ? backendPrice : null);
+            return {
+              ...h,
+              minPricePerNight: finalPrice ?? h.minPricePerNight
+            };
+          });
+        }
+      } catch {}
+
+      setBackendHotels(mergedList);
+      setTotalElements(Number(data?.totalElements ?? mergedList.length));
       setTotalPages(Number(data?.totalPages ?? 1));
     } catch (err) {
       console.warn('FR-06/FR-07 API call error:', err);

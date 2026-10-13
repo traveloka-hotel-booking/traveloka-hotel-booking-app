@@ -112,14 +112,10 @@ export default function HomePage() {
     return `${y}-${m}-${d}`;
   }, []);
 
-  // Đảm bảo dữ liệu cũ trong localStorage nếu là ngày quá khứ sẽ được tự động làm mới về today
-  const initialCheckIn = (savedSearch?.checkIn && savedSearch.checkIn >= today) ? savedSearch.checkIn : today;
-  const initialCheckOut = (savedSearch?.checkOut && savedSearch.checkOut > initialCheckIn) ? savedSearch.checkOut : tomorrow;
-
-  // State tìm kiếm trên Hero (để trống ban đầu để hiển thị toàn bộ khách sạn trên hệ thống)
+  // State tìm kiếm trên Hero (để trống ban đầu để người dùng tự nhập)
   const [destination, setDestination] = useState(savedSearch?.destination || '');
-  const [checkIn, setCheckIn] = useState(initialCheckIn);
-  const [checkOut, setCheckOut] = useState(initialCheckOut);
+  const [checkIn, setCheckIn] = useState('');
+  const [checkOut, setCheckOut] = useState('');
   
   // State chọn phòng và khách (3 thành phần: Phòng, Người Lớn, Trẻ Em)
   const [roomsCount, setRoomsCount] = useState(savedSearch?.roomsCount || 1);
@@ -199,33 +195,39 @@ export default function HomePage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Đồng bộ giá khởi điểm (minPrice / pricePerNight) vừa tạo hoặc sửa từ Admin
+  const mergeWithCustomHotels = (list) => {
+    try {
+      const localHotels = JSON.parse(localStorage.getItem('traveloka_custom_hotels') || '[]');
+      if (!Array.isArray(localHotels) || localHotels.length === 0) return list;
+      const customMap = {};
+      localHotels.forEach(lh => {
+        if (lh && lh.id != null) {
+          customMap[String(lh.id)] = lh;
+        }
+      });
+      return list.map(h => {
+        const custom = customMap[String(h.id)];
+        const customPrice = Number(custom?.pricePerNight || custom?.minPrice || 0);
+        const backendPrice = Number(h.minPricePerNight || h.minPrice || h.pricePerNight || 0);
+        const finalPrice = customPrice > 0 ? customPrice : (backendPrice > 0 ? backendPrice : null);
+        return {
+          ...h,
+          minPricePerNight: finalPrice ?? h.minPricePerNight
+        };
+      });
+    } catch {
+      return list;
+    }
+  };
+
   // Tải danh sách khách sạn thật từ Backend khi mở trang chủ và tự động đồng bộ khi Admin thay đổi dữ liệu
   useEffect(() => {
     const fetchInitialHotels = async () => {
       try {
-        let saved = null;
-        try {
-          saved = JSON.parse(localStorage.getItem('traveloka_search_params'));
-        } catch {}
-
-        if (saved?.checkIn && saved?.checkOut) {
-          const guests = Math.max(1, Number(saved.adultsCount || 1) + Number(saved.childrenCount || 0));
-          const res = await searchHotelsApi({
-            city: saved.destination?.trim() || '',
-            checkIn: saved.checkIn,
-            checkOut: saved.checkOut,
-            guests,
-            page: 0,
-            size: 50
-          });
-          const list = Array.isArray(res?.content) ? res.content : (Array.isArray(res) ? res : []);
-          setBackendHotels(list);
-          return;
-        }
-
         const res = await filterHotelsApi({ page: 0, size: 50 });
         const list = Array.isArray(res?.content) ? res.content : (Array.isArray(res) ? res : []);
-        setBackendHotels(list);
+        setBackendHotels(mergeWithCustomHotels(list));
       } catch (err) {
         console.warn('Initial backend hotels load fallback:', err);
         setBackendHotels([]);
@@ -239,10 +241,12 @@ export default function HomePage() {
 
     window.addEventListener('traveloka_hotels_updated', handleSync);
     window.addEventListener('traveloka_rooms_updated', handleSync);
+    window.addEventListener('storage', handleSync);
 
     return () => {
       window.removeEventListener('traveloka_hotels_updated', handleSync);
       window.removeEventListener('traveloka_rooms_updated', handleSync);
+      window.removeEventListener('storage', handleSync);
     };
   }, []);
 
@@ -296,8 +300,9 @@ export default function HomePage() {
       }
 
       if (list.length > 0) {
-        setBackendHotels(list);
-        setSearchFeedback(`Tìm thấy ${list.length} khách sạn còn phòng phù hợp`);
+        const mergedList = mergeWithCustomHotels(list);
+        setBackendHotels(mergedList);
+        setSearchFeedback(`Tìm thấy ${mergedList.length} khách sạn còn phòng phù hợp`);
       } else {
         setBackendHotels([]);
         setSearchFeedback('Không tìm thấy khách sạn còn phòng trống trong khoảng thời gian đã chọn.');
@@ -470,13 +475,13 @@ export default function HomePage() {
                           const newCheckIn = e.target.value;
                           if (newCheckIn && newCheckIn < today) {
                             setCheckIn(today);
-                            if (checkOut <= today) {
+                            if (checkOut && checkOut <= today) {
                               setCheckOut(tomorrow);
                             }
                             return;
                           }
                           setCheckIn(newCheckIn);
-                          if (checkOut <= newCheckIn) {
+                          if (checkOut && newCheckIn && checkOut <= newCheckIn) {
                             const nextDate = new Date(new Date(newCheckIn).getTime() + 86400000);
                             const y = nextDate.getFullYear();
                             const m = String(nextDate.getMonth() + 1).padStart(2, '0');
