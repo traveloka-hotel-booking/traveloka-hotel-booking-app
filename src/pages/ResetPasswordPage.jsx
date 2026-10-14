@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import {
   Hotel,
@@ -17,6 +17,10 @@ export default function ResetPasswordPage() {
   const { token } = useParams();
   const navigate = useNavigate();
 
+  const [isCheckingToken, setIsCheckingToken] = useState(true);
+  const [isTokenValid, setIsTokenValid] = useState(false);
+  const [tokenError, setTokenError] = useState('');
+
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -24,6 +28,64 @@ export default function ResetPasswordPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const validateToken = async () => {
+      if (!token) {
+        if (isMounted) {
+          setTokenError('Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.');
+          setIsTokenValid(false);
+          setIsCheckingToken(false);
+        }
+        return;
+      }
+
+      try {
+        const response = await apiFetch('/auth/validate-reset-token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ token }),
+        });
+
+        const data = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          throw new Error(
+            data?.message ||
+            data?.result?.message ||
+            'Liên kết đặt lại mật khẩu đã hết hạn hoặc không hợp lệ.'
+          );
+        }
+
+        if (isMounted) {
+          setIsTokenValid(true);
+          setTokenError('');
+        }
+      } catch (error) {
+        if (isMounted) {
+          setIsTokenValid(false);
+          setTokenError(
+            error?.message ||
+            'Liên kết đặt lại mật khẩu đã hết hạn hoặc không hợp lệ.'
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setIsCheckingToken(false);
+        }
+      }
+    };
+
+    validateToken();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
 
   const hasMinLength = password.length >= 6;
   const hasUppercase = /[A-Z]/.test(password);
@@ -66,10 +128,14 @@ export default function ResetPasswordPage() {
     setErrorMsg('');
 
     try {
+<<<<<<< Updated upstream
       setIsSubmitting(true);
       setErrorMsg('');
 
       await apiFetch('/auth/reset-password', {
+=======
+      const response = await apiFetch('/auth/reset-password', {
+>>>>>>> Stashed changes
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -80,7 +146,21 @@ export default function ResetPasswordPage() {
         }),
       });
 
+<<<<<<< Updated upstream
     setSuccess(true);
+=======
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          data?.message ||
+          data?.result?.message ||
+          'Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.'
+        );
+      }
+
+      setSuccess(true);
+>>>>>>> Stashed changes
     } catch (error) {
       console.error('Reset password error:', error);
 
@@ -121,6 +201,64 @@ export default function ResetPasswordPage() {
                 >
                   Đăng nhập
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isCheckingToken) {
+    return (
+      <div className="bg-light min-vh-100 py-5 page-top-spacing d-flex align-items-center">
+        <div className="container">
+          <div className="row justify-content-center">
+            <div className="col-lg-5 col-md-8 col-sm-10">
+              <div className="card border-0 shadow-sm rounded-4 p-4 p-md-5 bg-white text-center">
+                <div className="spinner-border text-primary mx-auto mb-3" role="status">
+                  <span className="visually-hidden">Đang kiểm tra...</span>
+                </div>
+                <h3 className="fw-bold text-dark mb-2">Đang kiểm tra liên kết</h3>
+                <p className="text-secondary small mb-0">
+                  Vui lòng chờ trong giây lát.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isTokenValid) {
+    return (
+      <div className="bg-light min-vh-100 py-5 page-top-spacing d-flex align-items-center">
+        <div className="container">
+          <div className="row justify-content-center">
+            <div className="col-lg-5 col-md-8 col-sm-10">
+              <div className="card border-0 shadow-sm rounded-4 p-4 p-md-5 bg-white text-center">
+                <div className="d-inline-flex align-items-center justify-content-center p-3 bg-danger bg-opacity-10 text-danger rounded-circle mb-3 mx-auto">
+                  <AlertCircle size={34} />
+                </div>
+                <h3 className="fw-bold text-dark mb-2">Liên kết không còn hiệu lực</h3>
+                <p className="text-secondary small mb-4">
+                  {tokenError || 'Liên kết đặt lại mật khẩu đã hết hạn hoặc không hợp lệ.'}
+                  {' '}Vui lòng yêu cầu một liên kết mới để tiếp tục.
+                </p>
+                <Link
+                  to="/forgot-password"
+                  className="btn btn-primary w-100 fw-bold py-2 mb-3"
+                >
+                  Yêu cầu liên kết mới
+                </Link>
+                <Link
+                  to="/login"
+                  className="text-primary text-decoration-none small fw-semibold d-inline-flex align-items-center justify-content-center gap-1"
+                >
+                  <ArrowLeft size={15} />
+                  Quay lại đăng nhập
+                </Link>
               </div>
             </div>
           </div>
