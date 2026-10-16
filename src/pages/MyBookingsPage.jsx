@@ -293,6 +293,7 @@ export default function MyBookingsPage() {
 
       showToast('Đánh giá kỳ nghỉ của bạn đã được gửi thành công!', 'success');
       handleCloseReviewModal();
+      window.dispatchEvent(new Event('traveloka_hotels_updated'));
       loadBookings();
     } catch (err) {
       console.error('Lỗi khi gửi đánh giá:', err);

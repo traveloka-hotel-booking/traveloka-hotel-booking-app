@@ -2,8 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../services/api';
-import { 
-  MapPin, Star, Wifi, Waves, Coffee, Car, Dumbbell, 
+import {
+  MapPin, Star, Wifi, Waves, Coffee, Car, Dumbbell,
   Sparkles, CheckCircle2, ShieldAlert, Clock, ArrowLeft,
   Users, BedDouble, Maximize2, Ban, Heart, Share2, Check
 } from 'lucide-react';
@@ -13,7 +13,7 @@ export default function HotelDetailPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, isAuthenticated } = useAuth();
-  
+
   // Đọc dữ liệu tìm kiếm dự phòng từ localStorage nếu F5 hoặc mở tab mới
   const savedSearch = (() => {
     try {
@@ -112,15 +112,15 @@ export default function HotelDetailPage() {
             const otherRooms = savedRooms.filter(r => String(r.hotelId) !== String(id));
             const newSavedRooms = [...otherRooms, ...(mergedRooms || [])];
             localStorage.setItem('traveloka_custom_rooms', JSON.stringify(newSavedRooms));
-          } catch {}
+          } catch { }
 
           return updated;
         });
         const firstImg = (Array.isArray(backendHotel?.images) && backendHotel.images[0])
           ? backendHotel.images[0]
           : (typeof backendHotel?.images === 'string' && backendHotel.images.split(',')[0])
-          ? backendHotel.images.split(',')[0].trim()
-          : backendHotel?.thumbnailUrl;
+            ? backendHotel.images.split(',')[0].trim()
+            : backendHotel?.thumbnailUrl;
         if (firstImg) {
           setActiveImage(firstImg);
         }
@@ -161,28 +161,28 @@ export default function HotelDetailPage() {
   };
 
   const handleBookRoom = (room) => {
-    const bookingState = { 
-      hotel, 
-      room, 
+    const bookingState = {
+      hotel,
+      room,
       checkInDate: searchState.checkIn,
       checkOutDate: searchState.checkOut,
       guestCount: searchState.adultsCount || 2,
       roomsCount: searchState.roomsCount || 1,
       destination: searchState.destination,
-      ...searchState 
+      ...searchState
     };
 
     // Bắt buộc đăng nhập tài khoản Khách hàng khi tiến hành đặt phòng
     if (!isAuthenticated) {
       try {
         localStorage.setItem('traveloka_pending_booking', JSON.stringify(bookingState));
-      } catch {}
+      } catch { }
 
-      navigate('/login', { 
-        state: { 
+      navigate('/login', {
+        state: {
           from: { pathname: '/checkout', state: bookingState },
           notice: 'Vui lòng đăng nhập tài khoản Khách hàng để tiếp tục đặt phòng.'
-        } 
+        }
       });
       return;
     }
@@ -218,8 +218,8 @@ export default function HotelDetailPage() {
 
         {/* Nút quay lại */}
         <div className="mb-3">
-          <button 
-            onClick={() => navigate(-1)} 
+          <button
+            onClick={() => navigate(-1)}
             className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1 bg-white"
           >
             <ArrowLeft size={16} /> Quay lại danh sách
@@ -293,17 +293,17 @@ export default function HotelDetailPage() {
             {/* 1 Ảnh lớn chính (Mặc định là Ảnh đại diện, có thể bấm đổi khi click vào ảnh phòng) */}
             <div className="col-lg-8">
               <div className="position-relative w-100 rounded-3 overflow-hidden shadow-sm" style={{ height: '420px' }}>
-                <img 
-                  src={activeImage || mainCoverImage} 
-                  alt={hotel.name} 
+                <img
+                  src={activeImage || mainCoverImage}
+                  alt={hotel.name}
                   className="w-100 h-100 object-fit-cover"
                   style={{ display: 'block' }}
                 />
                 <div className="position-absolute bottom-0 start-0 m-3 d-flex align-items-center gap-2">
 
                   {activeImage && activeImage !== mainCoverImage && (
-                    <button 
-                      type="button" 
+                    <button
+                      type="button"
                       onClick={() => setActiveImage(mainCoverImage)}
                       className="btn btn-sm btn-light bg-white bg-opacity-95 fw-semibold px-2 py-1 shadow-sm border-0"
                       style={{ fontSize: '12px' }}
@@ -321,18 +321,18 @@ export default function HotelDetailPage() {
                 {roomImages.map((imgUrl, index) => {
                   const isSelected = (activeImage || mainCoverImage) === imgUrl;
                   return (
-                    <div 
-                      key={index} 
-                      className="position-relative flex-grow-1 rounded-3 overflow-hidden" 
+                    <div
+                      key={index}
+                      className="position-relative flex-grow-1 rounded-3 overflow-hidden"
                       style={{ height: '134px', minHeight: 0 }}
                     >
-                      <img 
-                        src={imgUrl} 
+                      <img
+                        src={imgUrl}
                         onClick={() => setActiveImage(imgUrl)}
                         className={`w-100 h-100 cursor-pointer object-fit-cover border rounded-3 transition-all ${isSelected ? 'border-primary border-3 shadow' : 'opacity-85'}`}
                         style={{ transition: 'all 0.2s', display: 'block' }}
                       />
-                   
+
                     </div>
                   );
                 })}
@@ -413,7 +413,7 @@ export default function HotelDetailPage() {
                 Xem Danh Sách Phòng Trống
               </a>
 
-              
+
             </div>
           </div>
         </div>
@@ -433,9 +433,9 @@ export default function HotelDetailPage() {
                 <div className="row g-0">
                   {/* Ảnh phòng */}
                   <div className="col-lg-4 col-md-5">
-                    <img 
-                      src={room.imageUrl || hotel?.thumbnailUrl || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60'} 
-                      alt={room.name} 
+                    <img
+                      src={room.imageUrl || hotel?.thumbnailUrl || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60'}
+                      alt={room.name}
                       className="w-100 h-100 object-fit-cover"
                       style={{ minHeight: '260px' }}
                       onError={(e) => {
@@ -498,7 +498,7 @@ export default function HotelDetailPage() {
                         </div>
                       ) : (
                         <div className="badge bg-warning-subtle text-warning small mb-2">
-                      
+
                         </div>
                       )}
 
@@ -516,13 +516,13 @@ export default function HotelDetailPage() {
                     </div>
 
                     <div className="mt-4">
-                      <button 
-                        onClick={() => handleBookRoom(room)} 
+                      <button
+                        onClick={() => handleBookRoom(room)}
                         className="btn btn-primary w-100 py-2 fw-bold shadow-sm"
                       >
                         Đặt Phòng Ngay
                       </button>
-                    
+
                     </div>
                   </div>
                 </div>
@@ -559,15 +559,15 @@ export default function HotelDetailPage() {
                       <div className="d-flex justify-content-between align-items-start mb-2">
                         <div className="d-flex align-items-center gap-2">
                           {rev.userAvatar ? (
-                            <img 
-                              src={rev.userAvatar} 
-                              alt={rev.author} 
-                              className="rounded-circle object-fit-cover shadow-sm" 
-                              style={{ width: 36, height: 36 }} 
+                            <img
+                              src={rev.userAvatar}
+                              alt={rev.author}
+                              className="rounded-circle object-fit-cover shadow-sm"
+                              style={{ width: 36, height: 36 }}
                             />
                           ) : (
-                            <div 
-                              className="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold shadow-sm" 
+                            <div
+                              className="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold shadow-sm"
                               style={{ width: 36, height: 36, fontSize: '0.85rem' }}
                             >
                               {rev.author ? rev.author.charAt(0).toUpperCase() : 'U'}
@@ -575,9 +575,10 @@ export default function HotelDetailPage() {
                           )}
                           <div>
                             <strong className="text-dark d-block leading-tight">{rev.author}</strong>
-                            <span className="badge bg-success-subtle text-success border border-success border-opacity-25 py-0 px-2 fw-normal" style={{ fontSize: '0.7rem' }}>
-                              ✓ Đã xác thực kỳ nghỉ
+                            <span className="small text-secondary text-end d-block mt-2" style={{ fontSize: '0.75rem' }}>
+                              Đánh giá ngày: {rev.date}
                             </span>
+
                           </div>
                         </div>
                         <span className="badge bg-primary px-2 py-1 fw-bold">
@@ -586,9 +587,7 @@ export default function HotelDetailPage() {
                       </div>
                       <p className="small text-dark mb-2 mt-2 fst-italic">"{rev.comment}"</p>
                     </div>
-                    <span className="small text-secondary text-end d-block mt-2" style={{ fontSize: '0.75rem' }}>
-                      Đánh giá ngày: {rev.date}
-                    </span>
+
                   </div>
                 </div>
               ))}

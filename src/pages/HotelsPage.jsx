@@ -521,8 +521,23 @@ export default function HotelsPage() {
 
                             {/* Điểm đánh giá */}
                             <div className="text-end flex-shrink-0">
-                           
-                              <span className="d-block small text-secondary mt-1">{hotel.ratingText || ''}</span>
+                              {hotel.reviewCount > 0 && (hotel.averageRating || hotel.ratingScore) ? (
+                                <div className="d-flex align-items-center justify-content-end gap-2">
+                                  <div>
+                                    <strong className="d-block text-dark small">
+                                      {hotel.ratingText || ((hotel.averageRating || hotel.ratingScore) >= 9 ? "Xuất sắc" : ((hotel.averageRating || hotel.ratingScore) >= 8 ? "Tuyệt vời" : "Rất tốt"))}
+                                    </strong>
+                                    <span className="text-secondary" style={{ fontSize: '11px' }}>{hotel.reviewCount} đánh giá</span>
+                                  </div>
+                                  <span className="badge bg-primary fs-6 px-2 py-1 rounded-2">
+                                    ★ {Number(hotel.averageRating || hotel.ratingScore).toFixed(1)}/10
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="text-secondary small">
+                                  <span className="badge bg-light text-secondary border">Mới trên Traveloka</span>
+                                </div>
+                              )}
                             </div>
                           </div>
 

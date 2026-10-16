@@ -347,7 +347,7 @@ export default function HomePage() {
       }
 
       // 3. Lọc theo đánh giá
-      const rating = hotel.ratingScore || 8.5;
+      const rating = Number(hotel.averageRating || hotel.ratingScore || 0);
       if (selectedRating && rating < selectedRating) {
         return false;
       }
@@ -965,9 +965,9 @@ export default function HomePage() {
                             ))}
                           </div>
 
-                          {/* Đoạn trích dẫn nhận xét thực tế (như ảnh 2) */}
+                          {/* Đoạn trích dẫn nhận xét thực tế */}
                           <p className="text-secondary small fst-italic mb-0 line-clamp-2" style={{ fontSize: '12px' }}>
-                            "{hotel.reviews?.[0]?.comment || 'Dịch vụ chu đáo, phòng ốc tiện nghi và hồ bơi thoáng mát.'}"
+                            "{hotel.latestReviewComment || hotel.reviews?.[0]?.comment || 'Dịch vụ chu đáo, phòng ốc tiện nghi và hồ bơi thoáng mát.'}"
                           </p>
                         </div>
                       </div>
@@ -977,13 +977,29 @@ export default function HomePage() {
                         {/* Điểm đánh giá (tuyệt vời 9.6 / 10) */}
                         <div>
                           <div className="d-flex justify-content-lg-end justify-content-start align-items-center gap-2 mb-1">
-                            <div>
-                              <strong className="d-block text-dark small">{hotel.ratingText || "Tuyệt vời"}</strong>
-                              <span className="text-secondary" style={{ fontSize: '11px' }}>{hotel.reviewCount} đánh giá</span>
-                            </div>
-                            <span className="badge bg-primary fs-6 px-2 py-1 rounded-2" style={{ backgroundColor: '#2563eb' }}>
-                              {hotel.ratingScore} / 10
-                            </span>
+                            {hotel.reviewCount > 0 && (hotel.averageRating || hotel.ratingScore) ? (
+                              <>
+                                <div>
+                                  <strong className="d-block text-dark small">
+                                    {hotel.ratingText || ((hotel.averageRating || hotel.ratingScore) >= 9 ? "Xuất sắc" : ((hotel.averageRating || hotel.ratingScore) >= 8 ? "Tuyệt vời" : "Rất tốt"))}
+                                  </strong>
+                                  <span className="text-secondary" style={{ fontSize: '11px' }}>{hotel.reviewCount} đánh giá</span>
+                                </div>
+                                <span className="badge bg-primary fs-6 px-2 py-1 rounded-2" style={{ backgroundColor: '#2563eb' }}>
+                                  {Number(hotel.averageRating || hotel.ratingScore).toFixed(1)} / 10
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <div>
+                                  <strong className="d-block text-dark small">Chưa có đánh giá</strong>
+                                  <span className="text-secondary" style={{ fontSize: '11px' }}>Mới trên Traveloka</span>
+                                </div>
+                                <span className="badge bg-secondary-subtle text-secondary fs-6 px-2 py-1 rounded-2 border">
+                                  — / 10
+                                </span>
+                              </>
+                            )}
                           </div>
                         </div>
 
