@@ -3,9 +3,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../services/api';
 import { getHotelByIdApi } from '../services/hotelApi';
+import { createReviewApi } from '../services/reviewApi';
 import { 
   Luggage, Calendar, MapPin, BedDouble, ArrowRight, Eye, 
-  XCircle, CheckCircle, Clock, AlertTriangle, RotateCcw, Building, Info, Sparkles, RefreshCw, CreditCard, AlertCircle
+  XCircle, CheckCircle, Clock, AlertTriangle, RotateCcw, Building, Info, Sparkles, RefreshCw, CreditCard, AlertCircle, Star
 } from 'lucide-react';
 import AlertModal from '../components/AlertModal';
 import { getFriendlyErrorMessage, sanitizeErrorMessage } from '../utils/errorHandler';
@@ -170,6 +171,7 @@ export default function MyBookingsPage() {
       isOverdueCheckout,
       isPaymentTimeout,
       isGuest: b.isGuest || false,
+      isReviewed: Boolean(b.isReviewed),
       raw: b
     };
   };
@@ -225,6 +227,82 @@ export default function MyBookingsPage() {
 
   const closeAlert = () => {
     setAlertModal(prev => ({ ...prev, isOpen: false }));
+  };
+
+  // State quản lý Modal Đánh Giá Khách Sạn (FR-21)
+  const [reviewModal, setReviewModal] = useState({
+    isOpen: false,
+    booking: null,
+    rating: 10,
+    comment: '',
+    submitting: false,
+    error: null,
+  });
+
+  const handleOpenReviewModal = (bookingItem) => {
+    setReviewModal({
+      isOpen: true,
+      booking: bookingItem,
+      rating: 10,
+      comment: '',
+      submitting: false,
+      error: null,
+    });
+  };
+
+  const handleCloseReviewModal = () => {
+    setReviewModal({
+      isOpen: false,
+      booking: null,
+      rating: 10,
+      comment: '',
+      submitting: false,
+      error: null,
+    });
+  };
+
+  const handleSubmitReview = async (e) => {
+    e.preventDefault();
+    if (!reviewModal.booking) return;
+
+    if (!reviewModal.comment.trim()) {
+      setReviewModal(prev => ({ ...prev, error: 'Vui lòng nhập nhận xét chi tiết về kỳ nghỉ của bạn!' }));
+      return;
+    }
+
+    try {
+      setReviewModal(prev => ({ ...prev, submitting: true, error: null }));
+      const bookingIdToSubmit = reviewModal.booking.backendId || reviewModal.booking.id;
+      await createReviewApi({
+        bookingId: bookingIdToSubmit,
+        rating: reviewModal.rating,
+        comment: reviewModal.comment.trim(),
+      });
+
+      // Cập nhật trạng thái isReviewed trực tiếp trên state và localStorage
+      setBookings(prev => {
+        const updated = prev.map(b => {
+          if (b.id === reviewModal.booking.id || b.backendId === reviewModal.booking.backendId) {
+            return { ...b, isReviewed: true };
+          }
+          return b;
+        });
+        localStorage.setItem('traveloka_bookings', JSON.stringify(updated));
+        return updated;
+      });
+
+      showToast('Đánh giá kỳ nghỉ của bạn đã được gửi thành công!', 'success');
+      handleCloseReviewModal();
+      window.dispatchEvent(new Event('traveloka_hotels_updated'));
+      loadBookings();
+    } catch (err) {
+      console.error('Lỗi khi gửi đánh giá:', err);
+      setReviewModal(prev => ({
+        ...prev,
+        submitting: false,
+        error: err.message || 'Gửi đánh giá thất bại. Vui lòng thử lại!',
+      }));
+    }
   };
 
   // Tải danh sách đơn đặt phòng từ Backend và LocalStorage
@@ -694,6 +772,22 @@ export default function MyBookingsPage() {
                           <Eye size={15} /> Xem vé điện tử
                         </button>
 
+                        {/* Nút Đánh giá khách sạn (FR-21) */}
+                        {b.status === 'completed' && (
+                          b.isReviewed ? (
+                            <div className="badge bg-success-subtle text-success py-2 px-3 rounded-pill small border border-success-subtle d-inline-flex align-items-center justify-content-center gap-1">
+                              <CheckCircle size={14} /> Đã đánh giá
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => handleOpenReviewModal(b)}
+                              className="btn btn-warning btn-sm fw-bold d-inline-flex align-items-center justify-content-center gap-1 rounded-pill text-dark shadow-sm"
+                            >
+                              <Star size={15} fill="#ffc107" /> Đánh giá khách sạn
+                            </button>
+                          )
+                        )}
+
                         {/* Nút hủy phòng / xóa đơn khỏi danh sách */}
                         {b.status !== 'checked_in' && (
                           <button 
@@ -742,6 +836,130 @@ export default function MyBookingsPage() {
         showCancel={alertModal.showCancel}
         onConfirm={alertModal.onConfirm}
       />
+
+      {/* Modal Đánh Giá Khách Sạn (FR-21) */}
+      {reviewModal.isOpen && reviewModal.booking && (
+        <div 
+          className="modal fade show d-block" 
+          tabIndex="-1" 
+          style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)', zIndex: 1050 }}
+        >
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content rounded-4 border-0 shadow-lg overflow-hidden">
+              <div className="modal-header bg-primary text-white border-0 px-4 py-3">
+                <div>
+                  <h5 className="modal-title fw-bold mb-0 d-flex align-items-center gap-2">
+                    <Star size={20} fill="#ffc107" className="text-warning" />
+                    Đánh Giá Kỳ Nghỉ
+                  </h5>
+                  <span className="small opacity-75">{reviewModal.booking.hotelName}</span>
+                </div>
+                <button 
+                  type="button" 
+                  className="btn-close btn-close-white" 
+                  onClick={handleCloseReviewModal}
+                  disabled={reviewModal.submitting}
+                />
+              </div>
+
+              <form onSubmit={handleSubmitReview}>
+                <div className="modal-body p-4">
+                  {/* Thông tin phòng đã lưu trú */}
+                  <div className="bg-light p-3 rounded-3 mb-3 border">
+                    <div className="d-flex justify-content-between align-items-center small">
+                      <span className="text-secondary">Phòng đã đặt:</span>
+                      <strong className="text-dark">{reviewModal.booking.roomName}</strong>
+                    </div>
+                    <div className="d-flex justify-content-between align-items-center small mt-1">
+                      <span className="text-secondary">Thời gian lưu trú:</span>
+                      <span className="text-dark">{reviewModal.booking.checkInDate} ➔ {reviewModal.booking.checkOutDate}</span>
+                    </div>
+                  </div>
+
+                  {/* Chọn điểm số từ 1 đến 10 */}
+                  <div className="mb-4 text-center">
+                    <label className="form-label fw-bold d-block text-dark mb-2">
+                      Bạn đánh giá kỳ nghỉ này bao nhiêu điểm?
+                    </label>
+                    <div className="d-flex justify-content-center align-items-center gap-1 flex-wrap mb-2">
+                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => {
+                        const isSelected = reviewModal.rating === num;
+                        return (
+                          <button
+                            key={num}
+                            type="button"
+                            onClick={() => setReviewModal(prev => ({ ...prev, rating: num }))}
+                            className={`btn btn-sm rounded-circle fw-bold ${
+                              isSelected 
+                                ? 'btn-primary text-white shadow' 
+                                : 'btn-outline-secondary border-opacity-50'
+                            }`}
+                            style={{ width: 36, height: 36, padding: 0 }}
+                          >
+                            {num}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="fw-bold fs-6 text-primary">
+                      {reviewModal.rating === 10 && '🌟 10/10 - Tuyệt hảo! Trải nghiệm hoàn hảo'}
+                      {reviewModal.rating === 9 && '✨ 9/10 - Xuất sắc! Vượt ngoài mong đợi'}
+                      {reviewModal.rating === 8 && '👍 8/10 - Rất tốt! Rất hài lòng'}
+                      {reviewModal.rating === 7 && '😊 7/10 - Tốt! Đạt yêu cầu'}
+                      {reviewModal.rating >= 5 && reviewModal.rating <= 6 && `😐 ${reviewModal.rating}/10 - Tạm ổn / Bình thường`}
+                      {reviewModal.rating < 5 && `⚠️ ${reviewModal.rating}/10 - Cần cải thiện dịch vụ`}
+                    </div>
+                  </div>
+
+                  {/* Nhận xét văn bản */}
+                  <div className="mb-3">
+                    <label className="form-label fw-bold text-dark mb-1">
+                      Nhận xét chi tiết của bạn <span className="text-danger">*</span>
+                    </label>
+                    <textarea
+                      rows="4"
+                      className="form-control rounded-3"
+                      placeholder="Chia sẻ trải nghiệm của bạn về phòng ốc, vệ sinh, dịch vụ, thái độ nhân viên và vị trí khách sạn..."
+                      value={reviewModal.comment}
+                      onChange={(e) => setReviewModal(prev => ({ ...prev, comment: e.target.value, error: null }))}
+                      disabled={reviewModal.submitting}
+                      required
+                    />
+                    <div className="form-text text-secondary small">
+                      Đánh giá của bạn sẽ hiển thị công khai trên trang chi tiết khách sạn kèm huy hiệu "✓ Đã xác thực kỳ nghỉ".
+                    </div>
+                  </div>
+
+                  {/* Thông báo lỗi nếu có */}
+                  {reviewModal.error && (
+                    <div className="alert alert-danger py-2 px-3 small rounded-3 mb-0">
+                      {reviewModal.error}
+                    </div>
+                  )}
+                </div>
+
+                <div className="modal-footer bg-light px-4 py-3 border-top">
+                  <button 
+                    type="button" 
+                    className="btn btn-outline-secondary rounded-pill px-4"
+                    onClick={handleCloseReviewModal}
+                    disabled={reviewModal.submitting}
+                  >
+                    Hủy
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="btn btn-primary rounded-pill px-4 fw-bold shadow-sm"
+                    disabled={reviewModal.submitting}
+                  >
+                    {reviewModal.submitting ? 'Đang gửi...' : 'Gửi Đánh Giá'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
