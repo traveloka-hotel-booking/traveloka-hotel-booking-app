@@ -264,13 +264,25 @@ export default function HotelDetailPage() {
 
             {/* Điểm số & Đánh giá */}
             <div className="text-md-end text-start">
-              <div className="d-inline-flex  ">
-               
-                <div className="text-start">
-                  <div className="fw-bold">{hotel.ratingText}</div>
-               
+              {hotel.reviewCount > 0 ? (
+                <div className="d-inline-flex align-items-center gap-2 bg-primary bg-opacity-10 border border-primary border-opacity-25 p-2 px-3 rounded-3">
+                  <div className="badge bg-primary fs-6 fw-bold px-2 py-1">
+                    ★ {Number(hotel.averageRating).toFixed(1)}/10
+                  </div>
+                  <div className="text-start">
+                    <div className="fw-bold text-primary small">
+                      {hotel.averageRating >= 9 ? 'Xuất sắc' : hotel.averageRating >= 8 ? 'Rất tốt' : hotel.averageRating >= 7 ? 'Tốt' : 'Hài lòng'}
+                    </div>
+                    <div className="text-secondary" style={{ fontSize: '0.75rem' }}>
+                      Từ {hotel.reviewCount} lượt đánh giá thực tế
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="d-inline-flex align-items-center gap-1 text-secondary small py-2 px-3 bg-light rounded-3 border">
+                  <Star size={16} className="text-warning" /> <span>Chưa có đánh giá</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -519,26 +531,78 @@ export default function HotelDetailPage() {
           </div>
         </section>
 
-        {/* 5. Đánh giá từ khách hàng */}
-        {hotel.reviews && hotel.reviews.length > 0 && (
-          <section className="card border-0 shadow-sm rounded-4 p-4 bg-white">
-            <h4 className="fw-bold mb-4 text-dark">Đánh Giá Thực Tế Từ Khách Lưu Trú</h4>
+        {/* 5. Đánh giá từ khách hàng (FR-21) */}
+        <section className="card border-0 shadow-sm rounded-4 p-4 bg-white mt-4">
+          <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+            <div>
+              <h4 className="fw-bold mb-1 text-dark">Đánh Giá Thực Tế Từ Khách Lưu Trú</h4>
+              <p className="text-secondary small mb-0">
+                100% đánh giá được xác thực từ khách hàng đã đặt phòng và hoàn tất kỳ nghỉ
+              </p>
+            </div>
+            {hotel.reviewCount > 0 && (
+              <div className="d-flex align-items-center gap-2">
+                <span className="badge bg-primary fs-6 px-3 py-2 rounded-pill">
+                  ★ {Number(hotel.averageRating).toFixed(1)} / 10
+                </span>
+                <span className="text-secondary small">({hotel.reviewCount} đánh giá)</span>
+              </div>
+            )}
+          </div>
+
+          {hotel.reviews && hotel.reviews.length > 0 ? (
             <div className="row g-3">
               {hotel.reviews.map((rev) => (
                 <div key={rev.id} className="col-md-6">
-                  <div className="p-3 bg-light rounded-3 h-100 border">
-                    <div className="d-flex justify-content-between align-items-center mb-2">
-                      <strong className="text-dark">{rev.author}</strong>
-                      <span className="badge bg-success">★ {rev.rating}/10</span>
+                  <div className="p-3 bg-light rounded-3 h-100 border d-flex flex-column justify-content-between">
+                    <div>
+                      <div className="d-flex justify-content-between align-items-start mb-2">
+                        <div className="d-flex align-items-center gap-2">
+                          {rev.userAvatar ? (
+                            <img 
+                              src={rev.userAvatar} 
+                              alt={rev.author} 
+                              className="rounded-circle object-fit-cover shadow-sm" 
+                              style={{ width: 36, height: 36 }} 
+                            />
+                          ) : (
+                            <div 
+                              className="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold shadow-sm" 
+                              style={{ width: 36, height: 36, fontSize: '0.85rem' }}
+                            >
+                              {rev.author ? rev.author.charAt(0).toUpperCase() : 'U'}
+                            </div>
+                          )}
+                          <div>
+                            <strong className="text-dark d-block leading-tight">{rev.author}</strong>
+                            <span className="badge bg-success-subtle text-success border border-success border-opacity-25 py-0 px-2 fw-normal" style={{ fontSize: '0.7rem' }}>
+                              ✓ Đã xác thực kỳ nghỉ
+                            </span>
+                          </div>
+                        </div>
+                        <span className="badge bg-primary px-2 py-1 fw-bold">
+                          ★ {rev.rating}/10
+                        </span>
+                      </div>
+                      <p className="small text-dark mb-2 mt-2 fst-italic">"{rev.comment}"</p>
                     </div>
-                    <span className="small text-secondary d-block mb-2">{rev.date}</span>
-                    <p className="small text-secondary mb-0 fst-italic">"{rev.comment}"</p>
+                    <span className="small text-secondary text-end d-block mt-2" style={{ fontSize: '0.75rem' }}>
+                      Đánh giá ngày: {rev.date}
+                    </span>
                   </div>
                 </div>
               ))}
             </div>
-          </section>
-        )}
+          ) : (
+            <div className="text-center py-5 bg-light rounded-3 text-secondary">
+              <Star size={36} className="text-warning mb-2 opacity-50" />
+              <h6 className="fw-bold text-dark mb-1">Chưa có đánh giá nào cho khách sạn này</h6>
+              <p className="small text-muted mb-0">
+                Hãy là người đầu tiên đặt phòng và chia sẻ trải nghiệm lưu trú thực tế của bạn!
+              </p>
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );
