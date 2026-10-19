@@ -5,7 +5,8 @@ import { apiFetch } from '../services/api';
 import {
   MapPin, Star, Wifi, Waves, Coffee, Car, Dumbbell,
   Sparkles, CheckCircle2, ShieldAlert, Clock, ArrowLeft,
-  Users, BedDouble, Maximize2, Ban, Heart, Share2, Check
+  Users, BedDouble, Maximize2, Ban, Heart, Share2, Check,
+  ExternalLink, Navigation, Compass, Building, Copy
 } from 'lucide-react';
 
 export default function HotelDetailPage() {
@@ -13,6 +14,7 @@ export default function HotelDetailPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, isAuthenticated } = useAuth();
+  const [copiedAddress, setCopiedAddress] = useState(false);
 
   // Đọc dữ liệu tìm kiếm dự phòng từ localStorage nếu F5 hoặc mở tab mới
   const savedSearch = (() => {
@@ -256,10 +258,19 @@ export default function HotelDetailPage() {
               <h2 className="fw-bold text-dark mb-2">{hotel.name}</h2>
 
               {/* Địa chỉ */}
-              <p className="text-secondary mb-0 d-flex align-items-center gap-2">
-                <MapPin size={18} className="text-danger flex-shrink-0" />
-                <span>{hotel.address}</span>
-              </p>
+              <div className="d-flex align-items-center flex-wrap gap-2 text-secondary mb-0">
+                <div className="d-flex align-items-center gap-1">
+                  <MapPin size={18} className="text-danger flex-shrink-0" />
+                  <span>{hotel.address || hotel.city}</span>
+                </div>
+                <a
+                  href="#hotel-map-section"
+                  className="badge bg-light text-primary border text-decoration-none py-1 px-2 d-inline-flex align-items-center gap-1 fw-semibold hover-opacity"
+                  style={{ fontSize: '12px' }}
+                >
+                  <Navigation size={12} /> Xem trên bản đồ
+                </a>
+              </div>
             </div>
 
             {/* Điểm số & Đánh giá */}
@@ -397,6 +408,89 @@ export default function HotelDetailPage() {
                 </div>
               </div>
             </div>
+
+            {/* Vị trí & Bản đồ khách sạn (Google Map Feature) */}
+            <div id="hotel-map-section" className="card border-0 shadow-sm rounded-4 p-4 mt-4 bg-white">
+              <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <div>
+                  <h4 className="fw-bold mb-1 text-dark d-flex align-items-center gap-2">
+                    <MapPin size={22} className="text-danger" /> Vị Trí & Bản Đồ Khách Sạn
+                  </h4>
+                  <p className="text-secondary small mb-0 d-flex align-items-center gap-1">
+                    <span>{hotel.address || hotel.city || 'Việt Nam'}</span>
+                  </p>
+                </div>
+                <div className="d-flex align-items-center gap-2">
+                  <button
+                    onClick={() => {
+                      if (hotel.address || hotel.city) {
+                        navigator.clipboard.writeText(hotel.address || hotel.city);
+                        setCopiedAddress(true);
+                        setTimeout(() => setCopiedAddress(false), 2000);
+                      }
+                    }}
+                    className="btn btn-outline-secondary btn-sm rounded-pill d-inline-flex align-items-center gap-1 px-3"
+                    title="Sao chép địa chỉ"
+                  >
+                    {copiedAddress ? <Check size={14} className="text-success" /> : <Copy size={14} />}
+                    <span>{copiedAddress ? 'Đã sao chép' : 'Sao chép'}</span>
+                  </button>
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((hotel.name ? hotel.name + ' ' : '') + (hotel.address || hotel.city || 'Việt Nam'))}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-primary btn-sm fw-bold rounded-pill d-inline-flex align-items-center gap-1 px-3 shadow-sm text-white"
+                  >
+                    <ExternalLink size={14} /> Mở Google Maps
+                  </a>
+                </div>
+              </div>
+
+              {/* Bản đồ nhúng Google Maps iframe (Hoạt động 100% không cần API Key) */}
+              <div className="rounded-4 overflow-hidden border shadow-sm position-relative" style={{ height: '380px', width: '100%', background: '#e2e8f0' }}>
+                <iframe
+                  title={`Bản đồ ${hotel.name}`}
+                  width="100%"
+                  height="100%"
+                  style={{ border: 0 }}
+                  loading="lazy"
+                  allowFullScreen
+                  referrerPolicy="no-referrer-when-downgrade"
+                  src={`https://maps.google.com/maps?q=${encodeURIComponent((hotel.name ? hotel.name + ', ' : '') + (hotel.address || hotel.city || 'Việt Nam'))}&t=&z=15&ie=UTF8&iwloc=&output=embed`}
+                />
+              </div>
+
+              {/* Tiện ích vị trí xung quanh */}
+              <div className="row g-3 mt-2">
+                <div className="col-md-4 col-12">
+                  <div className="p-3 bg-light rounded-3 d-flex align-items-center gap-2 h-100 border">
+                    <Building size={20} className="text-primary flex-shrink-0" />
+                    <div className="small">
+                      <span className="text-secondary d-block" style={{ fontSize: '11px' }}>Vị trí trung tâm</span>
+                      <strong className="text-dark">Trung tâm {hotel.city || 'thành phố'}</strong>
+                    </div>
+                  </div>
+                </div>
+                <div className="col-md-4 col-12">
+                  <div className="p-3 bg-light rounded-3 d-flex align-items-center gap-2 h-100 border">
+                    <Compass size={20} className="text-success flex-shrink-0" />
+                    <div className="small">
+                      <span className="text-secondary d-block" style={{ fontSize: '11px' }}>Giao thông & Di chuyển</span>
+                      <strong className="text-dark">Thuận tiện đón taxi & xe ôm</strong>
+                    </div>
+                  </div>
+                </div>
+                <div className="col-md-4 col-12">
+                  <div className="p-3 bg-light rounded-3 d-flex align-items-center gap-2 h-100 border">
+                    <Sparkles size={20} className="text-warning flex-shrink-0" />
+                    <div className="small">
+                      <span className="text-secondary d-block" style={{ fontSize: '11px' }}>Khu vực lân cận</span>
+                      <strong className="text-dark">Gần điểm tham quan & ẩm thực</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Cột phải: Thẻ đặt phòng nhanh & Hỗ trợ */}
@@ -413,7 +507,22 @@ export default function HotelDetailPage() {
                 Xem Danh Sách Phòng Trống
               </a>
 
-
+              {/* Box chỉ đường nhanh Google Maps */}
+              <div className="p-3 bg-light rounded-3 border mt-3 text-start">
+                <div className="d-flex align-items-center gap-2 mb-2">
+                  <MapPin size={18} className="text-danger flex-shrink-0" />
+                  <span className="fw-bold small text-dark">Khám phá vị trí</span>
+                </div>
+                <p className="text-secondary small mb-2 line-clamp-2" style={{ fontSize: '12px' }}>
+                  {hotel.address || hotel.city}
+                </p>
+                <a
+                  href="#hotel-map-section"
+                  className="btn btn-outline-primary btn-sm w-100 fw-semibold rounded-pill d-inline-flex align-items-center justify-content-center gap-1"
+                >
+                  <Navigation size={13} /> Xem bản đồ chi tiết
+                </a>
+              </div>
             </div>
           </div>
         </div>
