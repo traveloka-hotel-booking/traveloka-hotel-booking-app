@@ -561,13 +561,6 @@ export default function HomePage() {
                                 </div>
                               </div>
                             )}
-
-                            <div className="bg-light p-2 px-3 border-bottom d-flex justify-content-between align-items-center">
-                              <span className="fw-bold text-dark small d-flex align-items-center gap-1">
-                                <Sparkles size={14} className="text-warning" /> Điểm đến phổ biến tại Việt Nam
-                              </span>
-                              <span className="text-secondary" style={{ fontSize: '11px' }}>Chọn để tìm nhanh</span>
-                            </div>
                             <div className="p-3">
                               <div className="row g-2">
                                 {locationSuggestions.matchedDestinations.map((dest, idx) => (
