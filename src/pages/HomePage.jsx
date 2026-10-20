@@ -4,7 +4,7 @@ import { searchHotelsApi, filterHotelsApi } from '../services/hotelApi';
 import { 
   Search, MapPin, Calendar, Users, Star, ArrowRight, ChevronDown, ChevronUp,
   Minus, Plus, ShieldCheck, Tag, Clock, Sparkles, Check, Info, ArrowUp, ThumbsUp,
-  Award, Shield, HelpCircle, Loader2, X, RotateCcw, Filter, Building, ChevronRight
+  Award, Shield, HelpCircle, Loader2, X, RotateCcw, Filter, ChevronRight
 } from 'lucide-react';
 
 // Danh sách gợi ý điểm đến phổ biến tại Việt Nam (chuẩn hóa tên đồng bộ với CSDL và Admin)
@@ -230,35 +230,30 @@ export default function HomePage() {
     });
   };
 
-  // Gợi ý địa điểm & khách sạn theo thời gian thực (Autocomplete Suggestions)
+  // Gợi ý địa điểm theo thời gian thực (Autocomplete Suggestions - Chỉ hiển thị địa điểm)
   const locationSuggestions = useMemo(() => {
+    // Tổng hợp tất cả địa điểm: danh sách du lịch chuẩn + các thành phố thực tế từ CSDL khách sạn
+    const hotelCities = (Array.isArray(backendHotels) ? backendHotels : [])
+      .map(h => h.city?.trim())
+      .filter(Boolean);
+    const allLocations = [...new Set([...VIETNAM_DESTINATIONS, ...hotelCities])];
+
     const term = destination?.trim();
     if (!term) {
       return {
         isTyping: false,
-        matchedDestinations: VIETNAM_DESTINATIONS,
-        matchedHotels: []
+        matchedDestinations: allLocations
       };
     }
 
-    // 1. Lọc các điểm đến / thành phố khớp (hỗ trợ cả có dấu, không dấu và alias)
-    const matchedDestinations = VIETNAM_DESTINATIONS.filter(city => 
+    // Lọc các điểm đến / thành phố khớp (hỗ trợ cả có dấu, không dấu và alias viết tắt)
+    const matchedDestinations = allLocations.filter(city => 
       isMatchWithTones(city, term)
     );
 
-    // 2. Lọc các khách sạn phù hợp từ CSDL
-    const hotelsList = Array.isArray(backendHotels) ? backendHotels : [];
-    const matchedHotels = hotelsList.filter(hotel => {
-      const matchName = isMatchWithTones(hotel.name, term);
-      const matchCity = isMatchWithTones(hotel.city, term);
-      const matchAddr = isMatchWithTones(hotel.address, term);
-      return matchName || matchCity || matchAddr;
-    }).slice(0, 5); // Tối đa 5 khách sạn đề xuất
-
     return {
       isTyping: true,
-      matchedDestinations,
-      matchedHotels
+      matchedDestinations
     };
   }, [destination, backendHotels]);
 
@@ -597,8 +592,8 @@ export default function HomePage() {
                         ) : (
                           /* TRƯỜNG HỢP 2: Khi người dùng đang nhập chữ (Real-time Filtering & Autocomplete) */
                           <div>
-                            {/* Khối gợi ý Thành phố / Địa điểm */}
-                            {locationSuggestions.matchedDestinations.length > 0 && (
+                            {/* Khối gợi ý Thành phố / Địa điểm (Chỉ hiển thị địa điểm) */}
+                            {locationSuggestions.matchedDestinations.length > 0 ? (
                               <div>
                                 <div className="bg-light p-2 px-3 border-bottom d-flex align-items-center justify-content-between">
                                   <span className="fw-bold text-secondary small d-flex align-items-center gap-1" style={{ fontSize: '12px' }}>
@@ -609,7 +604,7 @@ export default function HomePage() {
                                   </span>
                                 </div>
                                 <div className="list-group list-group-flush">
-                                  {locationSuggestions.matchedDestinations.slice(0, 6).map((dest, idx) => (
+                                  {locationSuggestions.matchedDestinations.slice(0, 8).map((dest, idx) => (
                                     <button
                                       key={idx}
                                       type="button"
@@ -632,61 +627,15 @@ export default function HomePage() {
                                   ))}
                                 </div>
                               </div>
-                            )}
-
-                            {/* Khối gợi ý Khách sạn trực tiếp từ CSDL */}
-                            {locationSuggestions.matchedHotels.length > 0 && (
-                              <div className="border-top">
-                                <div className="bg-light p-2 px-3 border-bottom d-flex align-items-center justify-content-between">
-                                  <span className="fw-bold text-secondary small d-flex align-items-center gap-1" style={{ fontSize: '12px' }}>
-                                    <Building size={13} className="text-primary" /> Khách sạn đề xuất
-                                  </span>
-                                  <span className="badge bg-primary-subtle text-primary" style={{ fontSize: '10px' }}>
-                                    {locationSuggestions.matchedHotels.length} khách sạn
-                                  </span>
-                                </div>
-                                <div className="list-group list-group-flush">
-                                  {locationSuggestions.matchedHotels.map((hotel) => (
-                                    <button
-                                      key={hotel.id}
-                                      type="button"
-                                      className="list-group-item list-group-item-action border-0 px-3 py-2 d-flex align-items-center gap-3 hover-bg-light"
-                                      onClick={() => {
-                                        setDestination(hotel.name);
-                                        saveRecentDestination(hotel.name);
-                                        setIsDestinationPickerOpen(false);
-                                      }}
-                                    >
-                                      <div className="bg-primary bg-opacity-10 p-2 rounded-circle flex-shrink-0">
-                                        <Building size={16} className="text-primary" />
-                                      </div>
-                                      <div className="text-start flex-grow-1 min-w-0">
-                                        <div className="d-flex align-items-center gap-1">
-                                          <strong className="text-dark small text-truncate">{hotel.name}</strong>
-                                          <span className="badge bg-warning text-dark py-0 px-1 d-inline-flex align-items-center gap-0" style={{ fontSize: '10px' }}>
-                                            <Star size={10} fill="#000" /> {hotel.starRating || 5}★
-                                          </span>
-                                        </div>
-                                        <span className="text-secondary d-block text-truncate" style={{ fontSize: '11px' }}>
-                                          {hotel.address || hotel.city || 'Việt Nam'}
-                                        </span>
-                                      </div>
-                                      <ChevronRight size={14} className="text-secondary opacity-50 flex-shrink-0" />
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* TRƯỜNG HỢP KHÔNG TÌM THẤY KẾT QUẢ PHÙ HỢP */}
-                            {locationSuggestions.matchedDestinations.length === 0 && locationSuggestions.matchedHotels.length === 0 && (
+                            ) : (
+                              /* TRƯỜNG HỢP KHÔNG TÌM THẤY KẾT QUẢ ĐỊA ĐIỂM PHÙ HỢP */
                               <div className="p-4 text-center">
                                 <HelpCircle size={32} className="text-secondary opacity-50 mb-2" />
                                 <p className="text-dark fw-bold small mb-1">
-                                  Không tìm thấy gợi ý cho "{destination}"
+                                  Không tìm thấy địa điểm phù hợp với "{destination}"
                                 </p>
                                 <p className="text-secondary small mb-3" style={{ fontSize: '12px' }}>
-                                  Bạn vẫn có thể nhấn nút "Tìm kiếm" để tra cứu, hoặc chọn từ các điểm đến phổ biến.
+                                  Thử tìm kiếm với tên thành phố khác như Hà Nội, Đà Nẵng, TP.HCM, Nha Trang...
                                 </p>
                                 <button
                                   type="button"
