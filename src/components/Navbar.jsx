@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Hotel, Headphones, Search, Globe, User, ShieldCheck, LogOut, ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useAlert } from '../context/AlertContext';
 import SupportModal from './SupportModal';
 
 export default function Navbar() {
@@ -9,9 +10,11 @@ export default function Navbar() {
   const navigate = useNavigate();
   const isHome = location.pathname === '/';
   const { user, isAuthenticated, isAdmin, logout } = useAuth();
+  const { showAlert } = useAlert();
 
   // State điều khiển đóng/mở dropdown menu của người dùng
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const userMenuRef = useRef(null);
 
   // State điều khiển Modal Trung tâm Hỗ trợ khách hàng 24/7
@@ -49,8 +52,43 @@ export default function Navbar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Đăng xuất và hiển thị trạng thái loading trong lúc xử lý
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+
+    setIsLoggingOut(true);
+
+    try {
+      await logout();
+      setIsUserMenuOpen(false);
+      navigate("/", { replace: true });
+    } catch (error) {
+      console.error("Logout error:", error);
+      showAlert({
+        title: 'Đăng xuất thất bại',
+        message: 'Đăng xuất không thành công. Vui lòng thử lại!',
+        type: 'error'
+      });
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
   return (
     <header className="fixed-top" style={{ zIndex: 1050 }}>
+      {isLoggingOut && (
+        <div
+          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
+          style={{ background: "rgba(15, 23, 42, 0.35)", zIndex: 2000 }}
+          role="status"
+          aria-live="polite"
+        >
+          <div className="bg-white rounded-3 shadow px-4 py-3 d-flex align-items-center gap-3">
+            <span className="spinner-border text-primary" aria-hidden="true" />
+            <span className="fw-semibold text-dark">Đang đăng xuất...</span>
+          </div>
+        </div>
+      )}
       <nav 
         className="navbar navbar-expand-lg navbar-dark py-2 px-3 transition-all"
         style={{
@@ -165,7 +203,7 @@ export default function Navbar() {
                     type="button"
                   >
                     <img 
-                      src={user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=60"} 
+                      src={user.avatarUrl || user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=60"} 
                       alt={user.name} 
                       className="rounded-circle object-fit-cover"
                       style={{ width: '26px', height: '26px' }}
@@ -202,16 +240,7 @@ export default function Navbar() {
                         )}
                       </div>
 
-                      {/* 2. Quản lý tài khoản & Hồ sơ bảo mật */}
-                      <Link 
-                        className="dropdown-item py-2 small d-flex align-items-center gap-2 rounded-2 text-dark fw-semibold" 
-                        to="/profile"
-                        onClick={() => setIsUserMenuOpen(false)}
-                      >
-                        <User size={16} className="text-primary" /> Quản Lý Tài Khoản
-                      </Link>
-
-                      {/* 3. Trang Quản Trị (Admin) - Chỉ hiển thị khi có quyền Admin */}
+                      {/* 2. Trang Quản Trị (Admin) - Ưu tiên hàng đầu cho Admin */}
                       {isAdmin && (
                         <Link 
                           className="dropdown-item py-2 small fw-bold text-primary d-flex align-items-center gap-2 rounded-2" 
@@ -222,26 +251,50 @@ export default function Navbar() {
                         </Link>
                       )}
 
-                      {/* 4. Chuyến đi của tôi */}
+                      {/* 3. Quản lý tài khoản / Hồ sơ */}
                       <Link 
-                        className="dropdown-item py-2 small d-flex align-items-center gap-2 rounded-2 text-dark" 
-                        to="/my-bookings"
+                        className="dropdown-item py-2 small d-flex align-items-center gap-2 rounded-2 text-dark fw-semibold" 
+                        to="/profile"
                         onClick={() => setIsUserMenuOpen(false)}
                       >
-                        <Hotel size={16} className="text-secondary" /> Chuyến đi của tôi
+                        <User size={16} className="text-primary" /> {isAdmin ? 'Hồ Sơ Quản Trị Viên' : 'Quản Lý Tài Khoản'}
                       </Link>
+
+                      {/* 4. Chuyến đi của tôi - Chỉ hiển thị cho Khách hàng (Customer) */}
+                      {!isAdmin && (
+                        <Link 
+                          className="dropdown-item py-2 small d-flex align-items-center gap-2 rounded-2 text-dark" 
+                          to="/my-bookings"
+                          onClick={() => setIsUserMenuOpen(false)}
+                        >
+                          <Hotel size={16} className="text-secondary" /> Chuyến đi của tôi
+                        </Link>
+                      )}
 
                       <hr className="dropdown-divider my-1" />
 
                       {/* 4. Đăng xuất */}
-                      <button 
-                        onClick={() => {
-                          setIsUserMenuOpen(false);
-                          logout();
-                        }} 
+                      <button
+                        type="button"
+                        onClick={handleLogout}
+                        disabled={isLoggingOut}
                         className="dropdown-item py-2 small text-danger d-flex align-items-center gap-2 rounded-2"
                       >
-                        <LogOut size={16} /> Đăng xuất
+                        {isLoggingOut ? (
+                          <>
+                            <span
+                              className="spinner-border spinner-border-sm"
+                              role="status"
+                              aria-hidden="true"
+                            />
+                            <span>Đang đăng xuất...</span>
+                          </>
+                        ) : (
+                          <>
+                            <LogOut size={16} />
+                            <span>Đăng xuất</span>
+                          </>
+                        )}
                       </button>
                     </div>
                   )}

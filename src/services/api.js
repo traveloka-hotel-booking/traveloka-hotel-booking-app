@@ -3,11 +3,13 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL  || 'http://localhost:808
 export const apiFetch = async (endpoint, options = {}) => {
     const accessToken = localStorage.getItem('accessToken');
 
-    // Tạo headers mặc định là application/json
+    // Tạo headers mặc định là application/json khi body không phải FormData
     const headers = {
-        'Content-Type': 'application/json',
         ...options.headers,
     };
+    if (!(options.body instanceof FormData) && !options.headers?.['Content-Type']) {
+        headers['Content-Type'] = 'application/json';
+    }
 
     // Nếu có Access Token thì gửi lên Backend
     if (accessToken) {
@@ -22,12 +24,23 @@ export const apiFetch = async (endpoint, options = {}) => {
             headers,
         }
     );
-// Xử lý khi logout hoặc Access Token hết hạn phải trả đúng mã lỗi 401
-    if (response.status === 401) {
+    // Xử lý khi logout hoặc Access Token hết hạn phải trả đúng mã lỗi 401
+    // Đăng nhập sai hoặc đang đăng xuất/refresh cũng có thể trả về 401. Không refresh token hoặc
+    // chuyển hướng trong trường hợp này để tránh vòng lặp token không mong muốn.
+    const isAuthRequest =
+        endpoint.includes('/auth/login') || endpoint === '/login' ||
+        endpoint.includes('/auth/logout') || endpoint.includes('/auth/refresh');
+
+    if (response.status === 401 && !isAuthRequest) {
 
         const refreshToken = localStorage.getItem('refreshToken');
         // Không có Refresh Token
         if (!refreshToken) {
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            localStorage.removeItem('traveloka_auth_user');
+
+            window.location.href = '/login';
             return response;
         }
 
@@ -50,6 +63,8 @@ export const apiFetch = async (endpoint, options = {}) => {
             localStorage.removeItem('accessToken');
             localStorage.removeItem('refreshToken');
             localStorage.removeItem('traveloka_auth_user');
+
+            window.location.href = '/login';
 
             return response;
         }

@@ -3,10 +3,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Hotel, Eye, EyeOff, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { apiFetch } from '../services/api';
+import { getFriendlyErrorMessage, sanitizeErrorMessage } from '../utils/errorHandler';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
-  const { register, loginWithGoogle, loginWithFacebook } = useAuth();
+  const { register } = useAuth();
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -14,12 +15,19 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!fullName || !email || !password) {
+    if (isSubmitting) return;
+
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    if (!fullName.trim() || !email.trim() || !password) {
       setErrorMsg('Vui lòng điền đầy đủ các trường bắt buộc!');
       return;
     }
@@ -34,55 +42,70 @@ export default function RegisterPage() {
       return;
     }
 
+    setIsSubmitting(true);
+    let timeoutId;
+
     try {
-        const response = await apiFetch(
-            `/auth/register`,
-            {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    fullName,
-                    email,
-                    phone,
-                    password,
-		    confirmPassword
-                })
-            }
-        );
+      const request = (async () => {
+        const response = await apiFetch('/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fullName,
+            email,
+            phone,
+            password,
+            confirmPassword
+          })
+        });
 
-        const data = await response.json();
-
-        if (!response.ok) {
-            setErrorMsg(data.result?.errors || 'Đăng ký thất bại!');
-            return;
+        let data = {};
+        try {
+          data = await response.json();
+        } catch {
+          // Cho phép xử lý response không có JSON body.
         }
+        return { response, data };
+      })();
 
-        setSuccessMsg(
-            'Đăng ký tài khoản thành công! Đang chuyển hướng...'
+      const timeout = new Promise((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error('REGISTER_TIMEOUT')),
+          20000
         );
+      });
 
-        setTimeout(() => {
-            navigate('/login');
-        }, 1000);
+      const { response, data } = await Promise.race([request, timeout]);
 
+      if (!response.ok) {
+        const errors = data?.result?.errors;
+        const message =
+          data?.result?.message ||
+          (typeof errors === 'string'
+            ? errors
+            : Array.isArray(errors)
+              ? errors.join(', ')
+              : errors && typeof errors === 'object'
+                ? Object.values(errors).flat().join(', ')
+                : 'Đăng ký thất bại!');
+        setErrorMsg(message);
+        return;
+      }
+
+      setSuccessMsg('Đăng ký tài khoản thành công! Đang chuyển hướng...');
+      setTimeout(() => navigate('/login'), 1000);
     } catch (error) {
+      if (error?.message === 'REGISTER_TIMEOUT') {
+        setErrorMsg('Yêu cầu đăng ký mất quá nhiều thời gian. Vui lòng kiểm tra kết nối và thử lại.');
+      } else {
         setErrorMsg('Không thể kết nối đến server!');
-        console.error(error);
+      }
+      console.error('Register error:', error);
+    } finally {
+      clearTimeout(timeoutId);
+      setIsSubmitting(false);
     }
-  };
 
-  // Đăng nhập nhanh qua Google
-  const handleGoogleLogin = () => {
-    loginWithGoogle();
-    navigate('/');
-  };
-
-  // Đăng nhập nhanh qua Facebook
-  const handleFacebookLogin = () => {
-    loginWithFacebook();
-    navigate('/');
   };
 
   return (
@@ -205,17 +228,26 @@ export default function RegisterPage() {
                   <label className="form-label small fw-semibold text-dark mb-1">
                     Xác nhận mật khẩu <span className="text-danger">*</span>
                   </label>
-                  <input 
-                    type={showPassword ? "text" : "password"} 
-                    className="form-control border-secondary-subtle" 
-                    placeholder="Nhập lại mật khẩu"
-                    value={confirmPassword}
-                    onChange={(e) => {
-                      setConfirmPassword(e.target.value);
-                      setErrorMsg('');
-                    }}
-                    required
-                  />
+                  <div className="input-group">
+                    <input 
+                      type={showConfirmPassword ? "text" : "password"} 
+                      className="form-control border-secondary-subtle" 
+                      placeholder="Nhập lại mật khẩu"
+                      value={confirmPassword}
+                      onChange={(e) => {
+                        setConfirmPassword(e.target.value);
+                        setErrorMsg('');
+                      }}
+                      required
+                    />
+                    <button 
+                      type="button" 
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)} 
+                      className="btn btn-outline-secondary border-secondary-subtle"
+                    >
+                      {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Điều khoản */}
@@ -230,54 +262,29 @@ export default function RegisterPage() {
 
                 {/* Nút Đăng ký */}
                 <div className="col-12 mt-3">
-                  <button type="submit" className="btn btn-primary btn-lg w-100 fw-bold shadow-sm">
-                    Đăng Ký Tài Khoản
+                  <button
+                    type="submit"
+                    className="btn btn-primary btn-lg w-100 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2"
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <span
+                          className="spinner-border spinner-border-sm"
+                          role="status"
+                          aria-hidden="true"
+                        />
+                        <span>Đang đăng ký...</span>
+                      </>
+                    ) : (
+                      'Đăng Ký Tài Khoản'
+                    )}
                   </button>
                 </div>
               </form>
 
-              {/* Đường kẻ phân cách */}
-              <div className="position-relative text-center my-3">
-                <hr className="text-secondary" />
-                <span className="position-absolute top-50 start-50 translate-middle px-3 bg-white text-secondary small" style={{ fontSize: '12px' }}>
-                  hoặc đăng ký nhanh bằng
-                </span>
-              </div>
-
-              {/* Các nút Đăng ký bằng Google & Facebook */}
-              <div className="d-flex flex-column gap-2 mb-4">
-                
-                {/* Nút Google */}
-                <button 
-                  type="button" 
-                  onClick={handleGoogleLogin} 
-                  className="btn btn-outline-secondary d-flex align-items-center justify-content-center gap-2 py-2 rounded-3 bg-white hover-shadow transition-all"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
-                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.26v3.15C3.27 21.36 7.35 24 12 24z"/>
-                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.26C.46 8.16 0 9.94 0 12s.46 3.84 1.26 5.42l4.02-3.15z"/>
-                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.35 0 3.27 2.64 1.26 6.58l4.02 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
-                  </svg>
-                  <span className="fw-semibold small text-dark">Tiếp tục với Google</span>
-                </button>
-
-                {/* Nút Facebook */}
-                <button 
-                  type="button" 
-                  onClick={handleFacebookLogin} 
-                  className="btn btn-outline-secondary d-flex align-items-center justify-content-center gap-2 py-2 rounded-3 bg-white hover-shadow transition-all"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="#1877F2">
-                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-                  </svg>
-                  <span className="fw-semibold small text-dark">Tiếp tục với Facebook</span>
-                </button>
-
-              </div>
-
               {/* Chuyển sang trang Đăng nhập */}
-              <div className="text-center small text-secondary">
+              <div className="text-center small text-secondary mt-4 pt-3 border-top">
                 Đã có tài khoản?{' '}
                 <Link to="/login" className="text-primary fw-bold text-decoration-none">
                   Đăng nhập ngay

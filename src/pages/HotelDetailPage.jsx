@@ -1,17 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
-import { MOCK_HOTELS, getHotelsData } from '../data/mockData';
-import { 
-  MapPin, Star, Wifi, Waves, Coffee, Car, Dumbbell, 
+import { useAuth } from '../context/AuthContext';
+import { apiFetch } from '../services/api';
+import {
+  MapPin, Star, Wifi, Waves, Coffee, Car, Dumbbell,
   Sparkles, CheckCircle2, ShieldAlert, Clock, ArrowLeft,
-  Users, BedDouble, Maximize2, Ban, Heart, Share2, Check
+  Users, BedDouble, Maximize2, Ban, Heart, Share2, Check,
+  ExternalLink, Navigation, Compass, Building, Copy
 } from 'lucide-react';
 
 export default function HotelDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  
+  const { user, isAuthenticated } = useAuth();
+  const [copiedAddress, setCopiedAddress] = useState(false);
+
   // Đọc dữ liệu tìm kiếm dự phòng từ localStorage nếu F5 hoặc mở tab mới
   const savedSearch = (() => {
     try {
@@ -22,13 +26,130 @@ export default function HotelDetailPage() {
   })();
   const searchState = { ...savedSearch, ...(location.state || {}) };
 
-  // Tìm khách sạn theo ID từ danh sách tổng hợp (bao gồm cả khách sạn mới do Admin tạo)
-  const allHotels = getHotelsData();
-  const hotel = allHotels.find(h => h.id === Number(id)) || allHotels[0];
+  // Khách sạn lấy từ Backend
+  const [hotel, setHotel] = useState(null);
 
   // State ảnh chính đang được hiển thị trong Gallery
-  const [activeImage, setActiveImage] = useState(hotel.images?.[0] || hotel.thumbnailUrl);
+  const [activeImage, setActiveImage] = useState(null);
   const [bookingSuccessNotice, setBookingSuccessNotice] = useState(null);
+
+  // 1 ảnh đại diện chính của khách sạn
+  const mainCoverImage = useMemo(() => {
+    if (!hotel) return 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=1000&auto=format&fit=crop&q=80';
+    let cover = hotel.thumbnailUrl;
+    if (!cover) {
+      if (Array.isArray(hotel.images) && hotel.images.length > 0) cover = hotel.images[0];
+      else if (typeof hotel.images === 'string' && hotel.images.trim()) cover = hotel.images.split(',')[0].trim();
+    }
+    return cover || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=1000&auto=format&fit=crop&q=80';
+  }, [hotel]);
+
+  // Đúng 3 ảnh phòng (lấy từ các phòng của khách sạn và ảnh 2, 3, 4 đã lưu, không trùng lặp ảnh đại diện)
+  const roomImages = useMemo(() => {
+    if (!hotel) return [];
+    const roomImgList = (hotel.rooms || []).map(r => r.imageUrl).filter(Boolean);
+    let extraImgs = [];
+    if (Array.isArray(hotel.images)) {
+      extraImgs = hotel.images.slice(1).filter(Boolean);
+    } else if (typeof hotel.images === 'string' && hotel.images.trim()) {
+      extraImgs = hotel.images.split(',').slice(1).map(s => s.trim()).filter(Boolean);
+    }
+    const combined = [...new Set([...roomImgList, ...extraImgs])].filter(url => url && url !== mainCoverImage);
+    const roomFallbacks = [
+      'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=600&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1566665797739-1674de7a421a?w=600&auto=format&fit=crop&q=80'
+    ];
+    return [
+      combined[0] || roomFallbacks[0],
+      combined[1] || roomFallbacks[1],
+      combined[2] || roomFallbacks[2]
+    ];
+  }, [hotel, mainCoverImage]);
+
+  // Tải chi tiết khách sạn và danh sách phòng từ Backend API
+  const loadHotelDetails = async () => {
+    try {
+      const [hRes, rRes] = await Promise.all([
+        apiFetch(`/hotels/${id}`),
+        apiFetch(`/hotels/${id}/rooms`)
+      ]);
+
+      let backendHotel = null;
+      let backendRooms = null;
+
+      if (hRes.ok) {
+        const hData = await hRes.json();
+        if (hData.result) backendHotel = hData.result;
+      }
+      if (rRes.ok) {
+        const rData = await rRes.json();
+        if (rData.result && Array.isArray(rData.result)) backendRooms = rData.result;
+      }
+
+      if (backendHotel || (backendRooms && backendRooms.length > 0)) {
+        setHotel(prev => {
+          const currentBase = backendHotel ? { ...prev, ...backendHotel } : prev;
+          let mergedRooms = currentBase.rooms || [];
+
+          if (backendRooms && backendRooms.length > 0) {
+            mergedRooms = backendRooms.map(br => {
+              const existingRoom = (prev?.rooms || []).find(r => r.id === br.id || r.name === br.name);
+              return {
+                ...existingRoom,
+                ...br,
+                imageUrl: br.imageUrl || existingRoom?.imageUrl || currentBase.thumbnailUrl || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60'
+              };
+            });
+          }
+
+          const updated = {
+            ...currentBase,
+            rooms: mergedRooms
+          };
+
+          // Đồng bộ lại vào localStorage traveloka_custom_rooms
+          try {
+            const savedRooms = JSON.parse(localStorage.getItem('traveloka_custom_rooms') || '[]');
+            const otherRooms = savedRooms.filter(r => String(r.hotelId) !== String(id));
+            const newSavedRooms = [...otherRooms, ...(mergedRooms || [])];
+            localStorage.setItem('traveloka_custom_rooms', JSON.stringify(newSavedRooms));
+          } catch { }
+
+          return updated;
+        });
+        const firstImg = (Array.isArray(backendHotel?.images) && backendHotel.images[0])
+          ? backendHotel.images[0]
+          : (typeof backendHotel?.images === 'string' && backendHotel.images.split(',')[0])
+            ? backendHotel.images.split(',')[0].trim()
+            : backendHotel?.thumbnailUrl;
+        if (firstImg) {
+          setActiveImage(firstImg);
+        }
+      }
+    } catch (err) {
+      console.warn('API hotel details fallback:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadHotelDetails();
+
+    // Lắng nghe sự kiện khi Admin cập nhật ảnh phòng hoặc thông tin phòng ở tab/cửa sổ khác
+    const handleSync = () => {
+      loadHotelDetails();
+    };
+
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('traveloka_rooms_updated', handleSync);
+    window.addEventListener('traveloka_hotels_updated', handleSync);
+
+    return () => {
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('traveloka_rooms_updated', handleSync);
+      window.removeEventListener('traveloka_hotels_updated', handleSync);
+    };
+  }, [id]);
 
   // Icon tiện ích tương ứng theo tên
   const getAmenityIcon = (name) => {
@@ -42,20 +163,48 @@ export default function HotelDetailPage() {
   };
 
   const handleBookRoom = (room) => {
-    // Điều hướng sang trang thanh toán & đặt phòng CheckoutPage kèm dữ liệu tìm kiếm
-    navigate('/checkout', { 
-      state: { 
-        hotel, 
-        room, 
-        checkInDate: searchState.checkIn,
-        checkOutDate: searchState.checkOut,
-        guestCount: searchState.adultsCount || 2,
-        roomsCount: searchState.roomsCount || 1,
-        destination: searchState.destination,
-        ...searchState 
-      } 
-    });
+    const bookingState = {
+      hotel,
+      room,
+      checkInDate: searchState.checkIn,
+      checkOutDate: searchState.checkOut,
+      guestCount: searchState.adultsCount || 2,
+      roomsCount: searchState.roomsCount || 1,
+      destination: searchState.destination,
+      ...searchState
+    };
+
+    // Bắt buộc đăng nhập tài khoản Khách hàng khi tiến hành đặt phòng
+    if (!isAuthenticated) {
+      try {
+        localStorage.setItem('traveloka_pending_booking', JSON.stringify(bookingState));
+      } catch { }
+
+      navigate('/login', {
+        state: {
+          from: { pathname: '/checkout', state: bookingState },
+          notice: 'Vui lòng đăng nhập tài khoản Khách hàng để tiếp tục đặt phòng.'
+        }
+      });
+      return;
+    }
+
+    // Đã đăng nhập -> Điều hướng sang trang thanh toán & đặt phòng CheckoutPage
+    navigate('/checkout', { state: bookingState });
   };
+
+  if (!hotel) {
+    return (
+      <div className="bg-light min-vh-100 py-5 page-top-spacing d-flex flex-column align-items-center justify-content-center">
+        <div className="spinner-border text-primary mb-3" role="status"></div>
+        <h5 className="fw-bold text-dark mb-1">Đang tải thông tin khách sạn...</h5>
+        <p className="text-secondary small mb-3">Vui lòng chờ trong giây lát</p>
+        <button onClick={() => navigate('/hotels')} className="btn btn-outline-primary btn-sm rounded-pill">
+          Quay lại danh sách khách sạn
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-light pb-4 min-vh-100 page-top-spacing">
@@ -71,8 +220,8 @@ export default function HotelDetailPage() {
 
         {/* Nút quay lại */}
         <div className="mb-3">
-          <button 
-            onClick={() => navigate(-1)} 
+          <button
+            onClick={() => navigate(-1)}
             className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1 bg-white"
           >
             <ArrowLeft size={16} /> Quay lại danh sách
@@ -96,7 +245,7 @@ export default function HotelDetailPage() {
             <div>
               {/* Sao & Thành phố */}
               <div className="d-flex align-items-center gap-2 mb-2">
-                <span className="badge bg-primary px-3 py-1 rounded-pill">📍 {hotel.city}</span>
+                <span className="badge bg-primary px-3 py-1 rounded-pill">{hotel.city}</span>
                 <div className="d-flex align-items-center gap-1 text-warning">
                   {Array.from({ length: hotel.starRating }).map((_, i) => (
                     <Star key={i} size={16} fill="#ffc107" />
@@ -109,52 +258,95 @@ export default function HotelDetailPage() {
               <h2 className="fw-bold text-dark mb-2">{hotel.name}</h2>
 
               {/* Địa chỉ */}
-              <p className="text-secondary mb-0 d-flex align-items-center gap-2">
-                <MapPin size={18} className="text-danger flex-shrink-0" />
-                <span>{hotel.address}</span>
-              </p>
+              <div className="d-flex align-items-center flex-wrap gap-2 text-secondary mb-0">
+                <div className="d-flex align-items-center gap-1">
+                  <MapPin size={18} className="text-danger flex-shrink-0" />
+                  <span>{hotel.address || hotel.city}</span>
+                </div>
+                <a
+                  href="#hotel-map-section"
+                  className="badge bg-light text-primary border text-decoration-none py-1 px-2 d-inline-flex align-items-center gap-1 fw-semibold hover-opacity"
+                  style={{ fontSize: '12px' }}
+                >
+                  <Navigation size={12} /> Xem trên bản đồ
+                </a>
+              </div>
             </div>
 
             {/* Điểm số & Đánh giá */}
             <div className="text-md-end text-start">
-              <div className="d-inline-flex align-items-center gap-2 p-2 px-3 bg-success-subtle rounded-3 text-success">
-                <span className="fs-3 fw-bold">★ {hotel.ratingScore}</span>
-                <div className="text-start">
-                  <div className="fw-bold">{hotel.ratingText}</div>
-                  <small className="text-secondary">{hotel.reviewCount} đánh giá</small>
+              {hotel.reviewCount > 0 ? (
+                <div className="d-inline-flex align-items-center gap-2 bg-primary bg-opacity-10 border border-primary border-opacity-25 p-2 px-3 rounded-3">
+                  <div className="badge bg-primary fs-6 fw-bold px-2 py-1">
+                    ★ {Number(hotel.averageRating).toFixed(1)}/10
+                  </div>
+                  <div className="text-start">
+                    <div className="fw-bold text-primary small">
+                      {hotel.averageRating >= 9 ? 'Xuất sắc' : hotel.averageRating >= 8 ? 'Rất tốt' : hotel.averageRating >= 7 ? 'Tốt' : 'Hài lòng'}
+                    </div>
+                    <div className="text-secondary" style={{ fontSize: '0.75rem' }}>
+                      Từ {hotel.reviewCount} lượt đánh giá thực tế
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="d-inline-flex align-items-center gap-1 text-secondary small py-2 px-3 bg-light rounded-3 border">
+                  <Star size={16} className="text-warning" /> <span>Chưa có đánh giá</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
-        {/* 2. Thư viện ảnh (Gallery) */}
+        {/* 2. Thư viện ảnh (Gallery) - 1 Ảnh to đại diện + 3 Ảnh phòng */}
         <div className="card border-0 shadow-sm rounded-4 p-3 mb-4 bg-white overflow-hidden">
           <div className="row g-2">
-            {/* Ảnh lớn chính */}
+            {/* 1 Ảnh lớn chính (Mặc định là Ảnh đại diện, có thể bấm đổi khi click vào ảnh phòng) */}
             <div className="col-lg-8">
-              <img 
-                src={activeImage} 
-                alt={hotel.name} 
-                className="w-100 rounded-3 shadow-sm"
-                style={{ height: '420px', objectFit: 'cover' }}
-              />
+              <div className="position-relative w-100 rounded-3 overflow-hidden shadow-sm" style={{ height: '420px' }}>
+                <img
+                  src={activeImage || mainCoverImage}
+                  alt={hotel.name}
+                  className="w-100 h-100 object-fit-cover"
+                  style={{ display: 'block' }}
+                />
+                <div className="position-absolute bottom-0 start-0 m-3 d-flex align-items-center gap-2">
+
+                  {activeImage && activeImage !== mainCoverImage && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveImage(mainCoverImage)}
+                      className="btn btn-sm btn-light bg-white bg-opacity-95 fw-semibold px-2 py-1 shadow-sm border-0"
+                      style={{ fontSize: '12px' }}
+                    >
+                      ↩ Về ảnh đại diện
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
 
-            {/* Danh sách ảnh con có thể bấm chọn */}
+            {/* Cột phải: Đúng 3 ảnh phòng (không trùng lặp ảnh đại diện) */}
             <div className="col-lg-4">
-              <div className="row g-2 h-100">
-                {(hotel.images || [hotel.thumbnailUrl]).slice(0, 4).map((imgUrl, index) => (
-                  <div key={index} className="col-6">
-                    <img 
-                      src={imgUrl} 
-                      alt={`Ảnh ${index + 1}`} 
-                      onClick={() => setActiveImage(imgUrl)}
-                      className={`w-100 rounded-3 cursor-pointer object-fit-cover border ${activeImage === imgUrl ? 'border-primary border-3 shadow' : 'opacity-75'}`}
-                      style={{ height: '205px', transition: 'all 0.2s' }}
-                    />
-                  </div>
-                ))}
+              <div className="d-flex flex-column justify-content-between gap-2" style={{ height: '420px' }}>
+                {roomImages.map((imgUrl, index) => {
+                  const isSelected = (activeImage || mainCoverImage) === imgUrl;
+                  return (
+                    <div
+                      key={index}
+                      className="position-relative flex-grow-1 rounded-3 overflow-hidden"
+                      style={{ height: '134px', minHeight: 0 }}
+                    >
+                      <img
+                        src={imgUrl}
+                        onClick={() => setActiveImage(imgUrl)}
+                        className={`w-100 h-100 cursor-pointer object-fit-cover border rounded-3 transition-all ${isSelected ? 'border-primary border-3 shadow' : 'opacity-85'}`}
+                        style={{ transition: 'all 0.2s', display: 'block' }}
+                      />
+
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -173,7 +365,10 @@ export default function HotelDetailPage() {
               </p>
 
               <div className="row g-3">
-                {hotel.amenities.map((item, idx) => (
+                {(Array.isArray(hotel.amenities)
+                  ? hotel.amenities
+                  : (typeof hotel.amenities === 'string' ? hotel.amenities.split(',').map(s => s.trim()).filter(Boolean) : [])
+                ).map((item, idx) => (
                   <div key={idx} className="col-md-6 col-12">
                     <div className="d-flex align-items-center gap-3 p-3 bg-light rounded-3">
                       {getAmenityIcon(item)}
@@ -213,6 +408,89 @@ export default function HotelDetailPage() {
                 </div>
               </div>
             </div>
+
+            {/* Vị trí & Bản đồ khách sạn (Google Map Feature) */}
+            <div id="hotel-map-section" className="card border-0 shadow-sm rounded-4 p-4 mt-4 bg-white">
+              <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <div>
+                  <h4 className="fw-bold mb-1 text-dark d-flex align-items-center gap-2">
+                    <MapPin size={22} className="text-danger" /> Vị Trí & Bản Đồ Khách Sạn
+                  </h4>
+                  <p className="text-secondary small mb-0 d-flex align-items-center gap-1">
+                    <span>{hotel.address || hotel.city || 'Việt Nam'}</span>
+                  </p>
+                </div>
+                <div className="d-flex align-items-center gap-2">
+                  <button
+                    onClick={() => {
+                      if (hotel.address || hotel.city) {
+                        navigator.clipboard.writeText(hotel.address || hotel.city);
+                        setCopiedAddress(true);
+                        setTimeout(() => setCopiedAddress(false), 2000);
+                      }
+                    }}
+                    className="btn btn-outline-secondary btn-sm rounded-pill d-inline-flex align-items-center gap-1 px-3"
+                    title="Sao chép địa chỉ"
+                  >
+                    {copiedAddress ? <Check size={14} className="text-success" /> : <Copy size={14} />}
+                    <span>{copiedAddress ? 'Đã sao chép' : 'Sao chép'}</span>
+                  </button>
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((hotel.name ? hotel.name + ' ' : '') + (hotel.address || hotel.city || 'Việt Nam'))}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-primary btn-sm fw-bold rounded-pill d-inline-flex align-items-center gap-1 px-3 shadow-sm text-white"
+                  >
+                    <ExternalLink size={14} /> Mở Google Maps
+                  </a>
+                </div>
+              </div>
+
+              {/* Bản đồ nhúng Google Maps iframe (Hoạt động 100% không cần API Key) */}
+              <div className="rounded-4 overflow-hidden border shadow-sm position-relative" style={{ height: '380px', width: '100%', background: '#e2e8f0' }}>
+                <iframe
+                  title={`Bản đồ ${hotel.name}`}
+                  width="100%"
+                  height="100%"
+                  style={{ border: 0 }}
+                  loading="lazy"
+                  allowFullScreen
+                  referrerPolicy="no-referrer-when-downgrade"
+                  src={`https://maps.google.com/maps?q=${encodeURIComponent((hotel.name ? hotel.name + ', ' : '') + (hotel.address || hotel.city || 'Việt Nam'))}&t=&z=15&ie=UTF8&iwloc=&output=embed`}
+                />
+              </div>
+
+              {/* Tiện ích vị trí xung quanh */}
+              <div className="row g-3 mt-2">
+                <div className="col-md-4 col-12">
+                  <div className="p-3 bg-light rounded-3 d-flex align-items-center gap-2 h-100 border">
+                    <Building size={20} className="text-primary flex-shrink-0" />
+                    <div className="small">
+                      <span className="text-secondary d-block" style={{ fontSize: '11px' }}>Vị trí trung tâm</span>
+                      <strong className="text-dark">Trung tâm {hotel.city || 'thành phố'}</strong>
+                    </div>
+                  </div>
+                </div>
+                <div className="col-md-4 col-12">
+                  <div className="p-3 bg-light rounded-3 d-flex align-items-center gap-2 h-100 border">
+                    <Compass size={20} className="text-success flex-shrink-0" />
+                    <div className="small">
+                      <span className="text-secondary d-block" style={{ fontSize: '11px' }}>Giao thông & Di chuyển</span>
+                      <strong className="text-dark">Thuận tiện đón taxi & xe ôm</strong>
+                    </div>
+                  </div>
+                </div>
+                <div className="col-md-4 col-12">
+                  <div className="p-3 bg-light rounded-3 d-flex align-items-center gap-2 h-100 border">
+                    <Sparkles size={20} className="text-warning flex-shrink-0" />
+                    <div className="small">
+                      <span className="text-secondary d-block" style={{ fontSize: '11px' }}>Khu vực lân cận</span>
+                      <strong className="text-dark">Gần điểm tham quan & ẩm thực</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Cột phải: Thẻ đặt phòng nhanh & Hỗ trợ */}
@@ -221,7 +499,7 @@ export default function HotelDetailPage() {
               <span className="text-secondary small d-block">Giá khởi điểm từ</span>
               <div className="fs-3 fw-bold text-danger mb-2">
                 {hotel.rooms[0]?.pricePerNight.toLocaleString('vi-VN')} đ
-                <span className="text-secondary fs-6 fw-normal"> / đêm</span>
+                <span className="text-secondary fs-6 fw-normal"> / Đêm</span>
               </div>
               <p className="text-secondary small mb-3">Đã bao gồm thuế và các loại phí dịch vụ.</p>
 
@@ -229,11 +507,21 @@ export default function HotelDetailPage() {
                 Xem Danh Sách Phòng Trống
               </a>
 
-              <div className="p-3 bg-primary-subtle rounded-3 text-primary small">
-                <div className="d-flex align-items-center gap-2 mb-1 fw-bold">
-                  <CheckCircle2 size={18} /> Cam kết Traveloka
+              {/* Box chỉ đường nhanh Google Maps */}
+              <div className="p-3 bg-light rounded-3 border mt-3 text-start">
+                <div className="d-flex align-items-center gap-2 mb-2">
+                  <MapPin size={18} className="text-danger flex-shrink-0" />
+                  <span className="fw-bold small text-dark">Khám phá vị trí</span>
                 </div>
-                <div>Đảm bảo có phòng khi nhận. Xác nhận đặt phòng tức thì qua email và tin nhắn.</div>
+                <p className="text-secondary small mb-2 line-clamp-2" style={{ fontSize: '12px' }}>
+                  {hotel.address || hotel.city}
+                </p>
+                <a
+                  href="#hotel-map-section"
+                  className="btn btn-outline-primary btn-sm w-100 fw-semibold rounded-pill d-inline-flex align-items-center justify-content-center gap-1"
+                >
+                  <Navigation size={13} /> Xem bản đồ chi tiết
+                </a>
               </div>
             </div>
           </div>
@@ -243,23 +531,26 @@ export default function HotelDetailPage() {
         <section id="room-list-section" className="mb-5 pt-3">
           <div className="d-flex justify-content-between align-items-end mb-4">
             <div>
-              <span className="badge bg-primary px-3 py-1 rounded-pill mb-2">Lựa chọn phòng ngủ</span>
               <h3 className="fw-bold text-dark mb-0">Các Loại Phòng Còn Trống</h3>
             </div>
-            <span className="text-secondary small">Hiện có {hotel.rooms.length} loại phòng sẵn sàng đón tiếp</span>
+            <span className="text-secondary small">Hiện có {hotel?.rooms?.length || 0} loại phòng sẵn sàng đón tiếp</span>
           </div>
 
           <div className="d-flex flex-column gap-4">
-            {hotel.rooms.map((room) => (
+            {(hotel?.rooms || []).map((room) => (
               <div key={room.id} className="card border-0 shadow-sm rounded-4 overflow-hidden bg-white hover-shadow">
                 <div className="row g-0">
                   {/* Ảnh phòng */}
                   <div className="col-lg-4 col-md-5">
-                    <img 
-                      src={room.imageUrl} 
-                      alt={room.name} 
+                    <img
+                      src={room.imageUrl || hotel?.thumbnailUrl || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60'}
+                      alt={room.name}
                       className="w-100 h-100 object-fit-cover"
                       style={{ minHeight: '260px' }}
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=600&auto=format&fit=crop&q=60';
+                      }}
                     />
                   </div>
 
@@ -287,11 +578,22 @@ export default function HotelDetailPage() {
                     <div className="pt-2 border-top">
                       <span className="fw-bold small text-dark d-block mb-2">Tiện nghi trong phòng:</span>
                       <div className="d-flex flex-wrap gap-1">
-                        {room.amenities.map((item, i) => (
-                          <span key={i} className="badge bg-light text-secondary border small">
-                            ✓ {item}
-                          </span>
-                        ))}
+                        {(() => {
+                          let list = [];
+                          if (Array.isArray(room.amenities)) {
+                            list = room.amenities.filter(Boolean);
+                          } else if (typeof room.amenities === 'string' && room.amenities.trim()) {
+                            list = room.amenities.split(',').map(s => s.trim()).filter(Boolean);
+                          }
+                          if (list.length === 0) {
+                            list = ['WiFi miễn phí', 'Điều hòa nhiệt độ', 'Smart TV', 'Phòng tắm riêng', 'Nước suối miễn phí'];
+                          }
+                          return list.map((item, i) => (
+                            <span key={i} className="badge bg-light text-dark border small py-1 px-2 fw-normal">
+                              ✓ {item}
+                            </span>
+                          ));
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -305,7 +607,7 @@ export default function HotelDetailPage() {
                         </div>
                       ) : (
                         <div className="badge bg-warning-subtle text-warning small mb-2">
-                          Không hoàn tiền khi hủy
+
                         </div>
                       )}
 
@@ -319,19 +621,17 @@ export default function HotelDetailPage() {
                       <div className="fs-3 fw-bold text-danger my-1">
                         {room.pricePerNight.toLocaleString('vi-VN')} đ
                       </div>
-                      <span className="text-secondary small">/ đêm (chưa gồm thuế)</span>
+                      <span className="text-secondary small">/ Đêm</span>
                     </div>
 
                     <div className="mt-4">
-                      <button 
-                        onClick={() => handleBookRoom(room)} 
+                      <button
+                        onClick={() => handleBookRoom(room)}
                         className="btn btn-primary w-100 py-2 fw-bold shadow-sm"
                       >
                         Đặt Phòng Ngay
                       </button>
-                      <small className="text-center d-block text-secondary mt-2" style={{ fontSize: '12px' }}>
-                        ⚡ Xác nhận tức thì chỉ trong 1 phút
-                      </small>
+
                     </div>
                   </div>
                 </div>
@@ -340,26 +640,77 @@ export default function HotelDetailPage() {
           </div>
         </section>
 
-        {/* 5. Đánh giá từ khách hàng */}
-        {hotel.reviews && hotel.reviews.length > 0 && (
-          <section className="card border-0 shadow-sm rounded-4 p-4 bg-white">
-            <h4 className="fw-bold mb-4 text-dark">Đánh Giá Thực Tế Từ Khách Lưu Trú</h4>
+        {/* 5. Đánh giá từ khách hàng (FR-21) */}
+        <section className="card border-0 shadow-sm rounded-4 p-4 bg-white mt-4">
+          <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+            <div>
+              <h4 className="fw-bold mb-1 text-dark">Đánh Giá Thực Tế Từ Khách Lưu Trú</h4>
+              <p className="text-secondary small mb-0">
+                100% đánh giá được xác thực từ khách hàng đã đặt phòng và hoàn tất kỳ nghỉ
+              </p>
+            </div>
+            {hotel.reviewCount > 0 && (
+              <div className="d-flex align-items-center gap-2">
+                <span className="badge bg-primary fs-6 px-3 py-2 rounded-pill">
+                  ★ {Number(hotel.averageRating).toFixed(1)} / 10
+                </span>
+                <span className="text-secondary small">({hotel.reviewCount} đánh giá)</span>
+              </div>
+            )}
+          </div>
+
+          {hotel.reviews && hotel.reviews.length > 0 ? (
             <div className="row g-3">
               {hotel.reviews.map((rev) => (
                 <div key={rev.id} className="col-md-6">
-                  <div className="p-3 bg-light rounded-3 h-100 border">
-                    <div className="d-flex justify-content-between align-items-center mb-2">
-                      <strong className="text-dark">{rev.author}</strong>
-                      <span className="badge bg-success">★ {rev.rating}/10</span>
+                  <div className="p-3 bg-light rounded-3 h-100 border d-flex flex-column justify-content-between">
+                    <div>
+                      <div className="d-flex justify-content-between align-items-start mb-2">
+                        <div className="d-flex align-items-center gap-2">
+                          {rev.userAvatar ? (
+                            <img
+                              src={rev.userAvatar}
+                              alt={rev.author}
+                              className="rounded-circle object-fit-cover shadow-sm"
+                              style={{ width: 36, height: 36 }}
+                            />
+                          ) : (
+                            <div
+                              className="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold shadow-sm"
+                              style={{ width: 36, height: 36, fontSize: '0.85rem' }}
+                            >
+                              {rev.author ? rev.author.charAt(0).toUpperCase() : 'U'}
+                            </div>
+                          )}
+                          <div>
+                            <strong className="text-dark d-block leading-tight">{rev.author}</strong>
+                            <span className="small text-secondary text-end d-block mt-2" style={{ fontSize: '0.75rem' }}>
+                              Đánh giá ngày: {rev.date}
+                            </span>
+
+                          </div>
+                        </div>
+                        <span className="badge bg-primary px-2 py-1 fw-bold">
+                          ★ {rev.rating}/10
+                        </span>
+                      </div>
+                      <p className="small text-dark mb-2 mt-2 fst-italic">"{rev.comment}"</p>
                     </div>
-                    <span className="small text-secondary d-block mb-2">{rev.date}</span>
-                    <p className="small text-secondary mb-0 fst-italic">"{rev.comment}"</p>
+
                   </div>
                 </div>
               ))}
             </div>
-          </section>
-        )}
+          ) : (
+            <div className="text-center py-5 bg-light rounded-3 text-secondary">
+              <Star size={36} className="text-warning mb-2 opacity-50" />
+              <h6 className="fw-bold text-dark mb-1">Chưa có đánh giá nào cho khách sạn này</h6>
+              <p className="small text-muted mb-0">
+                Hãy là người đầu tiên đặt phòng và chia sẻ trải nghiệm lưu trú thực tế của bạn!
+              </p>
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );
