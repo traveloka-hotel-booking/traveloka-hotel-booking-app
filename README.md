@@ -5,15 +5,27 @@
 [![Bootstrap](https://img.shields.io/badge/Bootstrap-5.3.8-7952B3?logo=bootstrap&logoColor=white)](https://getbootstrap.com/)
 [![React Router](https://img.shields.io/badge/React_Router-7.18.4-CA4245?logo=react-router&logoColor=white)](https://reactrouter.com/)
 [![Recharts](https://img.shields.io/badge/Recharts-3.10.1-22B5BF)](https://recharts.org/)
-[![Vercel](https://img.shields.io/badge/Deployed_on-Vercel-000000?logo=vercel&logoColor=white)](https://traveloka-hotel-booking-app.vercel.app)
+[![Vercel](https://img.shields.io/badge/Deployed_on-Vercel-000000?logo=vercel&logoColor=white)](https://traveloka-hotel-booking-app.vercel.app/)
+[![YouTube](https://img.shields.io/badge/YouTube-Demo_Video-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=biK8Y4ETO_0)
 
 Ứng dụng Web **Single Page Application (SPA)** mô phỏng hệ thống đặt phòng khách sạn trực tuyến **Traveloka**, được phát triển bằng **React 19** và **Vite 8**. Hệ thống kết nối trực tiếp với **Spring Boot RESTful API**, tích hợp thanh toán **VNPay Sandbox (HMAC-SHA512)**, lưu trữ đám mây **Cloudinary**, bộ đệm **Redis Cache**, và cung cấp đầy đủ hai phân hệ **Khách hàng (Customer Portal)** cùng **Quản trị viên (Admin PMS Dashboard)**.
 
-🌐 **Production Demo (Vercel):** [https://traveloka-hotel-booking-app.vercel.app](https://traveloka-hotel-booking-app.vercel.app)
+---
+
+## 🌐 Liên Kết Hệ Thống & Video Demo (Live Demo & Video)
+
+* 🚀 **Production Web App (Vercel):** [https://traveloka-hotel-booking-app.vercel.app/](https://traveloka-hotel-booking-app.vercel.app/)
+* 🎬 **YouTube Video Demo:** [https://www.youtube.com/watch?v=biK8Y4ETO_0](https://www.youtube.com/watch?v=biK8Y4ETO_0)
+
+### 📺 Xem Video Giới Thiệu & Demo Hệ Thống
+> 💡 *Nhấn vào hình bên dưới để xem video demo trực tiếp trên YouTube:*
+
+[![Traveloka Hotel Booking System - Video Demo](https://img.youtube.com/vi/biK8Y4ETO_0/maxresdefault.jpg)](https://www.youtube.com/watch?v=biK8Y4ETO_0 "Nhấn để xem Video Demo trên YouTube")
 
 ---
 
 ## 📑 Mục Lục
+- [Liên Kết Hệ Thống & Video Demo (Live Demo & Video)](#-liên-kết-hệ-thống--video-demo-live-demo--video)
 - [Kiến Trúc & Công Nghệ Sử Dụng (Tech Stack)](#-kiến-trúc--công-nghệ-sử-dụng-tech-stack)
 - [Tính Năng Hệ Thống Thực Tế (System Features)](#-tính-năng-hệ-thống-thực-tế-system-features)
 - [Cấu Trúc Thư Mục Thực Tế (Project Structure)](#-cấu-trúc-thư-mục-thực-tế-project-structure)
