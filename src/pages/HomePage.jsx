@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { searchHotelsApi, filterHotelsApi } from '../services/hotelApi';
+import { searchHotelsApi, filterHotelsApi, getCachedFilterHotels } from '../services/hotelApi';
+import HotelCardSkeleton from '../components/HotelCardSkeleton';
 import { 
   Search, MapPin, Calendar, Users, Star, ArrowRight, ChevronDown, ChevronUp,
   Minus, Plus, ShieldCheck, Tag, Clock, Sparkles, Check, Info, ArrowUp, ThumbsUp,
@@ -202,11 +203,48 @@ export default function HomePage() {
   // Chuỗi tóm tắt phòng và khách
   const guestConfigText = `${roomsCount} phòng, ${adultsCount} Người Lớn, ${childrenCount} Trẻ em`;
 
+  // Đồng bộ giá khởi điểm (minPrice / pricePerNight) vừa tạo hoặc sửa từ Admin
+  const mergeWithCustomHotels = (list) => {
+    try {
+      const localHotels = JSON.parse(localStorage.getItem('traveloka_custom_hotels') || '[]');
+      if (!Array.isArray(localHotels) || localHotels.length === 0) return list;
+      const customMap = {};
+      localHotels.forEach(lh => {
+        if (lh && lh.id != null) {
+          customMap[String(lh.id)] = lh;
+        }
+      });
+      return list.map(h => {
+        const custom = customMap[String(h.id)];
+        const customPrice = Number(custom?.pricePerNight || custom?.minPrice || 0);
+        const backendPrice = Number(h.minPricePerNight || h.minPrice || h.pricePerNight || 0);
+        const finalPrice = customPrice > 0 ? customPrice : (backendPrice > 0 ? backendPrice : null);
+        return {
+          ...h,
+          minPricePerNight: finalPrice ?? h.minPricePerNight
+        };
+      });
+    } catch {
+      return list;
+    }
+  };
+
   // State bộ lọc ở phần danh sách bên dưới (như ảnh 2)
+  // Khởi tạo tức thì (0ms) từ Stale-While-Revalidate Cache nếu đã có dữ liệu trước đó
   const [selectedStar, setSelectedStar] = useState(null);
   const [selectedRating, setSelectedRating] = useState(null);
   const [sortOption, setSortOption] = useState('popular'); // popular, priceAsc, distance
-  const [backendHotels, setBackendHotels] = useState(null);
+  const [backendHotels, setBackendHotels] = useState(() => {
+    const cached = getCachedFilterHotels({ page: 0, size: 50 });
+    const list = Array.isArray(cached?.content) ? cached.content : (Array.isArray(cached) ? cached : null);
+    return list && list.length > 0 ? mergeWithCustomHotels(list) : null;
+  });
+  const [isInitialLoading, setIsInitialLoading] = useState(() => {
+    const cached = getCachedFilterHotels({ page: 0, size: 50 });
+    const list = Array.isArray(cached?.content) ? cached.content : (Array.isArray(cached) ? cached : null);
+    return !(list && list.length > 0);
+  });
+  const [showColdStartHint, setShowColdStartHint] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [searchFeedback, setSearchFeedback] = useState('');
 
@@ -270,42 +308,30 @@ export default function HomePage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Đồng bộ giá khởi điểm (minPrice / pricePerNight) vừa tạo hoặc sửa từ Admin
-  const mergeWithCustomHotels = (list) => {
-    try {
-      const localHotels = JSON.parse(localStorage.getItem('traveloka_custom_hotels') || '[]');
-      if (!Array.isArray(localHotels) || localHotels.length === 0) return list;
-      const customMap = {};
-      localHotels.forEach(lh => {
-        if (lh && lh.id != null) {
-          customMap[String(lh.id)] = lh;
-        }
-      });
-      return list.map(h => {
-        const custom = customMap[String(h.id)];
-        const customPrice = Number(custom?.pricePerNight || custom?.minPrice || 0);
-        const backendPrice = Number(h.minPricePerNight || h.minPrice || h.pricePerNight || 0);
-        const finalPrice = customPrice > 0 ? customPrice : (backendPrice > 0 ? backendPrice : null);
-        return {
-          ...h,
-          minPricePerNight: finalPrice ?? h.minPricePerNight
-        };
-      });
-    } catch {
-      return list;
-    }
-  };
-
   // Tải danh sách khách sạn thật từ Backend khi mở trang chủ và tự động đồng bộ khi Admin thay đổi dữ liệu
   useEffect(() => {
+    let isMounted = true;
+    const coldStartTimer = setTimeout(() => {
+      if (isMounted) setShowColdStartHint(true);
+    }, 2500);
+
     const fetchInitialHotels = async () => {
       try {
         const res = await filterHotelsApi({ page: 0, size: 50 });
+        if (!isMounted) return;
         const list = Array.isArray(res?.content) ? res.content : (Array.isArray(res) ? res : []);
         setBackendHotels(mergeWithCustomHotels(list));
       } catch (err) {
         console.warn('Initial backend hotels load fallback:', err);
-        setBackendHotels([]);
+        if (isMounted) {
+          setBackendHotels(prev => (prev && prev.length > 0 ? prev : []));
+        }
+      } finally {
+        clearTimeout(coldStartTimer);
+        if (isMounted) {
+          setIsInitialLoading(false);
+          setShowColdStartHint(false);
+        }
       }
     };
     fetchInitialHotels();
@@ -319,6 +345,8 @@ export default function HomePage() {
     window.addEventListener('storage', handleSync);
 
     return () => {
+      isMounted = false;
+      clearTimeout(coldStartTimer);
       window.removeEventListener('traveloka_hotels_updated', handleSync);
       window.removeEventListener('traveloka_rooms_updated', handleSync);
       window.removeEventListener('storage', handleSync);
@@ -1047,8 +1075,8 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* Trạng thái tra cứu API */}
-              {isSearching && (
+              {/* Trạng thái tra cứu API khi đã có danh sách hiển thị sẵn */}
+              {isSearching && displayedHotels.length > 0 && (
                 <div className="card border-0 shadow-sm rounded-3 p-4 bg-white text-center my-3">
                   <div className="d-flex align-items-center justify-content-center gap-2 text-primary">
                     <div className="spinner-border spinner-border-sm" role="status"></div>
@@ -1057,12 +1085,12 @@ export default function HomePage() {
                 </div>
               )}
 
-              {/* Thông báo nếu không tìm thấy khách sạn */}
-              {displayedHotels.length === 0 ? (
+              {/* Skeleton UI tức thì khi đang tải lần đầu hoặc đang tìm kiếm mới */}
+              {(isInitialLoading || isSearching) && displayedHotels.length === 0 ? (
+                <HotelCardSkeleton count={4} showColdStartHint={showColdStartHint} />
+              ) : displayedHotels.length === 0 ? (
                 <div className="card border-0 shadow-sm rounded-3 p-5 bg-white text-center my-3">
                   <h5 className="fw-bold text-dark mb-2">Không tìm thấy khách sạn phù hợp </h5>
-
-       
                 </div>
               ) : (
                 /* Danh sách thẻ Khách Sạn (Bố cục ngang theo đúng ảnh 2) */
@@ -1079,6 +1107,8 @@ export default function HomePage() {
                           <img 
                             src={imgs[0]} 
                             alt={hotel.name}
+                            loading="lazy"
+                            decoding="async"
                             className="w-100 rounded-2 object-fit-cover"
                             style={{ height: '180px' }}
                           />
@@ -1089,6 +1119,8 @@ export default function HomePage() {
                             <img 
                               src={imgs[1]} 
                               alt="thumb 1"
+                              loading="lazy"
+                              decoding="async"
                               className="w-100 rounded-1 object-fit-cover"
                               style={{ height: '55px' }}
                             />
@@ -1097,6 +1129,8 @@ export default function HomePage() {
                             <img 
                               src={imgs[2]} 
                               alt="thumb 2"
+                              loading="lazy"
+                              decoding="async"
                               className="w-100 rounded-1 object-fit-cover"
                               style={{ height: '55px' }}
                             />
@@ -1105,6 +1139,8 @@ export default function HomePage() {
                             <img 
                               src={imgs[3]} 
                               alt="thumb 3"
+                              loading="lazy"
+                              decoding="async"
                               className="w-100 rounded-1 object-fit-cover"
                               style={{ height: '55px' }}
                             />
@@ -1192,6 +1228,7 @@ export default function HomePage() {
                           <Link 
                             to={`/hotels/${hotel.id}`}
                             state={{ 
+                              hotel,
                               checkIn, 
                               checkOut, 
                               adultsCount, 
