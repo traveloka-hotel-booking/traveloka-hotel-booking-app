@@ -15,25 +15,36 @@ export default function CheckoutPage() {
   const navigate = useNavigate();
   const { user, isAuthenticated, updateUserProfile } = useAuth();
 
-  // Lấy dữ liệu hotel và room từ state chuyển trang, hoặc khôi phục từ pending booking
-  const pendingBooking = (() => {
+  // Lấy dữ liệu hotel và room từ state chuyển trang, hoặc khôi phục từ pending booking (giữ ổn định trong state)
+  const [passedData] = useState(() => {
+    let pending = {};
     try {
-      return JSON.parse(localStorage.getItem('traveloka_pending_booking')) || {};
+      pending = JSON.parse(localStorage.getItem('traveloka_pending_booking')) || {};
     } catch {
-      return {};
+      pending = {};
     }
-  })();
-  const passedData = location.state || pendingBooking || {};
+    return (location.state && (location.state.hotel || location.state.room)) ? location.state : pending;
+  });
   const hotel = passedData.hotel;
   const room = passedData.room || hotel?.rooms?.[0];
   const isAdminUser = Boolean(isAuthenticated && user && (user.role === 'ROLE_ADMIN' || user.role === 'admin'));
+
+  // State thông tin khách hàng: Tự động điền nếu đã đăng nhập hoặc đã cập nhật hồ sơ
+  const [fullName, setFullName] = useState(user?.fullName || user?.name || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [phoneNumber, setPhoneNumber] = useState(user?.phone || '0901234567');
+  const [isBookingForSomeoneElse, setIsBookingForSomeoneElse] = useState(false);
+  const [guestName, setGuestName] = useState('');
+  const [copiedTestCard, setCopiedTestCard] = useState(false);
+
+  const hasSyncedProfileRef = useRef(false);
 
   // Bắt buộc đăng nhập & phải chọn phòng trước
   useEffect(() => {
     if (!isAuthenticated) {
       navigate('/login', { 
         state: { 
-          from: location,
+          from: { pathname: '/checkout', state: passedData },
           notice: 'Vui lòng đăng nhập tài khoản Khách hàng để hoàn tất đặt phòng.' 
         },
         replace: true 
@@ -45,30 +56,7 @@ export default function CheckoutPage() {
       navigate('/hotels', { replace: true });
       return;
     }
-
-    // Dọn dẹp pending booking sau khi đã vào trang thành công
-    try {
-      localStorage.removeItem('traveloka_pending_booking');
-    } catch {}
-  }, [isAuthenticated, navigate, location, hotel, room]);
-
-  if (!hotel || !room) {
-    return (
-      <div className="min-vh-100 d-flex flex-column align-items-center justify-content-center bg-light">
-        <div className="spinner-border text-primary mb-3" role="status"></div>
-        <p className="text-secondary fw-semibold">Đang chuẩn bị thông tin đặt phòng...</p>
-      </div>
-    );
-  }
-
-  // State thông tin khách hàng: Tự động điền nếu đã đăng nhập hoặc đã cập nhật hồ sơ
-  const [fullName, setFullName] = useState(user?.fullName || user?.name || '');
-  const [email, setEmail] = useState(user?.email || '');
-  const [phoneNumber, setPhoneNumber] = useState(user?.phone || '');
-  const [isBookingForSomeoneElse, setIsBookingForSomeoneElse] = useState(false);
-  const [guestName, setGuestName] = useState('');
-
-  const hasSyncedProfileRef = useRef(false);
+  }, [isAuthenticated, navigate, passedData, hotel, room]);
 
   // Tự động đồng bộ thông tin tài khoản nếu người dùng đã có tài khoản / đã cập nhật hồ sơ
   useEffect(() => {
@@ -77,7 +65,7 @@ export default function CheckoutPage() {
     const currentName = user?.fullName || user?.name || '';
     if (currentName) setFullName(prev => prev || currentName);
     if (user?.email) setEmail(prev => prev || user.email);
-    if (user?.phone) setPhoneNumber(prev => prev || user.phone);
+    if (user?.phone) setPhoneNumber(user.phone);
 
     if (hasSyncedProfileRef.current) return;
     hasSyncedProfileRef.current = true;
@@ -98,7 +86,7 @@ export default function CheckoutPage() {
               setEmail(prev => prev || profileData.email);
             }
             if (profileData.phone) {
-              setPhoneNumber(prev => prev || profileData.phone);
+              setPhoneNumber(profileData.phone);
             }
             if (typeof updateUserProfile === 'function') {
               updateUserProfile(profileData);
@@ -111,7 +99,7 @@ export default function CheckoutPage() {
     };
 
     syncLatestProfile();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user, updateUserProfile]);
 
   // Đọc thông tin tìm kiếm dự phòng từ localStorage nếu F5 hoặc mở tab mới
   const savedSearch = (() => {
@@ -122,12 +110,21 @@ export default function CheckoutPage() {
     }
   })();
 
-  // State ngày lưu trú (đồng bộ theo ngày tìm kiếm từ HomePage / localStorage)
-  const today = new Date().toISOString().split('T')[0];
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  // State ngày lưu trú (đồng bộ theo ngày tìm kiếm từ HomePage / localStorage, tính theo múi giờ địa phương)
+  const formatLocalDate = (dateObj) => {
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const d = String(dateObj.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+  const today = formatLocalDate(new Date());
+  const tomorrow = formatLocalDate(new Date(Date.now() + 86400000));
 
-  const initialCheckIn = passedData.checkInDate || passedData.checkIn || savedSearch.checkIn || today;
-  const initialCheckOut = passedData.checkOutDate || passedData.checkOut || savedSearch.checkOut || tomorrow;
+  const rawCheckIn = passedData.checkInDate || passedData.checkIn || savedSearch.checkIn || today;
+  const initialCheckIn = rawCheckIn >= today ? rawCheckIn : today;
+  const rawCheckOut = passedData.checkOutDate || passedData.checkOut || savedSearch.checkOut || tomorrow;
+  const minInitialCheckOut = formatLocalDate(new Date(new Date(initialCheckIn).getTime() + 86400000));
+  const initialCheckOut = rawCheckOut > initialCheckIn ? rawCheckOut : minInitialCheckOut;
 
   const [checkInDate, setCheckInDate] = useState(initialCheckIn);
   const [checkOutDate, setCheckOutDate] = useState(initialCheckOut);
@@ -188,7 +185,8 @@ export default function CheckoutPage() {
   };
 
   // Tính toán chi phí
-  const roomPriceTotal = room.pricePerNight * nights;
+  const unitRoomPrice = Number(room?.pricePerNight || hotel?.minPricePerNight || hotel?.minPrice || 1200000);
+  const roomPriceTotal = unitRoomPrice * nights;
   const taxAndFee = Math.round(roomPriceTotal * 0.1); // 10% thuế và phí dịch vụ
   const finalTotal = Math.max(0, roomPriceTotal + taxAndFee - discountAmount);
 
@@ -219,6 +217,15 @@ export default function CheckoutPage() {
 
   // Xử lý xác nhận thanh toán & đặt phòng
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  if (!hotel || !room) {
+    return (
+      <div className="min-vh-100 d-flex flex-column align-items-center justify-content-center bg-light">
+        <div className="spinner-border text-primary mb-3" role="status"></div>
+        <p className="text-secondary fw-semibold">Đang chuẩn bị thông tin đặt phòng...</p>
+      </div>
+    );
+  }
 
   const handleSubmitBooking = async (e) => {
     e.preventDefault();
@@ -269,11 +276,15 @@ export default function CheckoutPage() {
 
     try {
       // 1. Gọi API Backend để lưu vào bảng bookings trong MySQL
+      const maxRoomCapacity = Number(room.maxGuests) > 0 ? Number(room.maxGuests) : 2;
+      const requestedGuests = Number(passedData.guestCount || passedData.adultsCount || savedSearch.adultsCount || maxRoomCapacity || 2);
+      const safeNumberOfGuests = Math.min(Math.max(1, requestedGuests), maxRoomCapacity);
+
       const bookingPayload = {
         roomId: room.id,
         checkIn: checkInDate,
         checkOut: checkOutDate,
-        numberOfGuests: Number(passedData.guestCount || passedData.adultsCount || savedSearch.adultsCount || room.maxGuests || 2)
+        numberOfGuests: safeNumberOfGuests
       };
 
       const response = await apiFetch('/customer/bookings', {
@@ -287,11 +298,13 @@ export default function CheckoutPage() {
 
         let friendlyTitle = 'Đặt phòng thất bại';
         let friendlyMsg = 'Phòng đã có khách đặt trong khoảng thời gian này!\nBạn vui lòng chọn ngày khác hoặc chọn phòng khác nhé.';
+        let isDateOverlap = false;
 
         // Xử lý thông báo trực quan, thân thiện nếu phòng bị trùng lịch
         if (!rawErrMsg || rawErrMsg.includes('trùng') || rawErrMsg.includes('khoảng thời gian') || rawErrMsg.includes('đã được đặt') || rawErrMsg.includes('không còn trống')) {
-          friendlyTitle = 'Đặt phòng thất bại';
-          friendlyMsg = 'Phòng đã bị trùng lịch đặt trong khoảng thời gian này!\nBạn vui lòng chọn ngày khác hoặc chọn phòng khác nhé.';
+          isDateOverlap = true;
+          friendlyTitle = 'Phòng đã kín lịch ngày này';
+          friendlyMsg = `Phòng "${room.name}" đã có lịch đặt trong khoảng ${checkInDate} → ${checkOutDate}.\nNhấn nút bên dưới để hệ thống tự động chuyển sang ngày trống kế tiếp giúp bạn nhé!`;
         } else if (rawErrMsg) {
           friendlyMsg = rawErrMsg;
         }
@@ -299,8 +312,14 @@ export default function CheckoutPage() {
         showAlert({
           title: friendlyTitle,
           message: friendlyMsg,
-          type: 'error',
-          confirmText: 'Đã hiểu'
+          type: 'warning',
+          confirmText: isDateOverlap ? 'Chuyển sang ngày kế tiếp (+1 ngày)' : 'Đã hiểu',
+          onConfirm: isDateOverlap ? () => {
+            const nextIn = formatLocalDate(new Date(new Date(checkInDate).getTime() + 86400000));
+            const nextOut = formatLocalDate(new Date(new Date(checkOutDate).getTime() + 86400000));
+            setCheckInDate(nextIn);
+            setCheckOutDate(nextOut);
+          } : null
         });
         setIsSubmitting(false);
         return;
@@ -308,6 +327,10 @@ export default function CheckoutPage() {
 
       const data = await response.json();
       const realBookingId = data.bookingId;
+
+      try {
+        localStorage.removeItem('traveloka_pending_booking');
+      } catch {}
 
       // 2. Tạo mã đặt phòng hiển thị từ ID thật của MySQL (VD: BK-0001)
       const bookingCode = `BK-${String(realBookingId).padStart(4, '0')}`;
@@ -670,6 +693,30 @@ export default function CheckoutPage() {
                       <small className="text-secondary d-block mt-1">
                         Quét mã QR tiện lợi qua hơn 40 ứng dụng ngân hàng và ví VNPAY. Xác nhận tức thì.
                       </small>
+                      {paymentMethod === 'vnpay' && (
+                        <div className="mt-2 p-2 px-3 bg-white rounded-3 border border-primary border-opacity-25 small text-secondary">
+                          <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">
+                            <strong className="text-primary">💡 Thẻ test VNPay Sandbox (Ngân hàng NCB):</strong>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                navigator.clipboard.writeText('9704198526191432198');
+                                setCopiedTestCard(true);
+                                setTimeout(() => setCopiedTestCard(false), 2000);
+                              }}
+                              className="btn btn-outline-primary btn-sm py-0 px-2 rounded-pill"
+                              style={{ fontSize: '11px' }}
+                            >
+                              {copiedTestCard ? '✓ Đã chép số thẻ' : 'Sao chép số thẻ'}
+                            </button>
+                          </div>
+                          <div style={{ fontSize: '12px' }}>
+                            Số thẻ: <code className="fw-bold text-dark">9704198526191432198</code> • Chủ thẻ: <code className="fw-bold text-dark">NGUYEN VAN A</code> • Ngày phát hành: <code className="fw-bold text-dark">07/15</code> • OTP: <code className="fw-bold text-dark">123456</code>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </label>
 

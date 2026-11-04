@@ -176,12 +176,8 @@ export default function MyBookingsPage() {
     };
   };
 
-  // State danh sách đơn đặt phòng (Chỉ hiển thị khi người dùng đã đăng nhập)
+  // State danh sách đơn đặt phòng
   const [bookings, setBookings] = useState(() => {
-    if (!isAuthenticated) {
-      localStorage.removeItem('traveloka_bookings');
-      return [];
-    }
     try {
       const saved = JSON.parse(localStorage.getItem('traveloka_bookings') || '[]');
       return Array.isArray(saved) ? saved.map(normalizeBooking) : [];
@@ -309,15 +305,8 @@ export default function MyBookingsPage() {
     }
   };
 
-  // Tải danh sách đơn đặt phòng từ Backend và LocalStorage (Bắt buộc đăng nhập mới hiển thị lịch sử)
+  // Tải danh sách đơn đặt phòng từ Backend và LocalStorage
   const loadBookings = async () => {
-    if (!isAuthenticated) {
-      localStorage.removeItem('traveloka_bookings');
-      setBookings([]);
-      setLoading(false);
-      return;
-    }
-
     let currentList = [];
     const deletedIds = JSON.parse(localStorage.getItem('traveloka_deleted_booking_ids') || '[]');
     const isNotDeleted = (b) => {
@@ -337,22 +326,24 @@ export default function MyBookingsPage() {
       console.error('Lỗi khi đọc danh sách đặt phòng localStorage:', e);
     }
 
-    try {
-      setLoading(true);
-      const res = await apiFetch('/customer/bookings/my-bookings');
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.result && Array.isArray(data.result)) {
-          const mapped = data.result.map(normalizeBooking).filter(isNotDeleted);
-          currentList = mapped;
-          setBookings(mapped);
-          localStorage.setItem('traveloka_bookings', JSON.stringify(mapped));
+    if (isAuthenticated) {
+      try {
+        setLoading(true);
+        const res = await apiFetch('/customer/bookings/my-bookings');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.result && Array.isArray(data.result)) {
+            const mapped = data.result.map(normalizeBooking).filter(isNotDeleted);
+            currentList = mapped;
+            setBookings(mapped);
+            localStorage.setItem('traveloka_bookings', JSON.stringify(mapped));
+          }
         }
+      } catch (e) {
+        console.warn('API my-bookings fallback to local storage:', e);
+      } finally {
+        setLoading(false);
       }
-    } catch (e) {
-      console.warn('API my-bookings fallback to local storage:', e);
-    } finally {
-      setLoading(false);
     }
 
     // Tự động kiểm tra và đồng bộ ảnh Cloudinary thật của khách sạn nếu đơn chưa có ảnh thật
@@ -600,23 +591,9 @@ export default function MyBookingsPage() {
         </div>
 
         {/* Banner dành cho khách chưa đăng nhập */}
-        {!isAuthenticated && (
-          <div className="alert alert-info border-0 shadow-sm rounded-4 p-3 mb-4 d-flex align-items-center justify-content-between flex-wrap gap-3 bg-info-subtle text-dark">
-            <div className="d-flex align-items-center gap-2 small">
-              <Info size={20} className="text-info flex-shrink-0" />
-              <span>
-                Bạn chưa đăng nhập. Vui lòng đăng nhập để hệ thống tự động lưu trữ và đồng bộ hóa các đơn đặt phòng của bạn.
-              </span>
-            </div>
-            <Link 
-              to="/login" 
-              className="btn btn-primary btn-sm rounded-pill px-3 py-1 fw-bold shadow-sm" 
-              style={{ fontSize: '12.5px' }}
-            >
-              Đăng nhập
-            </Link>
-          </div>
-        )}
+        {!isAuthenticated 
+        
+        }
 
         {/* Tabs chuyển đổi trạng thái */}
         {bookings.length > 0 && (
