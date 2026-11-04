@@ -21,10 +21,14 @@ export const AuthProvider = ({ children }) => {
           localStorage.removeItem('traveloka_auth_user');
           localStorage.removeItem('accessToken');
           localStorage.removeItem('refreshToken');
+          localStorage.removeItem('traveloka_bookings');
+          localStorage.removeItem('traveloka_deleted_booking_ids');
           return null;
         }
         return parsed;
       }
+      localStorage.removeItem('traveloka_bookings');
+      localStorage.removeItem('traveloka_deleted_booking_ids');
       return null;
     } catch (e) {
       console.error('Lỗi khi đọc auth_user từ localStorage', e);
@@ -38,6 +42,8 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('traveloka_auth_user', JSON.stringify(user));
     } else {
       localStorage.removeItem('traveloka_auth_user');
+      localStorage.removeItem('traveloka_bookings');
+      localStorage.removeItem('traveloka_deleted_booking_ids');
     }
   }, [user]);
 
@@ -64,6 +70,10 @@ export const AuthProvider = ({ children }) => {
 
       // Lấy result từ LoginResponse
       const result = data.result;
+
+      // Dọn sạch lịch sử đặt phòng cũ trong localStorage trước khi thiết lập phiên mới
+      localStorage.removeItem('traveloka_bookings');
+      localStorage.removeItem('traveloka_deleted_booking_ids');
 
       // Lưu Access Token
       localStorage.setItem(
@@ -118,10 +128,12 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Logout API error:', error);
     } finally {
-      // Dọn dẹp phiên đăng nhập ở local sau khi API đã gửi xong
+      // Dọn dẹp phiên đăng nhập và lịch sử đặt phòng ở local sau khi API đã gửi xong
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
       localStorage.removeItem('traveloka_auth_user');
+      localStorage.removeItem('traveloka_bookings');
+      localStorage.removeItem('traveloka_deleted_booking_ids');
       setUser(null);
     }
   };
