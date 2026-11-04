@@ -28,6 +28,10 @@ export default function HotelDetailPage() {
 
   // Khách sạn lấy từ Backend (khởi tạo tức thì 0ms từ Router State hoặc SWR Cache nếu có)
   const [hotel, setHotel] = useState(() => location.state?.hotel || getCachedHotelById(id) || null);
+  const [isLoadingRooms, setIsLoadingRooms] = useState(() => {
+    const initial = location.state?.hotel || getCachedHotelById(id);
+    return !Array.isArray(initial?.rooms) || initial.rooms.length === 0;
+  });
 
   // State ảnh chính đang được hiển thị trong Gallery
   const [activeImage, setActiveImage] = useState(null);
@@ -118,12 +122,25 @@ export default function HotelDetailPage() {
           setActiveImage(firstImg);
         }
       }
-    } catch (err) {
+      } catch (err) {
       console.warn('API hotel details fallback:', err);
+    } finally {
+      setIsLoadingRooms(false);
     }
   };
 
   useEffect(() => {
+    const cached = location.state?.hotel || getCachedHotelById(id);
+    if (cached && String(cached.id) === String(id)) {
+      setHotel(prev => (prev && String(prev.id) === String(id)) ? prev : cached);
+      if (Array.isArray(cached.rooms) && cached.rooms.length > 0) {
+        setIsLoadingRooms(false);
+      } else {
+        setIsLoadingRooms(true);
+      }
+    } else {
+      setIsLoadingRooms(true);
+    }
     loadHotelDetails();
 
     // Lắng nghe sự kiện khi Admin cập nhật ảnh phòng hoặc thông tin phòng ở tab/cửa sổ khác
@@ -165,12 +182,12 @@ export default function HotelDetailPage() {
       ...searchState
     };
 
+    try {
+      localStorage.setItem('traveloka_pending_booking', JSON.stringify(bookingState));
+    } catch { }
+
     // Bắt buộc đăng nhập tài khoản Khách hàng khi tiến hành đặt phòng
     if (!isAuthenticated) {
-      try {
-        localStorage.setItem('traveloka_pending_booking', JSON.stringify(bookingState));
-      } catch { }
-
       navigate('/login', {
         state: {
           from: { pathname: '/checkout', state: bookingState },
@@ -238,10 +255,10 @@ export default function HotelDetailPage() {
               <div className="d-flex align-items-center gap-2 mb-2">
                 <span className="badge bg-primary px-3 py-1 rounded-pill">{hotel.city}</span>
                 <div className="d-flex align-items-center gap-1 text-warning">
-                  {Array.from({ length: hotel.starRating }).map((_, i) => (
+                  {Array.from({ length: Number(hotel.starRating) || 5 }).map((_, i) => (
                     <Star key={i} size={16} fill="#ffc107" />
                   ))}
-                  <span className="text-dark small fw-bold ms-1">{hotel.starRating} sao</span>
+                  <span className="text-dark small fw-bold ms-1">{hotel.starRating || 5} sao</span>
                 </div>
               </div>
 
@@ -489,7 +506,7 @@ export default function HotelDetailPage() {
             <div className="card border-0 shadow-sm rounded-4 p-4 sticky-top bg-white" style={{ top: '90px' }}>
               <span className="text-secondary small d-block">Giá khởi điểm từ</span>
               <div className="fs-3 fw-bold text-danger mb-2">
-                {hotel.rooms[0]?.pricePerNight.toLocaleString('vi-VN')} đ
+                {Number(hotel?.rooms?.[0]?.pricePerNight ?? hotel?.minPricePerNight ?? hotel?.minPrice ?? hotel?.pricePerNight ?? 1200000).toLocaleString('vi-VN')} đ
                 <span className="text-secondary fs-6 fw-normal"> / Đêm</span>
               </div>
               <p className="text-secondary small mb-3">Đã bao gồm thuế và các loại phí dịch vụ.</p>
@@ -524,11 +541,38 @@ export default function HotelDetailPage() {
             <div>
               <h3 className="fw-bold text-dark mb-0">Các Loại Phòng Còn Trống</h3>
             </div>
-            <span className="text-secondary small">Hiện có {hotel?.rooms?.length || 0} loại phòng sẵn sàng đón tiếp</span>
+            <span className="text-secondary small">
+              {isLoadingRooms && (!hotel?.rooms || hotel.rooms.length === 0)
+                ? 'Đang tải danh sách phòng...'
+                : `Hiện có ${hotel?.rooms?.length || 0} loại phòng sẵn sàng đón tiếp`}
+            </span>
           </div>
 
           <div className="d-flex flex-column gap-4">
-            {(hotel?.rooms || []).map((room) => (
+            {isLoadingRooms && (!hotel?.rooms || hotel.rooms.length === 0) ? (
+              Array.from({ length: 2 }).map((_, idx) => (
+                <div key={idx} className="card border-0 shadow-sm rounded-4 overflow-hidden bg-white p-3">
+                  <div className="row g-3 align-items-center">
+                    <div className="col-lg-4 col-md-5">
+                      <div className="skeleton-shimmer rounded-3 w-100" style={{ height: '220px' }} />
+                    </div>
+                    <div className="col-lg-5 col-md-7">
+                      <div className="skeleton-shimmer rounded-2 mb-3" style={{ width: '65%', height: '24px' }} />
+                      <div className="skeleton-shimmer rounded-2 mb-2" style={{ width: '90%', height: '14px' }} />
+                      <div className="skeleton-shimmer rounded-2 mb-3" style={{ width: '75%', height: '14px' }} />
+                      <div className="d-flex gap-2">
+                        <div className="skeleton-shimmer rounded-pill" style={{ width: '90px', height: '24px' }} />
+                        <div className="skeleton-shimmer rounded-pill" style={{ width: '110px', height: '24px' }} />
+                      </div>
+                    </div>
+                    <div className="col-lg-3 col-md-12">
+                      <div className="skeleton-shimmer rounded-2 mb-2" style={{ width: '60%', height: '28px' }} />
+                      <div className="skeleton-shimmer rounded-3 w-100 mt-3" style={{ height: '42px' }} />
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (hotel?.rooms || []).map((room) => (
               <div key={room.id} className="card border-0 shadow-sm rounded-4 overflow-hidden bg-white hover-shadow">
                 <div className="row g-0">
                   {/* Ảnh phòng */}
@@ -610,7 +654,7 @@ export default function HotelDetailPage() {
                       )}
 
                       <div className="fs-3 fw-bold text-danger my-1">
-                        {room.pricePerNight.toLocaleString('vi-VN')} đ
+                        {Number(room.pricePerNight || 0).toLocaleString('vi-VN')} đ
                       </div>
                       <span className="text-secondary small">/ Đêm</span>
                     </div>
