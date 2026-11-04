@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { apiFetch } from '../services/api';
+import { getHotelByIdApi, getHotelRoomsApi, getCachedHotelById } from '../services/hotelApi';
 import {
   MapPin, Star, Wifi, Waves, Coffee, Car, Dumbbell,
   Sparkles, CheckCircle2, ShieldAlert, Clock, ArrowLeft,
@@ -26,8 +26,8 @@ export default function HotelDetailPage() {
   })();
   const searchState = { ...savedSearch, ...(location.state || {}) };
 
-  // Khách sạn lấy từ Backend
-  const [hotel, setHotel] = useState(null);
+  // Khách sạn lấy từ Backend (khởi tạo tức thì 0ms từ Router State hoặc SWR Cache nếu có)
+  const [hotel, setHotel] = useState(() => location.state?.hotel || getCachedHotelById(id) || null);
 
   // State ảnh chính đang được hiển thị trong Gallery
   const [activeImage, setActiveImage] = useState(null);
@@ -67,25 +67,16 @@ export default function HotelDetailPage() {
     ];
   }, [hotel, mainCoverImage]);
 
-  // Tải chi tiết khách sạn và danh sách phòng từ Backend API
+  // Tải chi tiết khách sạn và danh sách phòng từ Backend API (kèm cache & chống gọi trùng)
   const loadHotelDetails = async () => {
     try {
-      const [hRes, rRes] = await Promise.all([
-        apiFetch(`/hotels/${id}`),
-        apiFetch(`/hotels/${id}/rooms`)
+      const [hResult, rResult] = await Promise.allSettled([
+        getHotelByIdApi(id),
+        getHotelRoomsApi(id)
       ]);
 
-      let backendHotel = null;
-      let backendRooms = null;
-
-      if (hRes.ok) {
-        const hData = await hRes.json();
-        if (hData.result) backendHotel = hData.result;
-      }
-      if (rRes.ok) {
-        const rData = await rRes.json();
-        if (rData.result && Array.isArray(rData.result)) backendRooms = rData.result;
-      }
+      const backendHotel = hResult.status === 'fulfilled' ? hResult.value : null;
+      const backendRooms = rResult.status === 'fulfilled' && Array.isArray(rResult.value) ? rResult.value : null;
 
       if (backendHotel || (backendRooms && backendRooms.length > 0)) {
         setHotel(prev => {

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { filterHotelsApi, searchHotelsApi } from '../services/hotelApi';
+import { filterHotelsApi, searchHotelsApi, getCachedFilterHotels } from '../services/hotelApi';
+import HotelCardSkeleton from '../components/HotelCardSkeleton';
 import { 
   Search, MapPin, Star, Filter, RotateCcw, 
   Wifi, Waves, Coffee, Car, Dumbbell, Sparkles, CheckSquare, Square, CheckCircle2, Circle,
@@ -68,12 +69,28 @@ export default function HotelsPage() {
   const [sortBy, setSortBy] = useState('popular'); // popular, priceAsc, priceDesc, ratingDesc
 
   // State dữ liệu từ Backend API (FR-06 & FR-07)
-  const [backendHotels, setBackendHotels] = useState(null);
-  const [loading, setLoading] = useState(false);
+  // Khởi tạo tức thì (0ms) từ Stale-While-Revalidate Cache nếu đã có dữ liệu
+  const initialCachedPayload = useMemo(() => {
+    if (checkInParam && checkOutParam) return null;
+    return getCachedFilterHotels({
+      city: cityParam && cityParam !== 'Tất cả' ? cityParam : '',
+      page: 0,
+      size: 10
+    }) || getCachedFilterHotels({ page: 0, size: 50 });
+  }, []);
+
+  const [backendHotels, setBackendHotels] = useState(() => {
+    const list = Array.isArray(initialCachedPayload?.content)
+      ? initialCachedPayload.content
+      : (Array.isArray(initialCachedPayload) ? initialCachedPayload : null);
+    return list && list.length > 0 ? list.slice(0, 10) : null;
+  });
+  const [loading, setLoading] = useState(() => !backendHotels);
+  const [showColdStartHint, setShowColdStartHint] = useState(false);
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(10);
-  const [totalElements, setTotalElements] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
+  const [totalElements, setTotalElements] = useState(() => Number(initialCachedPayload?.totalElements ?? 0));
+  const [totalPages, setTotalPages] = useState(() => Number(initialCachedPayload?.totalPages ?? 1));
 
   // Cập nhật city khi URL thay đổi
   useEffect(() => {
@@ -88,6 +105,9 @@ export default function HotelsPage() {
   // Gọi API FR-06 / FR-07 từ backend
   const loadHotels = useCallback(async () => {
     setLoading(true);
+    const coldStartTimer = setTimeout(() => {
+      setShowColdStartHint(true);
+    }, 2500);
     try {
       let data;
       // Nếu có checkIn và checkOut -> gọi FR-06 Search
@@ -141,11 +161,13 @@ export default function HotelsPage() {
       setTotalPages(Number(data?.totalPages ?? 1));
     } catch (err) {
       console.warn('FR-06/FR-07 API call error:', err);
-      setBackendHotels([]);
+      setBackendHotels(prev => (prev && prev.length > 0 ? prev : []));
       setTotalElements(0);
       setTotalPages(1);
     } finally {
+      clearTimeout(coldStartTimer);
       setLoading(false);
+      setShowColdStartHint(false);
     }
   }, [selectedCity, selectedStar, selectedAmenities, checkInParam, checkOutParam, guestsParam, page, size]);
 
@@ -436,13 +458,8 @@ export default function HotelsPage() {
 
           {/* ================= CỘT PHẢI: DANH SÁCH KHÁCH SẠN ================= */}
           <div className="col-lg-9 col-md-8">
-            {loading ? (
-              <div className="card border-0 shadow-sm rounded-4 p-5 text-center bg-white">
-                <div className="d-flex align-items-center justify-content-center gap-2 text-primary py-4">
-                  <div className="spinner-border spinner-border-sm" role="status"></div>
-                  <span className="fw-semibold">Đang tải...</span>
-                </div>
-              </div>
+            {loading && (!backendHotels || backendHotels.length === 0) ? (
+              <HotelCardSkeleton count={4} showColdStartHint={showColdStartHint} />
             ) : filteredHotels.length === 0 ? (
               <div className="card border-0 shadow-sm rounded-4 p-5 text-center bg-white">
                 <div className="p-4">
@@ -470,6 +487,8 @@ export default function HotelsPage() {
                                 <img 
                                   src={imgs[0]} 
                                   alt={hotel.name}
+                                  loading="lazy"
+                                  decoding="async"
                                   className="w-100 h-100 object-fit-cover"
                                 />
                             
@@ -479,6 +498,8 @@ export default function HotelsPage() {
                                   <img 
                                     src={imgs[1]} 
                                     alt="Ảnh phòng 1"
+                                    loading="lazy"
+                                    decoding="async"
                                     className="w-100 rounded-2 object-fit-cover"
                                     style={{ height: '58px' }}
                                   />
@@ -487,6 +508,8 @@ export default function HotelsPage() {
                                   <img 
                                     src={imgs[2]} 
                                     alt="Ảnh tiện ích 2"
+                                    loading="lazy"
+                                    decoding="async"
                                     className="w-100 rounded-2 object-fit-cover"
                                     style={{ height: '58px' }}
                                   />
@@ -495,6 +518,8 @@ export default function HotelsPage() {
                                   <img 
                                     src={imgs[3]} 
                                     alt="Ảnh không gian 3"
+                                    loading="lazy"
+                                    decoding="async"
                                     className="w-100 rounded-2 object-fit-cover"
                                     style={{ height: '58px' }}
                                   />
@@ -589,9 +614,10 @@ export default function HotelsPage() {
                             to={`/hotels/${hotel.id}`} 
                             state={(() => {
                               try {
-                                return JSON.parse(localStorage.getItem('traveloka_search_params')) || {};
+                                const saved = JSON.parse(localStorage.getItem('traveloka_search_params')) || {};
+                                return { ...saved, hotel };
                               } catch {
-                                return {};
+                                return { hotel };
                               }
                             })()}
                             className="btn btn-primary px-4 py-2 fw-bold"

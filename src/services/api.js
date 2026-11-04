@@ -1,4 +1,32 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL  || 'http://localhost:8080/api/v1';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1';
+
+let warmupStarted = false;
+
+/**
+ * Đánh thức máy chủ Backend (Warm-up) ngay khi ứng dụng khởi chạy
+ * và duy trì kết nối Keep-Alive định kỳ khi tab trình duyệt đang hiển thị,
+ * giúp triệt tiêu độ trễ Cold Start trên môi trường đám mây (Render).
+ */
+export const warmupBackendApi = () => {
+    if (warmupStarted || typeof window === 'undefined') return;
+    warmupStarted = true;
+
+    const pingHealth = () => {
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+            return;
+        }
+        fetch(`${API_BASE_URL}/health?warmup=true`, {
+            method: 'GET',
+            keepalive: true,
+        }).catch(() => {
+            // Bỏ qua lỗi mạng ngầm trong lúc máy chủ đang khởi động
+        });
+    };
+
+    pingHealth();
+    // Gửi tín hiệu Keep-Alive mỗi 4 phút khi người dùng đang mở trang
+    window.setInterval(pingHealth, 4 * 60 * 1000);
+};
 
 export const apiFetch = async (endpoint, options = {}) => {
     const accessToken = localStorage.getItem('accessToken');
