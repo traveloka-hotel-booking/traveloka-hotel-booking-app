@@ -176,8 +176,12 @@ export default function MyBookingsPage() {
     };
   };
 
-  // State danh sách đơn đặt phòng
+  // State danh sách đơn đặt phòng (Chỉ hiển thị khi người dùng đã đăng nhập)
   const [bookings, setBookings] = useState(() => {
+    if (!isAuthenticated) {
+      localStorage.removeItem('traveloka_bookings');
+      return [];
+    }
     try {
       const saved = JSON.parse(localStorage.getItem('traveloka_bookings') || '[]');
       return Array.isArray(saved) ? saved.map(normalizeBooking) : [];
@@ -305,8 +309,15 @@ export default function MyBookingsPage() {
     }
   };
 
-  // Tải danh sách đơn đặt phòng từ Backend và LocalStorage
+  // Tải danh sách đơn đặt phòng từ Backend và LocalStorage (Bắt buộc đăng nhập mới hiển thị lịch sử)
   const loadBookings = async () => {
+    if (!isAuthenticated) {
+      localStorage.removeItem('traveloka_bookings');
+      setBookings([]);
+      setLoading(false);
+      return;
+    }
+
     let currentList = [];
     const deletedIds = JSON.parse(localStorage.getItem('traveloka_deleted_booking_ids') || '[]');
     const isNotDeleted = (b) => {
@@ -326,24 +337,22 @@ export default function MyBookingsPage() {
       console.error('Lỗi khi đọc danh sách đặt phòng localStorage:', e);
     }
 
-    if (isAuthenticated) {
-      try {
-        setLoading(true);
-        const res = await apiFetch('/customer/bookings/my-bookings');
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.result && Array.isArray(data.result)) {
-            const mapped = data.result.map(normalizeBooking).filter(isNotDeleted);
-            currentList = mapped;
-            setBookings(mapped);
-            localStorage.setItem('traveloka_bookings', JSON.stringify(mapped));
-          }
+    try {
+      setLoading(true);
+      const res = await apiFetch('/customer/bookings/my-bookings');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.result && Array.isArray(data.result)) {
+          const mapped = data.result.map(normalizeBooking).filter(isNotDeleted);
+          currentList = mapped;
+          setBookings(mapped);
+          localStorage.setItem('traveloka_bookings', JSON.stringify(mapped));
         }
-      } catch (e) {
-        console.warn('API my-bookings fallback to local storage:', e);
-      } finally {
-        setLoading(false);
       }
+    } catch (e) {
+      console.warn('API my-bookings fallback to local storage:', e);
+    } finally {
+      setLoading(false);
     }
 
     // Tự động kiểm tra và đồng bộ ảnh Cloudinary thật của khách sạn nếu đơn chưa có ảnh thật
@@ -555,7 +564,8 @@ export default function MyBookingsPage() {
     <div className="bg-light pb-5 min-vh-100 page-top-spacing">
       <div className="container">
         
-        {/* Header trang */}
+        {/* Header trang (Ẩn khi người dùng chưa đăng nhập) */}
+        {isAuthenticated && (
         <div className="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
           <div>
             <h2 className="fw-bold text-dark mb-1">Chuyến Đi Của Tôi</h2>
@@ -589,11 +599,7 @@ export default function MyBookingsPage() {
             </Link>
           </div>
         </div>
-
-        {/* Banner dành cho khách chưa đăng nhập */}
-        {!isAuthenticated 
-        
-        }
+        )}
 
         {/* Tabs chuyển đổi trạng thái */}
         {bookings.length > 0 && (
