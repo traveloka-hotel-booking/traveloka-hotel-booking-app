@@ -67,6 +67,8 @@ export const apiFetch = async (endpoint, options = {}) => {
             localStorage.removeItem('accessToken');
             localStorage.removeItem('refreshToken');
             localStorage.removeItem('traveloka_auth_user');
+            localStorage.removeItem('traveloka_bookings');
+            localStorage.removeItem('traveloka_deleted_booking_ids');
 
             window.location.href = '/login';
             return response;
@@ -91,6 +93,8 @@ export const apiFetch = async (endpoint, options = {}) => {
             localStorage.removeItem('accessToken');
             localStorage.removeItem('refreshToken');
             localStorage.removeItem('traveloka_auth_user');
+            localStorage.removeItem('traveloka_bookings');
+            localStorage.removeItem('traveloka_deleted_booking_ids');
 
             window.location.href = '/login';
 
