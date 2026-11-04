@@ -42,7 +42,20 @@ export default function LoginPage() {
       if (user?.role === 'ROLE_ADMIN' || user?.role === 'admin') {
         navigate('/admin');
       } else {
-        navigate(from, { state: fromState, replace: true });
+        let pendingBooking = null;
+        try {
+          const raw = localStorage.getItem('traveloka_pending_booking');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed?.hotel && parsed?.room) {
+              pendingBooking = parsed;
+            }
+          }
+        } catch {}
+
+        const targetPath = (from === '/' && pendingBooking) ? '/checkout' : from;
+        const targetState = fromState || pendingBooking || null;
+        navigate(targetPath, { state: targetState, replace: true });
       }
 
     } catch (error) {
@@ -177,6 +190,7 @@ export default function LoginPage() {
                 Bạn chưa có tài khoản?{' '}
                 <Link
                   to="/register"
+                  state={location.state}
                   className="text-primary fw-bold text-decoration-none"
                 >
                   Đăng ký ngay

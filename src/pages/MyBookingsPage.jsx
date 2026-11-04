@@ -564,7 +564,8 @@ export default function MyBookingsPage() {
     <div className="bg-light pb-5 min-vh-100 page-top-spacing">
       <div className="container">
         
-        {/* Header trang */}
+        {/* Header trang (Ẩn khi người dùng chưa đăng nhập) */}
+        {isAuthenticated && (
         <div className="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
           <div>
             <h2 className="fw-bold text-dark mb-1">Chuyến Đi Của Tôi</h2>
@@ -598,24 +599,6 @@ export default function MyBookingsPage() {
             </Link>
           </div>
         </div>
-
-        {/* Banner dành cho khách chưa đăng nhập */}
-        {!isAuthenticated && (
-          <div className="alert alert-info border-0 shadow-sm rounded-4 p-3 mb-4 d-flex align-items-center justify-content-between flex-wrap gap-3 bg-info-subtle text-dark">
-            <div className="d-flex align-items-center gap-2 small">
-              <Info size={20} className="text-info flex-shrink-0" />
-              <span>
-                Bạn chưa đăng nhập. Vui lòng đăng nhập để hệ thống tự động lưu trữ và đồng bộ hóa các đơn đặt phòng của bạn.
-              </span>
-            </div>
-            <Link 
-              to="/login" 
-              className="btn btn-primary btn-sm rounded-pill px-3 py-1 fw-bold shadow-sm" 
-              style={{ fontSize: '12.5px' }}
-            >
-              Đăng nhập
-            </Link>
-          </div>
         )}
 
         {/* Tabs chuyển đổi trạng thái */}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Hotel, Eye, EyeOff, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { apiFetch } from '../services/api';
@@ -7,7 +7,8 @@ import { getFriendlyErrorMessage, sanitizeErrorMessage } from '../utils/errorHan
 
 export default function RegisterPage() {
   const navigate = useNavigate();
-  const { register } = useAuth();
+  const location = useLocation();
+  const { register, login } = useAuth();
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -92,8 +93,27 @@ export default function RegisterPage() {
         return;
       }
 
-      setSuccessMsg('Đăng ký tài khoản thành công! Đang chuyển hướng...');
-      setTimeout(() => navigate('/login'), 1000);
+      setSuccessMsg('Đăng ký tài khoản thành công! Đang tự động đăng nhập...');
+      try {
+        await login(email, password);
+        let pendingBooking = null;
+        try {
+          const raw = localStorage.getItem('traveloka_pending_booking');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed?.hotel && parsed?.room) {
+              pendingBooking = parsed;
+            }
+          }
+        } catch {}
+
+        const fromPath = location.state?.from?.pathname || (typeof location.state?.from === 'string' ? location.state.from : null);
+        const fromState = location.state?.from?.state || location.state?.bookingState || pendingBooking || null;
+        const targetPath = fromPath || (pendingBooking ? '/checkout' : '/');
+        navigate(targetPath, { state: fromState, replace: true });
+      } catch {
+        setTimeout(() => navigate('/login', { state: location.state }), 800);
+      }
     } catch (error) {
       if (error?.message === 'REGISTER_TIMEOUT') {
         setErrorMsg('Yêu cầu đăng ký mất quá nhiều thời gian. Vui lòng kiểm tra kết nối và thử lại.');
@@ -286,7 +306,7 @@ export default function RegisterPage() {
               {/* Chuyển sang trang Đăng nhập */}
               <div className="text-center small text-secondary mt-4 pt-3 border-top">
                 Đã có tài khoản?{' '}
-                <Link to="/login" className="text-primary fw-bold text-decoration-none">
+                <Link to="/login" state={location.state} className="text-primary fw-bold text-decoration-none">
                   Đăng nhập ngay
                 </Link>
               </div>

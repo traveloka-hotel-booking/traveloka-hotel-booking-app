@@ -141,10 +141,22 @@ export default function HomePage() {
     return `${y}-${m}-${d}`;
   }, []);
 
-  // State tìm kiếm trên Hero (để trống ban đầu để người dùng tự nhập)
+  // State tìm kiếm trên Hero (mặc định điền sẵn ngày nhận/trả phòng hợp lệ hôm nay -> ngày mai)
   const [destination, setDestination] = useState(savedSearch?.destination || '');
-  const [checkIn, setCheckIn] = useState('');
-  const [checkOut, setCheckOut] = useState('');
+  const [checkIn, setCheckIn] = useState(() => {
+    const saved = savedSearch?.checkIn;
+    return (saved && saved >= today) ? saved : today;
+  });
+  const [checkOut, setCheckOut] = useState(() => {
+    const savedIn = (savedSearch?.checkIn && savedSearch.checkIn >= today) ? savedSearch.checkIn : today;
+    const savedOut = savedSearch?.checkOut;
+    if (savedOut && savedOut > savedIn) return savedOut;
+    const nextDay = new Date(new Date(savedIn).getTime() + 86400000);
+    const y = nextDay.getFullYear();
+    const m = String(nextDay.getMonth() + 1).padStart(2, '0');
+    const d = String(nextDay.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  });
   
   // State chọn phòng và khách (3 thành phần: Phòng, Người Lớn, Trẻ Em)
   const [roomsCount, setRoomsCount] = useState(savedSearch?.roomsCount || 1);
@@ -386,7 +398,9 @@ export default function HomePage() {
       let list = [];
       try {
         const safeCheckIn = (checkIn && checkIn >= today) ? checkIn : today;
-        const safeCheckOut = (checkOut && checkOut > safeCheckIn) ? checkOut : tomorrow;
+        const nextDayObj = new Date(new Date(safeCheckIn).getTime() + 86400000);
+        const minCheckOut = `${nextDayObj.getFullYear()}-${String(nextDayObj.getMonth() + 1).padStart(2, '0')}-${String(nextDayObj.getDate()).padStart(2, '0')}`;
+        const safeCheckOut = (checkOut && checkOut > safeCheckIn) ? checkOut : minCheckOut;
 
         const res = await searchHotelsApi({
           city: searchCity,
